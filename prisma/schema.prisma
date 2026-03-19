@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// --- CORE DEAL RECORD ---
+model DealRecord {
+  id                String        @id @default(uuid())
+  ingestionId       String        @unique
+  
+  reviewStatus      String        @default("NEEDS_REVIEW")
+  publishStatus     String        @default("DRAFT")
+  
+  // JSONB Columns typed strictly in TypeScript (src/types/engine.ts)
+  // SQLite uses String to store JSON
+  programKeys       String        
+  financialData     String        
+  eligibility       String        
+  
+  lenderId          String?
+  isFirstTimeBuyerEligible Boolean @default(true)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  approvedBy        String?       // Admin ID
+  
+  auditLogs         AdminAuditLog[]
+}
+
+// --- INTERNAL TRUTH ---
+model FinancialProgram {
+  id                String        @id @default(uuid())
+  type              String        // LEASE_MF, LEASE_RV, FINANCE_APR
+  
+  // 11-Key Lock Fields
+  brandId           String
+  modelId           String
+  trimId            String
+  year              Int
+  term              Int
+  mileage           Int?
+  tierId            String
+  regionId          String
+  lenderId          String
+  programType       String
+  
+  value             Float
+  
+  // Reliability Metadata
+  sourceType        String
+  sourceFileUrl     String?
+  effectiveFrom     DateTime
+  effectiveTo       DateTime
+  verifiedBy        String
+  verifiedAt        DateTime      @default(now())
+  isSuperseded      Boolean       @default(false)
+}
+
+model IncentiveProgram {
+  id                String        @id @default(uuid())
+  name              String
+  amount            Float
+  brandId           String
+  regionIds         String        // JSON string array
+  stackabilityGroup String
+  isExclusive       Boolean
+  effectiveFrom     DateTime
+  effectiveTo       DateTime
+}
+
+// --- AUDIT LOG ---
+model AdminAuditLog {
+  id                String        @id @default(uuid())
+  dealRecordId      String
+  adminId           String
+  action            String        
+  field             String        
+  previousValue     String?       // JSON string
+  newValue          String        // JSON string
+  reason            String        
+  timestamp         DateTime      @default(now())
+  
+  deal              DealRecord    @relation(fields: [dealRecordId], references: [id])
+}
+
+// --- BASE TABLES (Foundation) ---
+model Brand {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  models    Model[]
+}
+
+model Model {
+  id        String   @id @default(uuid())
+  brandId   String
+  name      String
+  aliases   String   @default("[]") // JSON string array
+  brand     Brand    @relation(fields: [brandId], references: [id])
+  trims     Trim[]
+}
+
+model Trim {
+  id        String   @id @default(uuid())
+  modelId   String
+  name      String
+  year      Int
+  msrp      Float
+  aliases   String   @default("[]") // JSON string array
+  model     Model    @relation(fields: [modelId], references: [id])
+}
+
+model Region {
+  id        String   @id @default(uuid())
+  name      String
+  state     String   @default("CA")
+  zipCodes  String   @default("[]") // JSON string array
+}
+
+model Lender {
+  id        String   @id @default(uuid())
+  name      String
+  isCaptive Boolean  @default(false)
+  isFirstTimeBuyerFriendly Boolean @default(false)
+  aliases   String   @default("[]") // JSON string array
+}
+
+model Tier {
+  id        String   @id @default(uuid())
+  name      String   // e.g., "Tier 1+", "Tier 1"
+  minScore  Int
+  maxScore  Int
+}
+
+model Lead {
+  id                String   @id @default(uuid())
+  clientName        String
+  clientPhone       String
+  clientEmail       String?
+  payMethod         String
+  paymentName       String?
+  
+  hasTradeIn        Boolean  @default(false)
+  tradeInMake       String?
+  tradeInModel      String?
+  tradeInYear       String?
+  tradeInMileage    String?
+  tradeInVin        String?
+  tradeInHasLoan    Boolean  @default(false)
+  tradeInPayoff     String?
+
+  carMake           String
+  carModel          String
+  carYear           Int
+  carTrim           String
+  carMsrp           Float
+
+  calcType          String   // lease, finance
+  calcPayment       Float
+  calcDown          Float
+  calcTier          String
+  isFirstTimeBuyer Boolean  @default(false)
+  userId            String?
+
+  status            String   @default("pending") // pending, active, closed, rejected
+  dealersSent       Int      @default(0)
+  dealersAccepted   Int      @default(0)
+  acceptedBy        String?
+  appointmentDate   String?
+
+  creditApp         String?  // JSON string containing full credit application data
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  role      String   @default("moderator") // admin, moderator, viewer
+  status    String   @default("active")    // active, suspended
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+}
+
+model SiteSettings {
+  id        String   @id @default("global")
+  data      String   // JSON string containing all settings
+  updatedAt DateTime @updatedAt
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  clientName String
+  carName    String
+  location   String
+  savings    String
+  imageUrl   String
+  videoUrl   String?
+  rating     Int      @default(5)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  message   String
+  status    String   @default("new") // new, read, resolved
+  createdAt DateTime @default(now())
+}

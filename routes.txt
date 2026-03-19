@@ -1,0 +1,71 @@
+349:      <p><strong>Client:</strong> ${app.firstName} ${app.lastName}</p>
+350:      <p><strong>Email:</strong> ${app.email}</p>
+351:      <p><strong>DOB:</strong> ${app.dob}</p>
+352:      <p><strong>SSN:</strong> ${app.ssn}</p>
+353:      <p><strong>DL Number:</strong> ${app.dlNumber}</p>
+356:      <p><strong>Employer:</strong> ${app.employer}</p>
+357:      <p><strong>Position:</strong> ${app.position}</p>
+358:      <p><strong>Income:</strong> $${app.monthlyIncome} (${app.incomeType})</p>
+359:      <p><strong>Additional Income:</strong> $${app.additionalIncome || '0'}</p>
+360:      <p><strong>Work Experience:</strong> ${app.workExperience} years</p>
+361:      <p><strong>Employer Phone:</strong> ${app.employerPhone}</p>
+364:      <p><strong>Status:</strong> ${app.residencyStatus}</p>
+365:      <p><strong>Address:</strong> ${app.address}</p>
+366:      <p><strong>Prev Address:</strong> ${app.prevAddress || 'N/A'}</p>
+369:      <p><strong>Cosigner:</strong> ${app.hasCosigner ? 'Yes' : 'No'}</p>
+370:      <p><strong>Prev Auto Finance:</strong> ${app.prevAuto ? 'Yes' : 'No'}</p>
+373:      <p><strong>Signature:</strong> ${app.signature}</p>
+446:  app.use(cors(corsOptions));
+447:  app.use(express.json());
+452:  app.get("/api/admin/stats", adminAuth, async (req, res) => {
+507:  app.get("/api/admin/api-key-status", adminAuth, async (req, res) => {
+525:  app.get("/api/settings", async (req, res) => {
+564:  app.put("/api/admin/settings", adminAuth, async (req, res) => {
+585:  app.get("/api/admin/users", adminAuth, async (req, res) => {
+596:  app.post("/api/admin/users", adminAuth, async (req, res) => {
+608:  app.put("/api/admin/users/:id", adminAuth, async (req, res) => {
+622:  app.delete("/api/admin/users/:id", adminAuth, async (req, res) => {
+633:  app.get("/api/reviews", async (req, res) => {
+645:  app.get("/api/admin/reviews", adminAuth, async (req, res) => {
+656:  app.post("/api/admin/reviews", adminAuth, async (req, res) => {
+668:  app.put("/api/admin/reviews/:id", adminAuth, async (req, res) => {
+681:  app.delete("/api/admin/reviews/:id", adminAuth, async (req, res) => {
+690:  app.get("/api/admin/lenders", adminAuth, async (req, res) => {
+699:  app.post("/api/admin/lenders", adminAuth, express.json(), async (req, res) => {
+717:  app.put("/api/admin/lenders/:id", adminAuth, express.json(), async (req, res) => {
+737:  app.delete("/api/admin/lenders/:id", adminAuth, async (req, res) => {
+749:  app.get("/api/admin/cars", adminAuth, (req, res) => {
+753:  app.put("/api/admin/cars", adminAuth, (req, res) => {
+767:  app.post("/api/admin/sync-external", adminAuth, async (req, res) => {
+796:  app.post("/api/admin/snapshot-calculator", adminAuth, async (req, res) => {
+818:  app.get("/api/admin/test-marketcheck", adminAuth, async (req, res) => {
+905:  app.get("/api/search/auto-complete", async (req, res) => {
+934:  app.get("/api/inventory", async (req, res) => {
+962:  app.get("/api/health", (req, res) => {
+967:  app.get("/api/cars", (req, res) => {
+972:  app.put("/api/cars", adminAuth, (req, res) => {
+987:  app.get("/api/car-photos", (req, res) => {
+991:  app.post("/api/admin/car-photos/upload", adminAuth, express.json(), (req, res) => {
+1029:  app.delete("/api/admin/car-photos/:id", adminAuth, (req, res) => {
+1050:  app.put("/api/admin/car-photos/:id/default", adminAuth, (req, res) => {
+1077:  app.post("/api/lead", async (req, res) => {
+1131:  app.post("/api/lead/credit-app", async (req, res) => {
+1165:  app.get("/api/lead/:id", async (req, res) => {
+1188:  app.get("/api/leads/my", async (req, res) => {
+1229:  app.get("/api/leads", adminAuth, async (req, res) => {
+1268:  app.put("/api/lead/:id", adminAuth, async (req, res) => {
+1281:  app.delete("/api/lead/:id", adminAuth, async (req, res) => {
+1295:  app.post("/api/ingest", adminAuth, ingestLimiter, upload.single("offer"), async (req, res) => {
+1363:  app.post("/api/admin/deals/sync", adminAuth, async (req, res) => {
+1456:  app.get("/api/admin/deals", adminAuth, async (req, res) => {
+1467:  app.post("/api/admin/deals", adminAuth, async (req, res) => {
+1493:  app.put("/api/admin/deals/:id", adminAuth, async (req, res) => {
+1537:  app.delete("/api/admin/deals/:id", adminAuth, async (req, res) => {
+1561:  app.get("/api/deals", async (req, res) => {
+1762:  app.use(express.static(path.join(process.cwd(), 'public')));
+1765:  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+1773:    app.use(vite.middlewares);
+1777:    app.use(express.static(distPath));
+1778:    app.get("*", (req, res) => {
+1784:  app.get("/api/debug/key-info", (req, res) => {
+1800:  app.listen(PORT, "0.0.0.0", () => {

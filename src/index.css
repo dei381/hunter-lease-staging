@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  /* Auto Bandit Inspired Theme */
+  --bg: #FFFFFF;
+  --s1: #F8F9FA;
+  --s2: #F1F3F5;
+  --b1: #E9ECEF;
+  --b2: #DEE2E6;
+  --b3: #CED4DA;
+  
+  --w: #1A1A1A;
+  --mu: #495057;
+  --mu2: #6C757D;
+  
+  --primary: #002C5F; /* Auto Bandit Blue */
+  --accent: #E63946;  /* Auto Bandit Red */
+  --lime: #20C997; 
+  --lime2: #12B886;
+  --teal: #0CA678;
+  --grn: #37B24D;
+  
+  --nh: 80px;
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--bg)] text-[var(--w)] antialiased overflow-x-hidden;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.ldot {
+  @apply w-2 h-2 rounded-full bg-[var(--lime)] relative;
+}
+
+.ldot::after {
+  content: '';
+  @apply absolute inset-0 rounded-full bg-[var(--lime)] animate-ping;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-[var(--s1)];
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-[var(--b2)] rounded-full hover:bg-[var(--b3)] transition-colors;
+}
+
+.glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-sm;
+}
+
+.card-premium {
+  @apply bg-white border border-[var(--b2)] rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
