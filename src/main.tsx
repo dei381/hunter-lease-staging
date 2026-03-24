@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import ReactGA from 'react-ga4';
 import { AuthProvider } from './components/AuthProvider';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App.tsx';
 import './index.css';
 
@@ -15,11 +16,13 @@ if (GA_ID) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HelmetProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </AuthProvider>
+      </ErrorBoundary>
     </HelmetProvider>
   </StrictMode>,
 );

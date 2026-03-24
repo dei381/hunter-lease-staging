@@ -288,7 +288,7 @@ export const MediaAdmin = () => {
 
               <button 
                 disabled={!selectedFile || isUploading}
-                className="flex-1 bg-[var(--lime)] text-black font-bold py-2 rounded-lg text-sm hover:bg-[var(--lime2)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 bg-[var(--lime)] text-white font-bold py-2 rounded-lg text-sm hover:bg-[var(--lime2)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isUploading ? t.uploading : t.uploadPhoto}
               </button>

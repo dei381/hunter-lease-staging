@@ -142,7 +142,7 @@ export const LeaseEndAdvisor: React.FC = () => {
                   <button 
                     onClick={calculateEquity}
                     disabled={!data.residual}
-                    className="flex-[2] bg-[var(--lime)] text-black font-bold py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="flex-[2] bg-[var(--lime)] text-white font-bold py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {t.calculate} <Calculator className="w-4 h-4" />
                   </button>

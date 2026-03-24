@@ -47,9 +47,9 @@ export class FinancialSyncService {
    * Iterates through the database models, fetches data, and reverse-calculates MF/APR.
    * Includes a delay to prevent exceeding API rate limits (e.g., 500 requests).
    */
-  static async syncFromExternalAPI(rawApiKey: string, currentDb: any) {
+  static async syncFromExternalAPI(rawApiKey: string, currentDb: any, targetMake?: string, targetModel?: string) {
     const apiKey = rawApiKey.trim();
-    console.log("Starting Optimized Marketcheck API Sync...");
+    console.log(`Starting Optimized Marketcheck API Sync... ${targetMake ? `Target Make: ${targetMake}` : ''} ${targetModel ? `Target Model: ${targetModel}` : ''}`);
     
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     const updatedDb = JSON.parse(JSON.stringify(currentDb));
@@ -57,26 +57,57 @@ export class FinancialSyncService {
     let updatedModelsCount = 0;
     let updatedTrimsCount = 0;
     let errors: string[] = [];
+    let quotaExhausted = false;
 
-    // We have 9 brands. Let's process them efficiently.
-    for (const make of updatedDb.makes) {
-      console.log(`--- Syncing Brand: ${make.name} ---`);
+    // Collect all existing models
+    let allModels: { make: any, model: any }[] = [];
+    for (const make of updatedDb.makes || []) {
+      if (targetMake && make.name.toLowerCase() !== targetMake.toLowerCase()) continue;
       
-      for (const model of make.models) {
-        try {
-          // Respect rate limits and quota (500 requests total)
-          if (requestCount >= 480) {
-            console.warn("Approaching API quota limit (500). Stopping sync.");
-            break;
-          }
+      for (const model of make.models || []) {
+        if (targetModel && model.name.toLowerCase() !== targetModel.toLowerCase()) continue;
+        allModels.push({ make, model });
+      }
+    }
+
+    let modelsToUpdate = allModels;
+
+    if (!targetMake && !targetModel) {
+      // If no specific target, sort by lastUpdated ascending (oldest first) and take 50
+      allModels.sort((a, b) => {
+        const dateA = new Date(a.model.lastUpdated || 0).getTime();
+        const dateB = new Date(b.model.lastUpdated || 0).getTime();
+        return dateA - dateB;
+      });
+      modelsToUpdate = allModels.slice(0, 50);
+      console.log(`Selected ${modelsToUpdate.length} oldest models to update.`);
+    } else {
+      console.log(`Selected ${modelsToUpdate.length} models matching target criteria.`);
+    }
+
+    for (const { make, model } of modelsToUpdate) {
+      try {
+        // Respect rate limits and quota
+        if (!targetMake && !targetModel && requestCount >= 50) {
+          console.warn("Reached 50 requests limit for this sync run. Stopping to save quota.");
+          break;
+        } else if (requestCount >= 480) {
+          console.warn("Approaching API quota limit (500). Stopping sync.");
+          break;
+        }
 
           if (requestCount > 0) await delay(300); // Small delay to be safe
           
-          let year = new Date().getFullYear().toString();
+          let year = '2026'; // Default to 2026 as requested
           if (Array.isArray(model.years) && model.years.length > 0) {
-            year = model.years[0].toString();
+            // Prefer 2026, then 2025
+            if (model.years.includes(2026) || model.years.includes('2026')) year = '2026';
+            else if (model.years.includes(2025) || model.years.includes('2025')) year = '2025';
+            else year = model.years[0].toString();
           } else if (typeof model.years === 'string') {
-            year = model.years.split('-')[0];
+            if (model.years.includes('2026')) year = '2026';
+            else if (model.years.includes('2025')) year = '2025';
+            else year = model.years.split('-')[0];
           }
           
           const url = new URL('https://api.marketcheck.com/v2/search/car/active');
@@ -85,7 +116,10 @@ export class FinancialSyncService {
           url.searchParams.append('make', make.name);
           url.searchParams.append('model', model.name);
           url.searchParams.append('year', year);
-          url.searchParams.append('rows', '20'); // Get enough listings to see different trims
+          url.searchParams.append('zip', '90210'); // Target California
+          url.searchParams.append('radius', '100');
+          url.searchParams.append('rows', '50'); // Get more listings to see all trims
+          url.searchParams.append('facets', 'trim'); // Discover all trims via facets
           
           const response = await fetch(url.toString(), {
             headers: {
@@ -101,15 +135,36 @@ export class FinancialSyncService {
             console.warn(`API Error ${response.status} for ${make.name} ${model.name}: ${errorText}`);
             errors.push(`${make.name} ${model.name}: ${response.status} ${errorText.slice(0, 50)}`);
             if (response.status === 401) throw new Error("Invalid API Key");
+            if (response.status === 429 && errorText.includes("quota exhausted")) {
+              quotaExhausted = true;
+              throw new Error("Marketcheck API monthly quota exhausted.");
+            }
             continue;
           }
 
           const data = await response.json();
+          console.log(`AutoSyncService: ${make.name} ${model.name} - Found ${data.listings?.length || 0} listings and ${data.facets?.trim?.length || 0} trims in facets`);
           
           if (data.listings && data.listings.length > 0) {
             let modelUpdated = false;
+
+            // Update model image if it's a default or missing
+            if (data.listings[0].media?.photo_links?.[0] && 
+                ((model.imageUrl && model.imageUrl.includes('unsplash.com')) || model.isAutoAdded || !model.imageUrl)) {
+              model.imageUrl = data.listings[0].media.photo_links[0];
+            }
+
             // Map to store trim data found in listings
             const foundTrims = new Map<string, { msrp: number, rebates: number, mf: number, apr: number, rv: number }>();
+
+            // First, add all trims from facets to ensure we don't miss any
+            if (data.facets?.trim) {
+              data.facets.trim.forEach((t: any) => {
+                if (t.item && !foundTrims.has(t.item)) {
+                  foundTrims.set(t.item, { msrp: 0, rebates: 0, mf: 0, apr: 0, rv: 0 });
+                }
+              });
+            }
 
             data.listings.forEach((listing: any) => {
               const trimName = listing.build?.trim || 'Base';
@@ -169,11 +224,12 @@ export class FinancialSyncService {
               if (!model.trims) model.trims = [];
 
               foundTrims.forEach((val, name) => {
-                // Fuzzy matching for trims
+                // Fuzzy matching for trims - be more specific
                 const existingTrim = model.trims.find((t: any) => 
                   t.name.toLowerCase() === name.toLowerCase() ||
-                  t.name.toLowerCase().includes(name.toLowerCase()) ||
-                  name.toLowerCase().includes(t.name.toLowerCase())
+                  // Only match if one is a subset and they are very similar length
+                  ((t.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(t.name.toLowerCase())) && 
+                   Math.abs(t.name.length - name.length) < 3)
                 );
 
                 if (existingTrim) {
@@ -197,6 +253,23 @@ export class FinancialSyncService {
                   existingTrim.lastUpdated = new Date().toISOString();
                   updatedTrimsCount++;
                   modelUpdated = true;
+                } else {
+                  // Add new trim
+                  const newTrim = {
+                    name: name,
+                    msrp: val.msrp,
+                    feat: `${val.mf > 0 ? 'Lease Ready' : 'Finance Ready'} · ${val.rv > 0 ? (val.rv * 100).toFixed(0) + '% RV' : 'New'}`,
+                    mf: val.mf || model.mf || 0.0025,
+                    rv36: val.rv || model.rv36 || 0.60,
+                    baseAPR: val.apr || model.baseAPR || 5.99,
+                    leaseCash: val.rebates,
+                    lastUpdated: new Date().toISOString(),
+                    isAutoAdded: true
+                  };
+                  model.trims.push(newTrim);
+                  updatedTrimsCount++;
+                  modelUpdated = true;
+                  console.log(`AutoSyncService: Added new trim "${name}" to ${make.name} ${model.name}`);
                 }
               });
 
@@ -226,12 +299,15 @@ export class FinancialSyncService {
         } catch (error: any) {
           console.error(`Error syncing ${make.name} ${model.name}:`, error);
           if (error.message === "Invalid API Key") throw error;
+          if (error.message.includes("quota exhausted")) quotaExhausted = true;
         }
-      }
-      if (requestCount >= 480) break;
+        
+        if (quotaExhausted) break;
     }
 
-    updatedDb.lastGlobalSync = new Date().toISOString();
+    if (!targetMake && !targetModel) {
+      updatedDb.lastGlobalSync = new Date().toISOString();
+    }
     console.log(`Optimized Sync Complete. Total API requests: ${requestCount}`);
     
     return {
@@ -240,6 +316,7 @@ export class FinancialSyncService {
         requestCount,
         updatedModelsCount,
         updatedTrimsCount,
+        quotaExhausted,
         errors: errors.slice(0, 10) // Return first 10 errors
       }
     };

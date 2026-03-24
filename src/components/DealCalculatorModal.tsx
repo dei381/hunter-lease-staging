@@ -17,16 +17,7 @@ const fmt = (n: any) => {
   return '$' + Math.round(num).toLocaleString('en-US');
 };
 
-import { calculateFinancePayment } from '../utils/financeCalc';
-import { CalculationEngine } from '../services/CalculationEngine';
 
-const getTermMultiplier = (term: number) => {
-  if (term <= 24) return 1.15;
-  if (term <= 36) return 1.0;
-  if (term <= 48) return 0.92;
-  if (term <= 60) return 0.85;
-  return 0.80;
-};
 
 export const DealCalculatorModal = ({
   isOpen,
@@ -92,112 +83,62 @@ export const DealCalculatorModal = ({
     );
   };
 
-  const makeObj = carDb?.makes?.find((m: any) => m.name.toLowerCase() === deal?.make?.toLowerCase());
-  const tiers = makeObj?.tiers || [];
+  const [quoteResult, setQuoteResult] = useState<any>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (!deal) return;
+      
+      const vehicleId = deal.vehicleId || "camry-2025"; 
+      const lenderId = deal.lenderId || "tfs";
+
+      setIsCalculating(true);
+      try {
+        const response = await fetch('/api/v2/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vehicleId,
+            lenderId,
+            config: {
+              type: calcType,
+              term,
+              downPayment: down,
+              annualMileage: parseInt(mileage) * 1000,
+              creditTier: tier === 't1' ? 'tier1' : tier === 't2' ? 'tier2' : tier === 't3' ? 'tier3' : 'tier4',
+              zipCode: '90210',
+              msdCount,
+              selectedIncentiveIds: selectedIncentives,
+              make: deal?.make,
+              model: deal?.model,
+              trim: deal?.trim
+            }
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setQuoteResult(data);
+        } else {
+          console.error("Quote API failed:", await response.text());
+        }
+      } catch (err) {
+        console.error("Failed to fetch quote:", err);
+      } finally {
+        setIsCalculating(false);
+      }
+    };
+
+    fetchQuote();
+  }, [deal, calcType, term, down, mileage, tier, msdCount, selectedIncentives]);
 
   const calculatedPayment = useMemo(() => {
-    if (!deal || !carDb) return 0;
-    
-    // Use displayPayment if available (pre-calculated by DealsPage for the current calcType)
-    // Otherwise fallback to deal.payment
-    let basePayment = Number(deal.displayPayment) || Number(deal.payment) || 0;
-    let baseDown = 3000;
-    let baseTerm = calcType === 'finance' ? 72 : 36;
-    const baseMileage = deal.mileage || '10k';
-    const brokerFee = Number(settings.brokerFee) || 595;
-
-    // If the modal's calcType doesn't match the deal's displayType, we need to calculate the base from scratch
-    if (deal.displayType && deal.displayType !== calcType) {
-      if (calcType === 'finance') {
-        basePayment = calculateFinancePayment(Number(deal.msrp) || 0, Number(deal.savings) || 0, 3000, 72);
-      } else {
-        // Fallback for lease if original was finance
-        basePayment = Math.round((Number(deal.msrp) || 0) * 0.012);
-      }
+    if (quoteResult) {
+      return Math.round(quoteResult.monthlyPayment);
     }
-
-    // Adjust for tier
-    const defaultTiers = [
-      { id: "t1", label: "Tier 1", score: "740+", aprAdd: 0, mfAdd: 0, cls: "r1" },
-      { id: "t2", label: "Tier 2", score: "700–739", aprAdd: 1.5, mfAdd: 0.00040, cls: "r2" },
-      { id: "t3", label: "Tier 3", score: "660–699", aprAdd: 4.5, mfAdd: 0.00120, cls: "r3" },
-      { id: "t4", label: "Tier 4", score: "620–659", aprAdd: 9.0, mfAdd: 0.00240, cls: "r4" }
-    ];
-    const safeTiers = (tiers && tiers.length > 0) ? tiers : defaultTiers;
-    
-    const modelObj = makeObj?.models?.find((m: any) => m?.name?.toLowerCase() === deal?.model?.toLowerCase());
-    const trimObj = modelObj?.trims?.find((t: any) => t?.name?.toLowerCase() === deal?.trim?.toLowerCase());
-    const makeTier = safeTiers.find((t: any) => t.id === tier) || { mfAdd: 0, aprAdd: 0 };
-    const modelTier = modelObj?.tiersData?.[tier] || makeTier;
-    
-    let trimTier = null;
-    if (trimObj?.tiersData?.[tier]) {
-      trimTier = {
-        mfAdd: (trimObj.tiersData[tier].mf || 0) - (trimObj.mf || 0),
-        aprAdd: (trimObj.tiersData[tier].baseAPR || 0) - (trimObj.baseAPR || 0)
-      };
-    }
-    
-    const activeTier = trimTier || modelTier;
-    
-    let tierAdjustment = 0;
-    if (activeTier) {
-      if (calcType === 'lease') {
-        tierAdjustment = ((activeTier.mfAdd || 0) * 2400) * 20;
-      } else {
-        tierAdjustment = (activeTier.aprAdd || 0) * 20;
-      }
-    }
-
-    // Adjust for selected incentives
-    const totalSelectedAmount = deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0;
-    const defaultIncentivesAmount = deal.availableIncentives?.filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0;
-    
-    // The original deal price used to calculate the base payment
-    const msrp = Number(deal.msrp) || 0;
-    const originalSavings = Number(deal.savings) || 0;
-    const originalLeaseCash = Number(deal.leaseCash) || 0;
-    const originalSellingPrice = msrp - originalSavings - originalLeaseCash;
-    
-    // The current selling price based on selected incentives
-    const currentSellingPrice = msrp - totalSelectedAmount;
-    
-    // Calculate the delta and apply it to the payment
-    const priceDelta = currentSellingPrice - originalSellingPrice;
-    const priceAdjustment = (priceDelta / term) * 1.1; // 1.1 factor for interest/tax on the delta
-
-    if (calcType === 'finance') {
-      // For finance, recalculate entirely based on new term and down payment
-      const baseAPR = parseFloat(deal.apr || '5.9') + (activeTier?.aprAdd || 0);
-      const financePayment = calculateFinancePayment(msrp, msrp - currentSellingPrice, down, term, baseAPR);
-      const finalPayment = financePayment + Math.round(brokerFee / term);
-      return (isNaN(finalPayment) ? 0 : finalPayment);
-    } else {
-      // For lease, use the adjustment logic
-      const normalizedBasePayment = basePayment / getTermMultiplier(baseTerm);
-      const termAdjustedPayment = normalizedBasePayment * getTermMultiplier(term);
-      
-      const downDiff = baseDown - down;
-      const downAdjustment = downDiff / term;
-
-      let mileageAdjustment = 0;
-      const mileageMap: Record<string, number> = { '7.5k': 1, '10k': 0, '12k': -1, '15k': -3 };
-      const baseVal = mileageMap[baseMileage] || 0;
-      const targetVal = mileageMap[mileage] || 0;
-      const rvDiffPercent = (targetVal - baseVal) / 100;
-      mileageAdjustment = -((Number(deal.msrp) || 0) * rvDiffPercent) / term;
-
-      let finalPayment = Math.max(0, Math.round(termAdjustedPayment + downAdjustment + tierAdjustment + mileageAdjustment + priceAdjustment + (brokerFee / term)));
-      
-      // Apply MSD reduction if any
-      if (msdCount > 0) {
-        const msdReduction = ((Number(deal.msrp) || 0) * 0.00007 * 2) * msdCount;
-        finalPayment = Math.max(0, Math.round(finalPayment - msdReduction));
-      }
-      
-      return (isNaN(finalPayment) ? 0 : finalPayment);
-    }
-  }, [deal, tier, down, term, mileage, carDb, selectedIncentives, settings, calcType, msdCount]);
+    return Number(deal?.displayPayment) || Number(deal?.payment) || 0;
+  }, [quoteResult, deal]);
 
   const marketAvgRatio = useMemo(() => {
     if (!deal || !deal.displayPayment) return 1.267;
@@ -206,11 +147,28 @@ export const DealCalculatorModal = ({
 
   const tcoData = useMemo(() => {
     if (!calculatedPayment || isNaN(calculatedPayment)) return null;
-    return CalculationEngine.calculateTCO({
-      monthlyPayment: calculatedPayment,
-      term: term,
-      dueAtSigning: down + (msdCount * Math.ceil(calculatedPayment / 50) * 50),
-    });
+    const insurancePerMonth = 150;
+    const maintenancePerMonth = 50;
+    const registrationPerYear = 400;
+
+    const totalLeasePayments = calculatedPayment * term;
+    const totalInsurance = insurancePerMonth * term;
+    const totalMaintenance = maintenancePerMonth * term;
+    const totalRegistration = (registrationPerYear / 12) * term;
+    const dueAtSigning = down + (msdCount * Math.ceil(calculatedPayment / 50) * 50);
+
+    const totalCost = totalLeasePayments + dueAtSigning + totalInsurance + totalMaintenance + totalRegistration;
+
+    return {
+      totalCost,
+      monthlyAverage: totalCost / term,
+      breakdown: {
+        lease: totalLeasePayments + dueAtSigning,
+        insurance: totalInsurance,
+        maintenance: totalMaintenance,
+        registration: totalRegistration
+      }
+    };
   }, [calculatedPayment, term, down, msdCount]);
 
   return (
@@ -285,12 +243,12 @@ export const DealCalculatorModal = ({
                           value={tier}
                           onChange={(e) => setTier(e.target.value)}
                         >
-                          {((tiers && tiers.length > 0) ? tiers : [
+                          {[
                             { id: "t1", label: "Tier 1", score: "740+" },
                             { id: "t2", label: "Tier 2", score: "700–739" },
                             { id: "t3", label: "Tier 3", score: "660–699" },
                             { id: "t4", label: "Tier 4", score: "620–659" }
-                          ]).map((tierObj: any) => (
+                          ].map((tierObj: any) => (
                             <option key={tierObj.id} value={tierObj.id}>{tierObj.label} ({tierObj.score})</option>
                           ))}
                         </select>
@@ -323,7 +281,7 @@ export const DealCalculatorModal = ({
                             onClick={() => setDown(amount)}
                             className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                               down === amount 
-                                ? 'bg-[var(--lime)] text-black border-[var(--lime)]' 
+                                ? 'bg-[var(--lime)] text-white border-[var(--lime)]' 
                                 : 'bg-[var(--s2)] text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
                             }`}
                           >
@@ -597,7 +555,7 @@ export const DealCalculatorModal = ({
 
                   <button 
                     onClick={() => setIsProcessing(true)}
-                    className="w-full mt-8 bg-[var(--lime)] text-black font-bold text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 relative z-10"
+                    className="w-full mt-8 bg-[var(--lime)] text-white font-bold text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 relative z-10"
                   >
                     {t.lockIn}
                   </button>
@@ -621,6 +579,7 @@ export const DealCalculatorModal = ({
             onClose={() => setIsTransparencyOpen(false)}
             deal={{ ...deal, type: calcType, payment: calculatedPayment, down, term: `${term} mo` }}
             mileage={mileage}
+            quoteResult={quoteResult}
           />
         </div>,
         document.body

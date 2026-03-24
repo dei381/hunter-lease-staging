@@ -1,10 +1,68 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight, Clock, Info, Share2, Heart, MessageCircle } from 'lucide-react';
 
 export const AutoBanditHero = () => {
   const [activeTab, setActiveTab] = useState<'lease' | 'finance'>('lease');
   const [incentives, setIncentives] = useState(true);
+  const [zipCode, setZipCode] = useState('90210');
+  const [creditTier, setCreditTier] = useState('Super Elite');
+  const [term, setTerm] = useState(24);
+  const [mileage, setMileage] = useState('10k');
+  const [das, setDas] = useState(2035);
+  
+  const [quoteResult, setQuoteResult] = useState<any>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  const vehicleInfo = {
+    make: 'Hyundai',
+    model: 'Elantra',
+    trim: 'SE',
+    year: 2026
+  };
+
+  useEffect(() => {
+    const fetchQuote = async () => {
+      setIsCalculating(true);
+      try {
+        const response = await fetch('/api/v2/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vehicle: vehicleInfo,
+            zipCode,
+            quoteType: activeTab.toUpperCase(),
+            term,
+            mileage,
+            uxTier: creditTier === 'Super Elite' ? 'TIER_1_PLUS' : 'TIER_1',
+            isFirstTimeBuyer: false,
+            downPayment: activeTab === 'finance' ? das : 0,
+            dueAtSigning: activeTab === 'lease' ? das : 0,
+            tradeInValue: 0,
+            tradeInPayoff: 0
+          })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setQuoteResult(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch quote', err);
+      } finally {
+        setIsCalculating(false);
+      }
+    };
+
+    fetchQuote();
+  }, [activeTab, zipCode, creditTier, term, mileage, das]);
+
+  const displayPayment = useMemo(() => {
+    if (isCalculating) return '...';
+    if (!quoteResult) return '---';
+    return activeTab === 'lease' 
+      ? Math.round(quoteResult.leasePaymentCents / 100)
+      : Math.round(quoteResult.financePaymentCents / 100);
+  }, [quoteResult, isCalculating, activeTab]);
 
   return (
     <div className="bg-white min-h-screen font-sans text-[#1A1A1A]">
@@ -108,14 +166,14 @@ export const AutoBanditHero = () => {
             <div className="p-4 border-r border-b border-gray-200 space-y-1">
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">TERM LENGTH</div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold">Best - 24 months</span>
+                <span className="text-sm font-bold">Best - {term} months</span>
                 <ChevronRight size={14} className="rotate-90 text-gray-400" />
               </div>
             </div>
             <div className="p-4 border-b border-gray-200 space-y-1">
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">ANNUAL MILEAGE</div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold">10,000 mi</span>
+                <span className="text-sm font-bold">{mileage.replace('k', ',000')} mi</span>
                 <ChevronRight size={14} className="rotate-90 text-gray-400" />
               </div>
             </div>
@@ -123,8 +181,8 @@ export const AutoBanditHero = () => {
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">CREDIT TIER</div>
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold">Super Elite</span>
-                  <span className="text-[10px] text-gray-400">740+</span>
+                  <span className="text-sm font-bold">{creditTier}</span>
+                  <span className="text-[10px] text-gray-400">{creditTier === 'Super Elite' ? '740+' : '700-739'}</span>
                 </div>
                 <ChevronRight size={14} className="rotate-90 text-gray-400" />
               </div>
@@ -132,7 +190,7 @@ export const AutoBanditHero = () => {
             <div className="p-4 space-y-1">
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">DUE AT SIGNING</div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold">$2,035</span>
+                <span className="text-sm font-bold">${das.toLocaleString()}</span>
                 <ChevronRight size={14} className="rotate-90 text-gray-400" />
               </div>
             </div>
@@ -182,11 +240,11 @@ export const AutoBanditHero = () => {
               </div>
               <div className="text-right">
                 <div className="flex items-baseline justify-end gap-2">
-                  <span className="text-6xl font-medium text-[#002C5F]">$215</span>
+                  <span className="text-6xl font-medium text-[#002C5F]">${displayPayment}</span>
                   <span className="text-gray-400 font-medium">per month</span>
                 </div>
                 <div className="text-xs text-gray-500 font-medium flex items-center justify-end gap-1">
-                  (+ $2,035 due at signing) <Info size={12} className="text-gray-400" />
+                  (+ ${das.toLocaleString()} due at signing) <Info size={12} className="text-gray-400" />
                 </div>
               </div>
             </div>

@@ -10,8 +10,6 @@ import { ComparisonTray } from './ComparisonTray';
 import { InventoryAlertModal } from './InventoryAlertModal';
 import { DealCard } from './DealCard';
 
-import { calculateFinancePayment } from '../utils/financeCalc';
-
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
 export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: any) => void, filter?: string, limit?: number }) => {
@@ -55,30 +53,12 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
         });
         const uniqueDeals = Array.from(uniqueDealsMap.values());
 
-        // Recalculate deals for $3,000 down payment default
+        // Use deals as returned from server
         const recalculated = uniqueDeals.map((deal: any) => {
-          const targetDown = 3000;
-          const currentDown = deal.down || 0;
-          const term = parseInt(deal.term || '36');
-          
-          const downDiff = currentDown - targetDown;
-          const paymentAdjustment = downDiff / term;
-          
-          let payment = Math.round(deal.payment + paymentAdjustment);
-
-          if (deal.type === 'lease') {
-            const isKiaHyundai = ['Kia', 'Hyundai'].includes(deal.make);
-            if (!isKiaHyundai) {
-              const rvIncrease = deal.msrp * 0.01;
-              const monthlySaving = rvIncrease / term;
-              payment = Math.round(payment - monthlySaving);
-            }
-          }
-          
           return {
             ...deal,
-            payment,
-            down: targetDown,
+            payment: Number(deal.payment) || 0,
+            down: Number(deal.down) || 3000,
             mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
           };
         });
@@ -95,16 +75,16 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
 
   const processedDeals = useMemo(() => {
     return deals.map(deal => {
-      let currentPayment = deal.payment;
-      let currentType = deal.type;
+      let currentPayment = Number(deal.payment) || 0;
+      let currentType = displayMode;
       let currentTerm = deal.term || '36';
       
-      if (displayMode === 'finance' && deal.type === 'lease') {
-        currentPayment = calculateFinancePayment(deal.msrp, deal.savings, deal.down || 3000);
+      if (displayMode === 'finance') {
+        currentPayment = Number(deal.financePayment) || currentPayment;
         currentType = 'finance';
         currentTerm = '60';
       } else if (displayMode === 'lease' && deal.type === 'finance') {
-        currentPayment = Math.round(deal.msrp * 0.012);
+        currentPayment = Number(deal.payment) || 0;
         currentType = 'lease';
         currentTerm = '36';
       }
@@ -185,7 +165,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                 isFirstTimeBuyer 
-                  ? 'bg-[var(--lime)] text-black border-[var(--lime)]' 
+                  ? 'bg-[var(--lime)] text-white border-[var(--lime)]' 
                   : 'bg-[var(--s2)] text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
               }`}
             >
@@ -289,7 +269,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                   }}
                   className={`p-2 rounded-full backdrop-blur-sm transition-colors ${
                     isInCompare(deal.id) 
-                      ? 'bg-[var(--lime)] text-black' 
+                      ? 'bg-[var(--lime)] text-white' 
                       : 'bg-black/40 text-white hover:bg-black/60'
                   }`}
                 >
@@ -337,7 +317,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                   <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-xl p-3 space-y-2 mb-4">
                     <div className="flex justify-between items-center text-[8px]">
                       <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{tcalc.opportunityCost}</span>
-                      <span className="text-[var(--mu2)] line-through font-mono">{fmt(((deal.displayPayment + (settings.brokerFee / parseInt(deal.displayTerm || '36'))) * 1.267))}</span>
+                      <span className="text-[var(--mu2)] line-through font-mono">{fmt(((deal.displayPayment + (settings.brokerFee / parseInt(deal.displayTerm || '36'))) * 1.25))}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-[8px] text-[var(--w)] uppercase font-bold tracking-widest">{tcalc.hunterPrice}</span>
@@ -345,7 +325,27 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                     </div>
                     <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
                       <span className="text-[8px] text-[var(--lime)] uppercase font-bold tracking-widest">{tcalc.avoidableMarkup}</span>
-                      <span className="text-sm font-display text-[var(--lime)]">{fmt((( (deal.displayPayment + (settings.brokerFee / parseInt(deal.displayTerm || '36'))) * 0.267) * parseInt(deal.displayTerm || '36')))}</span>
+                      <span className="text-sm font-display text-[var(--lime)]">{fmt((( (deal.displayPayment + (settings.brokerFee / parseInt(deal.displayTerm || '36'))) * 0.25) * parseInt(deal.displayTerm || '36')))}</span>
+                    </div>
+                  </div>
+
+                  {/* TCO Data */}
+                  <div className="flex flex-col gap-2 border-t border-[var(--b1)] pt-3">
+                    <div className="flex justify-between items-center text-[9px] text-[var(--mu2)] uppercase tracking-widest">
+                      <div className="flex items-center gap-1">
+                        <span>{translations[language].deals.msrp}</span>
+                        <div className="group relative">
+                          <Info size={10} className="text-[var(--mu2)] cursor-help" />
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 text-[10px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center normal-case">
+                            {language === 'ru' ? 'MSRP включает стоимость доставки до дилера' : 'MSRP includes destination and delivery fees'}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[var(--w)] font-bold">{fmt(deal.msrp)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-[var(--mu2)] uppercase tracking-widest">
+                      <span>{tcalc.tcoLabel}</span>
+                      <span className="text-[var(--w)] font-bold">{fmt((deal.displayPayment + (settings.brokerFee / parseInt(deal.displayTerm || '36'))) + 200)} / {tcalc.mo}</span>
                     </div>
                   </div>
                 </div>
@@ -392,7 +392,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
               </button>
               <button 
                 onClick={() => setIsAlertModalOpen(true)}
-                className="bg-[var(--lime)] text-black font-bold text-[10px] uppercase tracking-widest px-8 py-3 rounded-xl hover:bg-[var(--lime2)] transition-all"
+                className="bg-[var(--lime)] text-white font-bold text-[10px] uppercase tracking-widest px-8 py-3 rounded-xl hover:bg-[var(--lime2)] transition-all"
               >
                 {(translations[language] as any).alerts.btnNotify}
               </button>

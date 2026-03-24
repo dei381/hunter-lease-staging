@@ -79,7 +79,7 @@ export const LockModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
             <div className="p-6 bg-[var(--s1)] border-t border-[var(--b1)] flex justify-center">
               <button 
                 onClick={onClose}
-                className="bg-[var(--lime)] text-black font-bold text-xs uppercase tracking-widest px-10 py-3 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-lg hover:shadow-[var(--lime)]/20"
+                className="bg-[var(--lime)] text-white font-bold text-xs uppercase tracking-widest px-10 py-3 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-lg hover:shadow-[var(--lime)]/20"
               >
                 {t.close}
               </button>

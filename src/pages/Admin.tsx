@@ -4,9 +4,10 @@ import { CarsAdmin } from './CarsAdmin';
 import { LeadsAdmin } from './LeadsAdmin';
 import { FeedbackAdmin } from './FeedbackAdmin';
 import { MediaAdmin } from '../components/MediaAdmin';
+import { CalculatorAdmin } from './CalculatorAdmin';
 
 export const Admin = () => {
-  const [activeTab, setActiveTab] = useState<'deals' | 'cars' | 'leads' | 'media' | 'feedback'>('leads');
+  const [activeTab, setActiveTab] = useState<'deals' | 'cars' | 'leads' | 'media' | 'feedback' | 'calculator'>('leads');
   const [deals, setDeals] = useState<any[]>([]);
   const [editingDeal, setEditingDeal] = useState<any | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -129,6 +130,12 @@ export const Admin = () => {
             >
               Feedback
             </button>
+            <button 
+              onClick={() => setActiveTab('calculator')}
+              className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${activeTab === 'calculator' ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] text-[var(--mu2)] hover:text-[var(--w)]'}`}
+            >
+              Calculator
+            </button>
           </div>
         </div>
 
@@ -136,6 +143,7 @@ export const Admin = () => {
         {activeTab === 'cars' && <CarsAdmin />}
         {activeTab === 'media' && <MediaAdmin />}
         {activeTab === 'feedback' && <FeedbackAdmin />}
+        {activeTab === 'calculator' && <CalculatorAdmin />}
 
         {activeTab === 'deals' && (
           <>

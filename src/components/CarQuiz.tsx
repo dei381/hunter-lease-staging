@@ -201,7 +201,7 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
               <p className="text-[var(--mu2)] text-lg leading-relaxed">{t.subtitle}</p>
               <button 
                 onClick={() => setStep(1)}
-                className="bg-[var(--lime)] text-black font-bold uppercase tracking-widest px-8 py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-lg shadow-[var(--lime)]/20 flex items-center gap-2 mx-auto mt-8"
+                className="bg-[var(--lime)] text-white font-bold uppercase tracking-widest px-8 py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-lg shadow-[var(--lime)]/20 flex items-center gap-2 mx-auto mt-8"
               >
                 {t.startBtn} <ChevronRight className="w-5 h-5" />
               </button>

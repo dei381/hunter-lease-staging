@@ -54,7 +54,7 @@ export const ProgressScreen = ({ makeName, onComplete }: { makeName: string, onC
             return (
               <div key={step.id} className="flex items-center gap-4">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors duration-500 ${
-                  isCompleted ? 'bg-[var(--lime)] text-black' : 
+                  isCompleted ? 'bg-[var(--lime)] text-white' : 
                   isActive ? 'bg-[var(--lime)]/20 text-[var(--lime)]' : 
                   'bg-[var(--s2)] text-[var(--mu2)]'
                 }`}>

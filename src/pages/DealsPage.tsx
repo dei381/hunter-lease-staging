@@ -8,6 +8,7 @@ import { useGarageStore } from '../store/garageStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { getCarImage, CarPhoto } from '../utils/carImage';
+import { calculateLease, calculateFinance, getVal } from '../utils/finance';
 
 const fmt = (n: any) => {
   const num = Number(n);
@@ -15,7 +16,6 @@ const fmt = (n: any) => {
   return '$' + Math.round(num).toLocaleString('en-US');
 };
 
-import { calculateFinancePayment } from '../utils/financeCalc';
 import { logEvent } from '../components/VisitTracker';
 
 export const DealsPage = () => {
@@ -53,27 +53,20 @@ export const DealsPage = () => {
   const [selectedFuelType, setSelectedFuelType] = useState('All');
   const [selectedDriveType, setSelectedDriveType] = useState('All');
   const [selectedSeats, setSelectedSeats] = useState('All');
-  const [creditScore, setCreditScore] = useState(740);
+  const [tier, setTier] = useState('t1');
   const [downPayment, setDownPayment] = useState(3000);
   const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value'>('payment');
+  const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/deals').then(res => {
-        if (!res.ok) throw new Error('Failed to fetch deals');
-        return res.json();
-      }),
-      fetch('/api/car-photos').then(res => {
-        if (!res.ok) throw new Error('Failed to fetch car photos');
-        return res.json();
-      })
+      fetch('/api/deals').then(res => res.json()),
+      fetch('/api/car-photos').then(res => res.json()),
+      fetch(`/api/v2/quotes?zipCode=${zipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`).then(res => res.json())
     ])
-      .then(([data, photosData]) => {
-        if (!Array.isArray(data)) {
-          console.error('Expected array of deals, got:', data);
-          return;
-        }
+      .then(([data, photosData, snapshots]) => {
         setPhotos(photosData);
+        setQuoteSnapshots(snapshots || []);
         
         // Deduplicate deals by make + model + trim
         const uniqueDealsMap = new Map();
@@ -85,48 +78,44 @@ export const DealsPage = () => {
         });
         const uniqueDeals = Array.from(uniqueDealsMap.values());
 
-        // Recalculate deals for $3,000 down payment default
+        // Merge with snapshots if available
         const recalculated = uniqueDeals.map((deal: any) => {
-          const targetDown = 3000;
-          const currentDown = Number(deal.down) || 0;
-          const termStr = String(deal.term || '36');
-          const term = parseInt(termStr) || 36;
+          const leaseSnapshot = snapshots?.find((s: any) => 
+            s.vehicle.make === deal.make && 
+            s.vehicle.model === deal.model && 
+            s.vehicle.trim === deal.trim &&
+            s.quoteType === 'LEASE'
+          );
           
-          // Adjust payment based on down payment difference
-          const downDiff = currentDown - targetDown;
-          const paymentAdjustment = term > 0 ? downDiff / term : 0;
-          
-          let payment = Math.round((Number(deal.payment) || 0) + paymentAdjustment);
-          let marketAvg = deal.marketAvg ? Math.round(Number(deal.marketAvg) + paymentAdjustment) : Math.round(payment * 1.267);
+          const financeSnapshot = snapshots?.find((s: any) => 
+            s.vehicle.make === deal.make && 
+            s.vehicle.model === deal.model && 
+            s.vehicle.trim === deal.trim &&
+            s.quoteType === 'FINANCE'
+          );
 
-          if (deal.type === 'lease') {
-            const isKiaHyundai = ['Kia', 'Hyundai'].includes(deal.make);
-            if (!isKiaHyundai) {
-              const msrp = Number(deal.msrp) || 0;
-              const rvIncrease = msrp * 0.01;
-              const monthlySaving = term > 0 ? rvIncrease / term : 0;
-              payment = Math.round(payment - monthlySaving);
-              // Also adjust marketAvg if it was based on the original payment
-              if (deal.marketAvg) {
-                marketAvg = Math.round(marketAvg - monthlySaving);
-              } else {
-                marketAvg = Math.round(payment * 1.267);
-              }
-            }
+          if (leaseSnapshot || financeSnapshot) {
+            return {
+              ...deal,
+              payment: leaseSnapshot ? leaseSnapshot.monthlyPaymentCents / 100 : deal.payment,
+              financePayment: financeSnapshot ? financeSnapshot.monthlyPaymentCents / 100 : deal.financePayment,
+              msrp: (leaseSnapshot || financeSnapshot).vehicle.msrpCents / 100,
+              isFromSnapshot: true
+            };
           }
-          
+
           return {
             ...deal,
-            payment: isNaN(payment) ? (Number(deal.payment) || 0) : payment,
-            marketAvg: isNaN(marketAvg) ? (Number(deal.marketAvg) || Math.round((Number(deal.payment) || 0) * 1.267)) : marketAvg,
-            down: targetDown,
+            payment: Number(deal.payment) || 0,
+            marketAvg: Number(deal.marketAvg) || Math.round((Number(deal.payment) || 0) * 1.267),
+            down: Number(deal.down) || 3000,
             mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
           };
         });
         setDeals(recalculated);
       })
-      .catch(err => console.error('Failed to fetch deals:', err));
-  }, []);
+      .catch(err => console.error('Failed to fetch data:', err));
+  }, [zipCode, isFirstTimeBuyer, tier]);
 
   const makes = useMemo(() => ['All', ...Array.from(new Set(deals.map(d => d.make)))].sort(), [deals]);
   const availableModels = useMemo(() => {
@@ -144,65 +133,83 @@ export const DealsPage = () => {
 
   const processedDeals = useMemo(() => {
     return deals.map(deal => {
-      let currentPayment = Number(deal.payment) || 0;
-      let currentType = displayMode;
-      let currentTerm = selectedTerm;
+      const msrp = getVal(deal.msrp);
+      const savings = getVal(deal.savings);
+      const leaseCash = getVal(deal.leaseCash);
+      const rebates = getVal(deal.rebates);
+      const discount = getVal(deal.discount);
       
-      // Recalculate based on custom down payment
-      const defaultDown = 3000;
-      const downDiff = defaultDown - downPayment;
-      const downAdjustment = currentTerm > 0 ? downDiff / currentTerm : 0;
-      currentPayment = Math.round(currentPayment + downAdjustment);
+      const taxRate = 0.095;
+      const acqFee = 650;
+      const docFee = 85;
+      const dmvFee = 400;
+      const brokerFee = getVal(settings.brokerFee, 595);
+      
+      let currentPayment = 0;
+      let currentMarketAvg = 0;
 
-      // Recalculate based on term difference (simplified estimation)
-      const defaultTerm = parseInt(deal.term) || 36;
-      if (currentTerm !== defaultTerm && currentTerm > 0) {
-        // Rough estimation: longer term = lower payment, shorter term = higher payment
-        // This is a placeholder for actual lease/finance math
-        const termRatio = defaultTerm / currentTerm;
-        currentPayment = Math.round(currentPayment * termRatio);
-      }
-
-      // Recalculate based on credit score
-      // Tier 1 (740+): Base
-      // Tier 2 (700-739): +$25/mo
-      // Tier 3 (680-699): +$60/mo
-      if (creditScore < 740 && creditScore >= 700) {
-        currentPayment += 25;
-      } else if (creditScore < 700) {
-        currentPayment += 60;
-      }
-
-      let currentMarketAvg = Number(deal.marketAvg) || Math.round(currentPayment * 1.267);
-
-      if (displayMode === 'finance') {
-        currentPayment = calculateFinancePayment(Number(deal.msrp) || 0, Number(deal.savings) || 0, downPayment, currentTerm);
+      if (displayMode === 'lease') {
+        let rv = getVal(deal.rv, 0.5);
+        
+        // Mileage adjustments
+        if (selectedMileage === '12k') rv -= 0.01;
+        else if (selectedMileage === '15k') rv -= 0.03;
+        else if (selectedMileage === '20k') rv -= 0.05;
+        else if (selectedMileage === '7.5k') rv += 0.01;
+        
+        let mf = getVal(deal.mf, 0.002);
+        if (tier === 't2') mf *= 1.1;
+        else if (tier === 't3') mf *= 1.2;
+        else if (tier === 't4') mf *= 1.35;
+        else if (tier === 't5') mf *= 1.5;
+        else if (tier === 't6') mf *= 1.7;
+        
+        const lease = calculateLease({
+          msrp, savings, leaseCash, rebates, discount,
+          term: selectedTerm, down: downPayment, rv, mf, taxRate,
+          acqFee, docFee, dmvFee, brokerFee
+        });
+        
+        currentPayment = lease.monthlyPayment;
+        currentMarketAvg = Math.round(currentPayment * 1.267);
+      } else {
+        let apr = getVal(deal.apr, 4.9);
+        if (tier === 't2') apr += 1.0;
+        else if (tier === 't3') apr += 2.5;
+        else if (tier === 't4') apr += 4.5;
+        else if (tier === 't5') apr += 7.0;
+        else if (tier === 't6') apr += 10.0;
+        
+        const finance = calculateFinance({
+          msrp, savings, leaseCash, rebates, discount,
+          term: selectedTerm, down: downPayment, apr, taxRate,
+          rv: 0, mf: 0, acqFee: 0, docFee, dmvFee, brokerFee
+        });
+        
+        currentPayment = finance.monthlyPayment;
         currentMarketAvg = Math.round(currentPayment * 1.15);
       }
 
-      // Calculate Value Score (MSRP / (Payment * Term))
-      // A higher score means you're getting more car for your money
-      const totalCost = currentPayment * currentTerm;
-      const valueScore = totalCost > 0 ? (deal.msrp / totalCost).toFixed(2) : '0';
+      const totalCost = currentPayment * selectedTerm;
+      const valueScore = totalCost > 0 ? (msrp / totalCost).toFixed(2) : '0';
 
       return {
         ...deal,
+        msrp, // Ensure msrp is a number in the processed deal
         displayPayment: isNaN(currentPayment) ? 0 : currentPayment,
         displayMarketAvg: isNaN(currentMarketAvg) ? 0 : currentMarketAvg,
-        displayType: currentType,
-        displayTerm: currentTerm,
+        displayType: displayMode,
+        displayTerm: selectedTerm,
         valueScore: parseFloat(valueScore)
       };
     });
-  }, [deals, displayMode, creditScore, downPayment, selectedTerm]);
+  }, [deals, displayMode, tier, downPayment, selectedTerm, selectedMileage, settings.brokerFee]);
 
   const effectiveFTB = isFirstTimeBuyer && !hasCosigner;
 
   const filteredDeals = useMemo(() => {
     let result = processedDeals.filter(deal => {
-      const brokerFee = Number(settings.brokerFee) || 595;
-      const term = parseInt(deal.displayTerm) || 36;
-      const finalPayment = ((Number(deal.displayPayment) || 0) + (brokerFee / term));
+      const finalPayment = Number(deal.displayPayment) || 0;
       const matchesSearch = deal.make.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            deal.model.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesPayment = finalPayment <= maxPayment;
@@ -248,8 +255,23 @@ export const DealsPage = () => {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pt-4 pb-32 font-sans">
       <Helmet>
-        <title>Best Car Lease Deals in Los Angeles | Hunter Lease</title>
-        <meta name="description" content="Browse the best car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup." />
+        <title>{`${selectedMake !== 'All' ? selectedMake + ' ' : ''}${selectedModel !== 'All' ? selectedModel + ' ' : ''}Lease Deals in Los Angeles | Hunter Lease`}</title>
+        <meta name="description" content={`Browse the best ${selectedMake !== 'All' ? selectedMake + ' ' : ''}car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup.`} />
+        <meta property="og:title" content={`${selectedMake !== 'All' ? selectedMake + ' ' : ''}${selectedModel !== 'All' ? selectedModel + ' ' : ''}Lease Deals in Los Angeles | Hunter Lease`} />
+        <meta property="og:description" content={`Browse the best ${selectedMake !== 'All' ? selectedMake + ' ' : ''}car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup.`} />
+        <meta property="og:type" content="website" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "itemListElement": filteredDeals.slice(0, 10).map((deal, index) => ({
+              "@type": "ListItem",
+              "position": index + 1,
+              "url": `${window.location.origin}/deal/${deal.id}`,
+              "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`
+            }))
+          })}
+        </script>
       </Helmet>
 
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
@@ -295,13 +317,16 @@ export const DealsPage = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.creditScore}</label>
                   <select 
-                    value={creditScore}
-                    onChange={(e) => setCreditScore(parseInt(e.target.value))}
+                    value={tier}
+                    onChange={(e) => setTier(e.target.value)}
                     className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-2.5 px-3 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
                   >
-                    <option value={740}>740+ (Tier 1)</option>
-                    <option value={700}>700-739 (Tier 2)</option>
-                    <option value={680}>680-699 (Tier 3)</option>
+                    <option value="t1">{t.tier1}</option>
+                    <option value="t2">{t.tier2}</option>
+                    <option value="t3">{t.tier3}</option>
+                    <option value="t4">{t.tier4}</option>
+                    <option value="t5">{t.tier5}</option>
+                    <option value="t6">{t.tier6}</option>
                   </select>
                 </div>
 
@@ -352,10 +377,11 @@ export const DealsPage = () => {
                       onChange={(e) => setSelectedMileage(e.target.value)}
                       className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-2.5 px-3 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
                     >
-                      <option value="7.5k">7,500 {t.milesYr}</option>
-                      <option value="10k">10,000 {t.milesYr}</option>
-                      <option value="12k">12,000 {t.milesYr}</option>
-                      <option value="15k">15,000 {t.milesYr}</option>
+                      <option value="7.5k">{t.mileageOptions['7.5k']} {t.milesYr}</option>
+                      <option value="10k">{t.mileageOptions['10k']} {t.milesYr}</option>
+                      <option value="12k">{t.mileageOptions['12k']} {t.milesYr}</option>
+                      <option value="15k">{t.mileageOptions['15k']} {t.milesYr}</option>
+                      <option value="20k">{t.mileageOptions['20k']} {t.milesYr}</option>
                     </select>
                   </div>
                 )}
@@ -538,7 +564,7 @@ export const DealsPage = () => {
                   setMaxPayment(3000);
                   setSearchQuery('');
                   setSelectedQuickFilter(null);
-                  setCreditScore(740);
+                  setTier('t1');
                   setDownPayment(3000);
                 }}
                 className="w-full py-3 rounded-xl border border-dashed border-[var(--b2)] text-[var(--mu2)] text-[10px] font-bold uppercase tracking-widest hover:border-[var(--mu)] hover:text-[var(--w)] transition-all"
@@ -560,7 +586,7 @@ export const DealsPage = () => {
                   </h2>
                   <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
                     <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{displayMode === 'lease' ? t.lease : t.finance}</span>
-                    <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{t.tier} {creditScore >= 740 ? '1' : creditScore >= 700 ? '2' : '3'}</span>
+                    <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{t.tier} {tier.replace('t', '')}</span>
                     <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{fmt(downPayment)} {t.down}</span>
                     <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{selectedTerm} {t.moShort}</span>
                     {displayMode === 'lease' && <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{selectedMileage}/{t.yrShort}</span>}
@@ -626,9 +652,10 @@ export const DealsPage = () => {
                     <div className="relative w-full aspect-[16/10] bg-[var(--s2)] overflow-hidden shrink-0">
                       <img 
                         src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} 
-                        alt={`${deal.make} ${deal.model}`} 
+                        alt={`${deal.year} ${deal.make} ${deal.model} ${deal.trim} - Hunter Lease`} 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" 
                         referrerPolicy="no-referrer" 
+                        loading="lazy"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                       
@@ -680,7 +707,15 @@ export const DealsPage = () => {
                       {/* 4. MSRP / Savings */}
                       <div className="flex items-center justify-between mb-6 text-xs bg-[var(--s1)] p-3 rounded-lg border border-[var(--b2)]">
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-[var(--mu)] uppercase tracking-widest font-bold">{t.msrp}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-[var(--mu)] uppercase tracking-widest font-bold">{t.msrp}</span>
+                            <div className="group relative">
+                              <Info size={10} className="text-[var(--mu)] cursor-help" />
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 text-[10px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center normal-case">
+                                {language === 'ru' ? 'MSRP включает стоимость доставки до дилера' : 'MSRP includes destination and delivery fees'}
+                              </div>
+                            </div>
+                          </div>
                           <span className="font-mono text-[var(--w)]">{fmt(deal.msrp)}</span>
                         </div>
                         {(deal.savings > 0 || deal.valueScore > 0) && (
@@ -727,7 +762,7 @@ export const DealsPage = () => {
                         setMaxPayment(3000);
                         setSearchQuery('');
                         setSelectedQuickFilter(null);
-                        setCreditScore(740);
+                        setTier('t1');
                         setDownPayment(3000);
                       }}
                       className="mt-6 px-6 py-3 bg-[var(--s2)] hover:bg-[var(--b2)] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"

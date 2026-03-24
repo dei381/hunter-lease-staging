@@ -7,8 +7,20 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
+    base: '/',
+    build: {
+      manifest: true,
+      rollupOptions: {
+        output: {
+          // Ensure unique filenames with hashes for JS, CSS, and assets
+          entryFileNames: 'assets/[name]-[hash].js',
+          chunkFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: 'assets/[name]-[hash].[ext]',
+        },
+      },
+    },
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // API keys are strictly server-side now
     },
     resolve: {
       alias: {

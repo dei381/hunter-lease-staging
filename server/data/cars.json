@@ -18,8 +18,20 @@
               "name": "LE Sedan",
               "msrp": 24229,
               "feat": "FWD · Safety Sense 3.0",
-              "features": ["Toyota Safety Sense 3.0", "8-inch Toyota Audio Multimedia", "Wireless Apple CarPlay & Android Auto", "LED Headlights", "16-inch Steel Wheels"],
-              "specs": { "engine": "2.0L 4-Cyl", "hp": "169 hp", "mpg": "32/41", "drive": "FWD", "transmission": "CVT" },
+              "features": [
+                "Toyota Safety Sense 3.0",
+                "8-inch Toyota Audio Multimedia",
+                "Wireless Apple CarPlay & Android Auto",
+                "LED Headlights",
+                "16-inch Steel Wheels"
+              ],
+              "specs": {
+                "engine": "2.0L 4-Cyl",
+                "hp": "169 hp",
+                "mpg": "32/41",
+                "drive": "FWD",
+                "transmission": "CVT"
+              },
               "mf": 0.00208,
               "rv36": 0.62,
               "baseAPR": 4.99,
@@ -49,7 +61,7 @@
           "id": "camry",
           "name": "Camry",
           "class": "Sedan",
-          "msrpRange": "$29,495–$43,000",
+          "msrpRange": "$29,495–$38,000",
           "imageUrl": "https://images.unsplash.com/photo-1623660030911-536f8d21158f?auto=format&fit=crop&q=80&w=800",
           "years": [
             2026
@@ -59,8 +71,20 @@
               "name": "LE Hybrid",
               "msrp": 29495,
               "feat": "FWD · 225hp · 51mpg",
-              "features": ["Toyota Safety Sense 3.0", "Dual-zone Automatic Climate Control", "Bi-LED Headlights", "8-inch Touchscreen", "Wireless Smartphone Charging"],
-              "specs": { "engine": "2.5L 4-Cyl Hybrid", "hp": "225 hp", "mpg": "51/53", "drive": "FWD", "transmission": "ECVT" },
+              "features": [
+                "Toyota Safety Sense 3.0",
+                "Dual-zone Automatic Climate Control",
+                "Bi-LED Headlights",
+                "8-inch Touchscreen",
+                "Wireless Smartphone Charging"
+              ],
+              "specs": {
+                "engine": "2.5L 4-Cyl Hybrid",
+                "hp": "225 hp",
+                "mpg": "51/53",
+                "drive": "FWD",
+                "transmission": "ECVT"
+              },
               "mf": 0.00125,
               "rv36": 0.64,
               "baseAPR": 4.99,
@@ -69,16 +93,25 @@
             {
               "name": "SE Hybrid",
               "msrp": 32000,
-              "feat": "FWD · Sport · 8-speed",
+              "feat": "FWD · Sport · 18\" Alloys",
               "mf": 0.00125,
               "rv36": 0.62,
               "baseAPR": 4.99,
               "leaseCash": 500
             },
             {
+              "name": "XLE Hybrid",
+              "msrp": 35000,
+              "feat": "FWD · Leather · 12.3\" Display",
+              "mf": 0.00125,
+              "rv36": 0.6,
+              "baseAPR": 4.99,
+              "leaseCash": 500
+            },
+            {
               "name": "XSE Hybrid",
               "msrp": 38000,
-              "feat": "FWD · Leather · JBL",
+              "feat": "FWD · Sport Leather · JBL",
               "mf": 0.00125,
               "rv36": 0.59,
               "baseAPR": 4.99,
@@ -1259,8 +1292,20 @@
               "name": "EX FWD",
               "msrp": 29500,
               "feat": "FWD · 12.3\" Screen · BSM",
-              "features": ["12.3-inch Touchscreen Display", "Wireless Phone Charger", "Smart Key with Push Button Start", "Dual-Zone Auto Climate Control", "Blind-Spot Collision-Avoidance Assist"],
-              "specs": { "engine": "2.5L 4-Cyl", "hp": "187 hp", "mpg": "25/33", "drive": "FWD", "transmission": "8-Speed Auto" },
+              "features": [
+                "12.3-inch Touchscreen Display",
+                "Wireless Phone Charger",
+                "Smart Key with Push Button Start",
+                "Dual-Zone Auto Climate Control",
+                "Blind-Spot Collision-Avoidance Assist"
+              ],
+              "specs": {
+                "engine": "2.5L 4-Cyl",
+                "hp": "187 hp",
+                "mpg": "25/33",
+                "drive": "FWD",
+                "transmission": "8-Speed Auto"
+              },
               "mf": 0.0019,
               "rv36": 0.63,
               "baseAPR": 3.99,
@@ -1740,8 +1785,21 @@
               "name": "xDrive40i",
               "msrp": 70800,
               "feat": "AWD · 375hp · xDrive",
-              "features": ["BMW Curved Display", "Live Cockpit Professional", "Panoramic Moonroof", "Heated Front Seats", "Parking Assistant Plus", "Active Driving Assistant"],
-              "specs": { "engine": "3.0L Inline 6-Cyl Turbo", "hp": "375 hp", "mpg": "23/27", "drive": "AWD", "transmission": "8-Speed Sport Auto" },
+              "features": [
+                "BMW Curved Display",
+                "Live Cockpit Professional",
+                "Panoramic Moonroof",
+                "Heated Front Seats",
+                "Parking Assistant Plus",
+                "Active Driving Assistant"
+              ],
+              "specs": {
+                "engine": "3.0L Inline 6-Cyl Turbo",
+                "hp": "375 hp",
+                "mpg": "23/27",
+                "drive": "AWD",
+                "transmission": "8-Speed Sport Auto"
+              },
               "mf": 0.00185,
               "rv36": 0.52,
               "baseAPR": 2.99,

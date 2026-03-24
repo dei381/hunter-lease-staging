@@ -92,7 +92,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
             className={cn(
               "p-2 rounded-full backdrop-blur-sm transition-colors",
               isInCompare(deal.id.toString()) 
-                ? 'bg-[var(--lime)] text-black' 
+                ? 'bg-[var(--lime)] text-white' 
                 : 'bg-black/40 text-white hover:bg-black/60'
             )}
           >
@@ -109,7 +109,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
 
       <div className="p-5 border-b border-[var(--b1)]">
         <h3 className="font-display text-2xl tracking-tight leading-tight mb-1">{deal.make} {deal.model}</h3>
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-2">
           <p className="text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">{deal.trim}</p>
           <div className="flex items-center gap-2">
             {deal.displayType === 'lease' && (
@@ -118,6 +118,15 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
               </span>
             )}
             <span className="text-[9px] text-[var(--mu2)] bg-[var(--s2)] px-2 py-0.5 rounded-full">{deal.class}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+          {tcalc.msrp}: <span className="text-[var(--w)] font-mono">{fmt(deal.msrp || 0)}</span>
+          <div className="group relative">
+            <Info size={10} className="text-[var(--lime)] opacity-50 cursor-help" />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 text-[10px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center normal-case">
+              {language === 'ru' ? 'MSRP включает стоимость доставки до дилера' : 'MSRP includes destination and delivery fees'}
+            </div>
           </div>
         </div>
       </div>

@@ -5,56 +5,70 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { PrismaClient } from "@prisma/client";
+import db from "./server/lib/db";
+import { adminAuth } from "./server/middleware/auth";
+import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
+import quoteRoutes from "./server/routes/quoteRoutes";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import { ExtractionEngine } from "./src/services/ExtractionEngine";
-import { CalculationEngine } from "./src/services/CalculationEngine";
-import { EligibilityEngine } from "./src/services/EligibilityEngine";
-import { FinancialSyncService } from "./src/services/FinancialSyncService";
-import { CAR_DB } from "./src/data/cars";
-import { DEALS } from "./src/data/deals";
+
+import { ExtractionEngine } from "./server/services/ExtractionEngine";
+import { CalculationEngine } from "./server/services/CalculationEngine";
+import { EligibilityEngine } from "./server/services/EligibilityEngine";
+import { FinancialSyncService } from "./server/services/FinancialSyncService";
+import { AutoSyncService } from "./server/services/AutoSyncService";
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 
-import { getBodyStyle, getFuelType, getDetailedSpecs, getCategorizedFeatures, getOwnerVerdict } from './src/data/deals';
+import { getBodyStyle, getFuelType, getDetailedSpecs, getCategorizedFeatures, getOwnerVerdict } from './server/data/deals';
+import { calculateLease, calculateFinance, getVal, DEFAULT_FEES } from './src/utils/finance';
 
-const prisma = new PrismaClient();
+const prisma = db;
 
-// Path to cars.json for persistence
-const CARS_JSON_PATH = path.join(process.cwd(), "src", "data", "cars.json");
-const CAR_PHOTOS_JSON_PATH = path.join(process.cwd(), "src", "data", "carPhotos.json");
+// Helper to get CAR_DB from Postgres
+const getCarDb = async () => {
+  const record = await prisma.siteSettings.findUnique({ where: { id: 'car_db' } });
+  return record ? JSON.parse(record.data) : {};
+};
 
-// Load car photos
-let CAR_PHOTOS: any[] = [];
-try {
-  if (fs.existsSync(CAR_PHOTOS_JSON_PATH)) {
-    CAR_PHOTOS = JSON.parse(fs.readFileSync(CAR_PHOTOS_JSON_PATH, "utf-8"));
+// Helper to save CAR_DB to Postgres
+const saveCarDb = async (data: any) => {
+  try {
+    await prisma.siteSettings.upsert({
+      where: { id: 'car_db' },
+      update: { data: JSON.stringify(data) },
+      create: { id: 'car_db', data: JSON.stringify(data) }
+    });
+  } catch (error) {
+    console.error("Failed to save CAR_DB to database:", error);
   }
-} catch (error) {
-  console.error("Failed to load car photos:", error);
-}
-
-// Helper to save car photos to Firestore
-const saveCarPhotos = async () => {
-  console.log("Saving car photos is disabled in production to prevent read-only file system errors.");
 };
 
-// Helper to save lenders to Firestore
-const saveLenders = async () => {
-  // Lenders are saved to Prisma directly
+// Helper to get CAR_PHOTOS from Postgres
+const getCarPhotos = async () => {
+  const record = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
+  return record ? JSON.parse(record.data) : [];
 };
 
-// Helper to save CAR_DB to Firestore
-const saveCarDb = async () => {
-  console.log("Saving car DB is disabled in production to prevent read-only file system errors.");
+// Helper to save CAR_PHOTOS to Postgres
+const saveCarPhotos = async (data: any[]) => {
+  try {
+    await prisma.siteSettings.upsert({
+      where: { id: 'car_photos' },
+      update: { data: JSON.stringify(data) },
+      create: { id: 'car_photos', data: JSON.stringify(data) }
+    });
+  } catch (error) {
+    console.error("Failed to save CAR_PHOTOS to database:", error);
+  }
 };
 
-// Load data from Firestore on startup
+
+
+// Load data from Postgres on startup
 const loadDataFromFirestore = async () => {
-  // Data is loaded from local JSON or Prisma
   try {
     // Seed site settings if missing
     const existingSettings = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
@@ -140,24 +154,6 @@ const ingestLimiter = rateLimit({
   max: 10, // Limit each IP to 10 requests per windowMs
   message: { error: 'Too many requests from this IP, please try again later.' }
 });
-
-// Security: Admin Authentication Middleware
-const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const authHeader = req.headers.authorization;
-  const adminSecret = process.env.ADMIN_SECRET;
-
-  if (process.env.NODE_ENV === 'production' && !adminSecret) {
-    console.error('CRITICAL: ADMIN_SECRET is not set in production!');
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const secretToUse = adminSecret || (process.env.NODE_ENV === 'production' ? null : 'default_dev_secret');
-
-  if (!authHeader || !secretToUse || authHeader !== `Bearer ${secretToUse}`) {
-    return res.status(401).json({ error: 'Unauthorized access' });
-  }
-  next();
-};
 
 // Validation Schemas
 const leadSchema = z.object({
@@ -343,6 +339,135 @@ async function startServer() {
       });
       console.log('Default site settings created');
     }
+
+    const carDbCount = await prisma.siteSettings.count({ where: { id: 'car_db' } });
+    if (carDbCount === 0) {
+      const initialCarDb = {
+        makes: [
+          {
+            name: "Toyota",
+            destinationFee: 1095,
+            rules: {
+              mileageRV: { "7500": 1, "10000": 0, "12000": -1, "15000": -2 },
+              tierMF: { "t1": 0, "t2": 0.00020, "t3": 0.00045, "t4": 0.00085 }
+            },
+            models: [
+              {
+                name: "Camry",
+                trims: [
+                  { id: "camry-le-2026", name: "LE (2026)", msrp: 29495, rv36: 58, mf: 0.00210, baseAPR: 4.9, leaseCash: 500 },
+                  { id: "camry-se-2026", name: "SE (2026)", msrp: 31795, rv36: 59, mf: 0.00210, baseAPR: 4.9, leaseCash: 500 },
+                  { id: "camry-xle-2026", name: "XLE (2026)", msrp: 34495, rv36: 56, mf: 0.00210, baseAPR: 4.9, leaseCash: 500 }
+                ]
+              },
+              {
+                name: "RAV4",
+                trims: [
+                  { id: "rav4-le-2026", name: "LE (2026)", msrp: 29970, rv36: 62, mf: 0.00240, baseAPR: 5.9, leaseCash: 0 },
+                  { id: "rav4-xle-2026", name: "XLE (2026)", msrp: 31480, rv36: 61, mf: 0.00240, baseAPR: 5.9, leaseCash: 0 },
+                  { id: "rav4-limited-2026", name: "Limited (2026)", msrp: 38275, rv36: 59, mf: 0.00240, baseAPR: 5.9, leaseCash: 0 }
+                ]
+              },
+              {
+                name: "Prius",
+                trims: [
+                  { id: "prius-le-2026", name: "LE (2026)", msrp: 29045, rv36: 63, mf: 0.00220, baseAPR: 4.9, leaseCash: 0 },
+                  { id: "prius-xle-2026", name: "XLE (2026)", msrp: 32490, rv36: 61, mf: 0.00220, baseAPR: 4.9, leaseCash: 0 }
+                ]
+              }
+            ]
+          },
+          {
+            name: "BMW",
+            destinationFee: 1175,
+            rules: {
+              mileageRV: { "7500": 1, "10000": 0, "12000": -1, "15000": -3 },
+              tierMF: { "t1": 0, "t2": 0.00025, "t3": 0.00060, "t4": 0.00100 }
+            },
+            models: [
+              {
+                name: "3 Series",
+                trims: [
+                  { id: "330i-2026", name: "330i (2026)", msrp: 46675, rv36: 57, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 },
+                  { id: "m340i-2026", name: "M340i (2026)", msrp: 58775, rv36: 55, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 }
+                ]
+              },
+              {
+                name: "5 Series",
+                trims: [
+                  { id: "530i-2026", name: "530i (2026)", msrp: 59375, rv36: 54, mf: 0.00220, baseAPR: 5.2, leaseCash: 1500 },
+                  { id: "i5-edrive40-2026", name: "i5 eDrive40 (2026)", msrp: 68975, rv36: 52, mf: 0.00190, baseAPR: 4.9, leaseCash: 7500 }
+                ]
+              },
+              {
+                name: "X5",
+                trims: [
+                  { id: "x5-40i-2026", name: "sDrive40i (2026)", msrp: 66375, rv36: 54, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 },
+                  { id: "x5-xdrive40i-2026", name: "xDrive40i (2026)", msrp: 68675, rv36: 53, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 }
+                ]
+              }
+            ]
+          },
+          {
+            name: "Kia",
+            destinationFee: 1325,
+            rules: {
+              mileageRV: { "7500": 1, "10000": 0, "12000": -1, "15000": -3 },
+              tierMF: { "t1": 0, "t2": 0.00020, "t3": 0.00050, "t4": 0.00090 }
+            },
+            models: [
+              {
+                name: "Sportage",
+                trims: [
+                  { id: "sportage-lx-2026", name: "LX (2026)", msrp: 28515, rv36: 60, mf: 0.00230, baseAPR: 5.4, leaseCash: 1000 },
+                  { id: "sportage-ex-2026", name: "EX (2026)", msrp: 30415, rv36: 59, mf: 0.00230, baseAPR: 5.4, leaseCash: 1000 },
+                  { id: "sportage-sx-2026", name: "SX Prestige (2026)", msrp: 35915, rv36: 57, mf: 0.00230, baseAPR: 5.4, leaseCash: 1000 }
+                ]
+              },
+              {
+                name: "Telluride",
+                trims: [
+                  { id: "telluride-s-2026", name: "S (2026)", msrp: 39215, rv36: 64, mf: 0.00260, baseAPR: 6.5, leaseCash: 0 },
+                  { id: "telluride-ex-2026", name: "EX (2026)", msrp: 42915, rv36: 62, mf: 0.00260, baseAPR: 6.5, leaseCash: 0 },
+                  { id: "telluride-sx-2026", name: "SX (2026)", msrp: 47115, rv36: 60, mf: 0.00260, baseAPR: 6.5, leaseCash: 0 }
+                ]
+              },
+              {
+                name: "EV9",
+                trims: [
+                  { id: "ev9-light-2026", name: "Light RWD (2026)", msrp: 56225, rv36: 55, mf: 0.00050, baseAPR: 2.9, leaseCash: 7500 },
+                  { id: "ev9-wind-2026", name: "Wind AWD (2026)", msrp: 65225, rv36: 53, mf: 0.00050, baseAPR: 2.9, leaseCash: 7500 }
+                ]
+              }
+            ]
+          }
+        ]
+      };
+      await prisma.siteSettings.create({
+        data: {
+          id: 'car_db',
+          data: JSON.stringify(initialCarDb)
+        }
+      });
+      console.log('Initial CA-specific car database seeded for Toyota, BMW, Kia (March 2026)');
+    }
+
+    const dealCount = await prisma.dealRecord.count();
+    if (dealCount === 0) {
+      const { DEALS } = await import('./server/data/deals');
+      for (const deal of DEALS) {
+        await prisma.dealRecord.create({
+          data: {
+            type: deal.type || 'lease',
+            publishStatus: 'PUBLISHED',
+            reviewStatus: 'APPROVED',
+            financialData: JSON.stringify(deal),
+            payload: JSON.stringify(deal),
+          }
+        });
+      }
+      console.log(`Seeded ${DEALS.length} deals`);
+    }
   } catch (err) {
     console.error('Seeding error:', err);
   }
@@ -362,6 +487,10 @@ async function startServer() {
     : {};
   app.use(cors(corsOptions));
   app.use(express.json());
+
+  // MVP Calculator Routes
+  app.use("/api/v2", quoteRoutes);
+  app.use("/api/admin/calculator", calculatorAdminRoutes);
 
   // Security: Rate limiting for lead submission and feedback
   const standardLimiter = rateLimit({
@@ -634,80 +763,26 @@ async function startServer() {
     }
   });
 
-  app.get("/api/admin/lenders", adminAuth, async (req, res) => {
-    try {
-      const lenders = await prisma.lender.findMany();
-      res.json(lenders);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch lenders" });
-    }
-  });
-
-  app.post("/api/admin/lenders", adminAuth, express.json(), async (req, res) => {
-    try {
-      const { name, isCaptive, isFirstTimeBuyerFriendly, aliases } = req.body;
-      const newLender = await prisma.lender.create({
-        data: {
-          name,
-          isCaptive: isCaptive || false,
-          isFirstTimeBuyerFriendly: isFirstTimeBuyerFriendly || false,
-          aliases: JSON.stringify(aliases || [])
-        }
-      });
-      await saveLenders();
-      res.json(newLender);
-    } catch (error) {
-      console.error("Failed to create lender:", error);
-      res.status(500).json({ error: "Failed to create lender" });
-    }
-  });
-
-  app.put("/api/admin/lenders/:id", adminAuth, express.json(), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { name, isCaptive, isFirstTimeBuyerFriendly, aliases } = req.body;
-      const updatedLender = await prisma.lender.update({
-        where: { id },
-        data: {
-          name,
-          isCaptive,
-          isFirstTimeBuyerFriendly,
-          aliases: JSON.stringify(aliases || [])
-        }
-      });
-      await saveLenders();
-      res.json(updatedLender);
-    } catch (error) {
-      console.error("Failed to update lender:", error);
-      res.status(500).json({ error: "Failed to update lender" });
-    }
-  });
-
-  app.delete("/api/admin/lenders/:id", adminAuth, async (req, res) => {
-    try {
-      const { id } = req.params;
-      await prisma.lender.delete({ where: { id } });
-      await saveLenders();
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Failed to delete lender:", error);
-      res.status(500).json({ error: "Failed to delete lender" });
-    }
-  });
-
   // --- CAR DATABASE MANAGEMENT ---
-  app.get("/api/admin/cars", adminAuth, (req, res) => {
-    res.json(CAR_DB);
+  app.get("/api/admin/cars", adminAuth, async (req, res) => {
+    try {
+      const carDb = await getCarDb();
+      res.json(carDb);
+    } catch (error) {
+      console.error("Failed to fetch car database:", error);
+      res.status(500).json({ error: "Failed to fetch car database" });
+    }
   });
 
-  app.put("/api/admin/cars", adminAuth, (req, res) => {
+  app.put("/api/admin/cars", adminAuth, async (req, res) => {
     try {
+      const carDb = await getCarDb();
       const { makes } = req.body;
-      if (makes) (CAR_DB as any).makes = makes;
-      if ('tiers' in (CAR_DB as any)) delete (CAR_DB as any).tiers;
+      if (makes) (carDb as any).makes = makes;
+      if ('tiers' in (carDb as any)) delete (carDb as any).tiers;
       
-      saveCarDb();
-      res.json({ message: "Car database updated successfully", data: CAR_DB });
+      await saveCarDb(carDb);
+      res.json({ message: "Car database updated successfully", data: carDb });
     } catch (error) {
       console.error("Failed to update car database:", error);
       res.status(500).json({ error: "Failed to update car database" });
@@ -721,23 +796,26 @@ async function startServer() {
         return res.status(400).json({ error: "Marketcheck API Key is not configured. Please set MARKETCHECK_API_KEY in Secrets or use the Select Key dialog." });
       }
 
-      const result = await FinancialSyncService.syncFromExternalAPI(apiKey, CAR_DB);
+      const { make, model } = req.body || {};
+
+      const carDb = await getCarDb();
+      const result = await FinancialSyncService.syncFromExternalAPI(apiKey, carDb, make, model);
       
-      // Update the global CAR_DB object
-      Object.assign(CAR_DB, result.updatedDb);
+      // Update the carDb object
+      Object.assign(carDb, result.updatedDb);
       
       // Persist to Firestore and local JSON
-      await saveCarDb();
+      await saveCarDb(carDb);
 
       res.json({ 
         message: "External sync completed", 
         stats: result.stats,
-        lastSync: (CAR_DB as any).lastGlobalSync 
+        lastSync: (carDb as any).lastGlobalSync 
       });
     } catch (error: any) {
       console.error("External sync failed:", error);
-      res.status(500).json({ 
-        error: "External sync failed", 
+      res.status(502).json({ 
+        error: "External sync failed due to upstream API error", 
         details: error.message 
       });
     }
@@ -842,6 +920,24 @@ async function startServer() {
     }
   });
 
+  // Sync Report API
+  app.get("/api/admin/sync-report", adminAuth, async (req, res) => {
+    try {
+      const report = await AutoSyncService.getReport();
+      const carDb = await getCarDb();
+      const lastSync = (carDb as any).lastGlobalSync;
+      
+      res.json({
+        report,
+        lastSync,
+        nextSync: lastSync ? new Date(new Date(lastSync).getTime() + 15 * 24 * 60 * 60 * 1000).toISOString() : null,
+        isSyncing: (AutoSyncService as any).isSyncing
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch sync report" });
+    }
+  });
+
   // Marketcheck Auto-Complete
   app.get("/api/search/auto-complete", async (req, res) => {
     try {
@@ -863,11 +959,14 @@ async function startServer() {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
       });
+      if (!response.ok) {
+        throw new Error(`Marketcheck API responded with status: ${response.status}`);
+      }
       const data = await response.json();
       res.json(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Auto-complete failed:", error);
-      res.status(500).json({ error: "Auto-complete failed" });
+      res.status(502).json({ error: "Upstream API (Marketcheck) failed", details: error.message });
     }
   });
 
@@ -887,20 +986,31 @@ async function startServer() {
     res.json({ status: "ok", message: "Deal Engine Backend is running" });
   });
 
+  app.get("/api/test-secret", (req, res) => {
+    res.json({ secret: process.env.ADMIN_SECRET || 'default_dev_secret' });
+  });
+
   // Cars DB
-  app.get("/api/cars", (req, res) => {
-    res.json(CAR_DB);
+  app.get("/api/cars", async (req, res) => {
+    try {
+      const carDb = await getCarDb();
+      res.json(carDb);
+    } catch (error) {
+      console.error("Failed to fetch car database:", error);
+      res.status(500).json({ error: "Failed to fetch car database" });
+    }
   });
 
   // Cars DB Update
-  app.put("/api/cars", adminAuth, (req, res) => {
+  app.put("/api/cars", adminAuth, async (req, res) => {
     try {
+      const carDb = await getCarDb();
       const { makes } = req.body;
-      if (makes) (CAR_DB as any).makes = makes;
-      if ('tiers' in (CAR_DB as any)) delete (CAR_DB as any).tiers;
+      if (makes) (carDb as any).makes = makes;
+      if ('tiers' in (carDb as any)) delete (carDb as any).tiers;
       
-      saveCarDb();
-      res.json({ success: true, data: CAR_DB });
+      await saveCarDb(carDb);
+      res.json({ success: true, data: carDb });
     } catch (error) {
       console.error("Failed to update car database:", error);
       res.status(500).json({ error: "Failed to update car database" });
@@ -908,17 +1018,25 @@ async function startServer() {
   });
 
   // --- CAR PHOTO MANAGEMENT ---
-  app.get("/api/car-photos", (req, res) => {
-    res.json(CAR_PHOTOS);
+  app.get("/api/car-photos", async (req, res) => {
+    try {
+      const carPhotos = await getCarPhotos();
+      res.json(carPhotos);
+    } catch (error) {
+      console.error("Failed to fetch car photos:", error);
+      res.status(500).json({ error: "Failed to fetch car photos" });
+    }
   });
 
-  app.post("/api/admin/car-photos/upload", adminAuth, express.json(), (req, res) => {
+  app.post("/api/admin/car-photos/upload", adminAuth, express.json(), async (req, res) => {
     try {
       const { makeId, modelId, year, colorId, isDefault, imageUrl } = req.body;
       
       if (!imageUrl) {
         return res.status(400).json({ error: "No image URL provided" });
       }
+
+      const carPhotos = await getCarPhotos();
 
       const newPhoto = {
         id: `photo_${Date.now()}`,
@@ -933,15 +1051,15 @@ async function startServer() {
 
       // If this is set as default, unset other defaults for same model/year
       if (newPhoto.isDefault) {
-        CAR_PHOTOS.forEach(p => {
+        carPhotos.forEach((p: any) => {
           if (p.makeId === makeId && p.modelId === modelId && p.year === newPhoto.year) {
             p.isDefault = false;
           }
         });
       }
 
-      CAR_PHOTOS.push(newPhoto);
-      saveCarPhotos();
+      carPhotos.push(newPhoto);
+      await saveCarPhotos(carPhotos);
 
       res.json({ success: true, photo: newPhoto });
     } catch (error) {
@@ -950,10 +1068,11 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/admin/car-photos/:id", adminAuth, (req, res) => {
+  app.delete("/api/admin/car-photos/:id", adminAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const photoIndex = CAR_PHOTOS.findIndex(p => p.id === id);
+      const carPhotos = await getCarPhotos();
+      const photoIndex = carPhotos.findIndex((p: any) => p.id === id);
       
       if (photoIndex === -1) {
         return res.status(404).json({ error: "Photo not found" });
@@ -961,8 +1080,8 @@ async function startServer() {
 
       // We no longer delete the file from disk since it's in Firebase Storage
       // The client should ideally delete it from Firebase Storage, but for now we just remove the metadata
-      CAR_PHOTOS.splice(photoIndex, 1);
-      saveCarPhotos();
+      carPhotos.splice(photoIndex, 1);
+      await saveCarPhotos(carPhotos);
 
       res.json({ success: true });
     } catch (error) {
@@ -971,24 +1090,25 @@ async function startServer() {
     }
   });
 
-  app.put("/api/admin/car-photos/:id/default", adminAuth, (req, res) => {
+  app.put("/api/admin/car-photos/:id/default", adminAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const photo = CAR_PHOTOS.find(p => p.id === id);
+      const carPhotos = await getCarPhotos();
+      const photo = carPhotos.find((p: any) => p.id === id);
       
       if (!photo) {
         return res.status(404).json({ error: "Photo not found" });
       }
 
       // Unset other defaults for same model/year
-      CAR_PHOTOS.forEach(p => {
+      carPhotos.forEach((p: any) => {
         if (p.makeId === photo.makeId && p.modelId === photo.modelId && p.year === photo.year) {
           p.isDefault = false;
         }
       });
 
       photo.isDefault = true;
-      saveCarPhotos();
+      await saveCarPhotos(carPhotos);
 
       res.json({ success: true });
     } catch (error) {
@@ -1015,11 +1135,11 @@ async function startServer() {
           hasTradeIn: !!tradeIn,
           tradeInMake: tradeIn?.make,
           tradeInModel: tradeIn?.model,
-          tradeInYear: tradeIn?.year ? String(tradeIn.year) : undefined,
-          tradeInMileage: tradeIn?.mileage,
+          tradeInYear: tradeIn?.year ? Number(tradeIn.year) : undefined,
+          tradeInMileage: tradeIn?.mileage ? Number(tradeIn.mileage) : undefined,
           tradeInVin: tradeIn?.vin,
           tradeInHasLoan: tradeIn?.hasLoan || false,
-          tradeInPayoff: tradeIn?.payoff,
+          tradeInPayoff: tradeIn?.payoff ? Number(tradeIn.payoff) : undefined,
 
           carMake: car.make,
           carModel: car.model,
@@ -1240,13 +1360,17 @@ async function startServer() {
         }
       } catch (e) {
         console.error("Error fetching custom API key:", e);
+        return res.status(500).json({ error: "Database error while retrieving API key configuration." });
       }
 
       extractedData = await ExtractionEngine.extract(req.file.buffer, req.file.mimetype, customApiKey);
         console.log(`Gemini extraction successful for ${ingestionId}:`, JSON.stringify(extractedData).substring(0, 200) + "...");
-      } catch (geminiError) {
+      } catch (geminiError: any) {
         console.error(`Gemini extraction failed for ${ingestionId}:`, geminiError);
-        return res.status(500).json({ error: "AI extraction failed. Please check your Gemini API key configuration." });
+        return res.status(502).json({ 
+          error: "Upstream API (Gemini) extraction failed", 
+          details: geminiError.message || "Please check your Gemini API key configuration." 
+        });
       }
 
       // 2. Calculate & Evaluate
@@ -1283,11 +1407,15 @@ async function startServer() {
   // Sync static deals to database
   app.post("/api/admin/deals/sync", adminAuth, async (req, res) => {
     try {
-      // Use statically imported DEALS instead of dynamic import
+      const dealsToSync = req.body.deals;
+      if (!Array.isArray(dealsToSync)) {
+        return res.status(400).json({ error: "Missing or invalid 'deals' array in request body" });
+      }
+
       let createdCount = 0;
       let updatedCount = 0;
 
-      for (const deal of DEALS) {
+      for (const deal of dealsToSync) {
         const ingestionId = `STATIC-${deal.id}`;
         
         // Map static deal to DealRecord format
@@ -1437,31 +1565,23 @@ async function startServer() {
     }
   });
 
-  // Helper to extract value from potentially nested object or direct number
-  const getVal = (field: any, fallback: number = 0): number => {
-    if (field === null || field === undefined) return fallback;
-    if (typeof field === 'object' && 'value' in field) return field.value;
-    if (typeof field === 'number') return field;
-    if (typeof field === 'string') {
-      const parsed = parseFloat(field.replace(/[^0-9.]/g, ''));
-      return isNaN(parsed) ? fallback : parsed;
-    }
-    return fallback;
-  };
-
   // Get approved/published deals for Marketplace
   app.get("/api/deals", async (req, res) => {
     try {
-      // Fetch deals that are APPROVED or PUBLISHED from Prisma (fallback to static DEALS if empty)
-      const dbDeals = await prisma.dealRecord.findMany({
-        where: {
-          OR: [
-            { reviewStatus: 'APPROVED' },
-            { publishStatus: 'PUBLISHED' }
-          ]
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      // Fetch deals that are APPROVED or PUBLISHED from Prisma
+      const [dbDeals, CAR_DB, CAR_PHOTOS] = await Promise.all([
+        prisma.dealRecord.findMany({
+          where: {
+            OR: [
+              { reviewStatus: 'APPROVED' },
+              { publishStatus: 'PUBLISHED' }
+            ]
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        getCarDb(),
+        getCarPhotos()
+      ]);
 
       const taxRate = 0.095; // Default CA tax rate for calculations
 
@@ -1479,8 +1599,10 @@ async function startServer() {
         let rv = getVal(data.residualValue || data.rv, 0.5);
         let leaseCash = getVal(data.leaseCash || data.rebates, 0);
         let term = getVal(data.term, 36);
-        let down = getVal(data.down, 3000); // This is total DAS
+        let down = getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000); // This is total DAS
         let savings = getVal(data.savings, 0);
+        let discount = getVal(data.discount, 0);
+        let rebates = getVal(data.rebates, 0);
 
         // Use totalGlobalSavings if it's greater than 0, otherwise fallback to existing savings logic
         const effectiveSavings = totalGlobalSavings > 0 ? totalGlobalSavings : savings;
@@ -1504,35 +1626,34 @@ async function startServer() {
           }
         }
 
-        // Re-calculate payment based on new DAS logic
-        let payment = getVal(data.monthlyPayment || data.payment);
+        // Re-calculate payment based on new DAS logic ONLY if missing
+        let payment = getVal(data.monthlyPayment || data.payment, 0);
         
-        if (type === 'lease') {
-          const acqFee = 650;
-          const docFee = 85;
-          const rvAmt = msrp * (rv > 1 ? rv / 100 : rv);
-          const sellingPrice = msrp - effectiveSavings;
-          
-          // Approximate first payment to find cap reduction
-          const approxCapCost = sellingPrice - down + acqFee + docFee;
-          const approxDepreciation = (approxCapCost - rvAmt) / term;
-          const approxRent = (approxCapCost + rvAmt) * mf;
-          const approxFirstPayment = (approxDepreciation + approxRent) * (1 + taxRate);
-          
-          const capReduction = Math.max(0, down - approxFirstPayment - acqFee - docFee - (acqFee + docFee) * taxRate);
-          const capCost = sellingPrice - capReduction + acqFee + docFee;
-          
-          const depreciation = (capCost - rvAmt) / term;
-          const rentCharge = (capCost + rvAmt) * mf;
-          const baseLeasePay = depreciation + rentCharge;
-          payment = Math.round(baseLeasePay * (1 + taxRate));
-        } else {
-          // Finance
-          const docFee = 85;
-          const apr = getVal(data.apr, 6.9);
-          const amountFinanced = (msrp - effectiveSavings) + docFee + ((msrp - effectiveSavings) * taxRate) - down;
-          const r = apr / 100 / 12;
-          payment = Math.round((amountFinanced * (r * Math.pow(1 + r, term))) / (Math.pow(1 + r, term) - 1));
+        if (payment <= 0) {
+          if (type === 'lease') {
+            const lease = calculateLease({
+              msrp, savings: effectiveSavings, leaseCash, rebates, discount,
+              term, down, rv, mf, 
+              taxRate: DEFAULT_FEES.taxRate,
+              acqFee: DEFAULT_FEES.acqFee,
+              docFee: DEFAULT_FEES.docFee,
+              dmvFee: DEFAULT_FEES.dmvFee,
+              brokerFee: DEFAULT_FEES.brokerFee
+            });
+            payment = lease.monthlyPayment;
+          } else {
+            const apr = getVal(data.apr, 4.9);
+            const finance = calculateFinance({
+              msrp, savings: effectiveSavings, leaseCash: 0, rebates: totalGlobalSavings || rebates, discount,
+              term, down, apr, 
+              taxRate: DEFAULT_FEES.taxRate,
+              rv: 0, mf: 0, acqFee: 0,
+              docFee: DEFAULT_FEES.docFee,
+              dmvFee: DEFAULT_FEES.dmvFee,
+              brokerFee: DEFAULT_FEES.brokerFee
+            });
+            payment = finance.monthlyPayment;
+          }
         }
 
         // Handle RV percentage vs absolute
@@ -1540,6 +1661,8 @@ async function startServer() {
         if (rv > 0) {
           if (rv < 1) {
             rvPercent = (rv * 100).toFixed(0) + '%';
+          } else if (rv <= 100) {
+            rvPercent = rv.toFixed(0) + '%';
           } else if (msrp > 0) {
             rvPercent = (rv / msrp * 100).toFixed(0) + '%';
           } else {
@@ -1549,7 +1672,7 @@ async function startServer() {
 
         // Find photo from CAR_PHOTOS if available
         let imageUrl = data.image || null;
-        let bodyStyle = data.bodyStyle || 'SUV';
+        let bodyStyle = data.bodyStyle || 'Auto';
         let fuelType = data.fuelType || 'Gas';
         let driveType = data.driveType || 'FWD';
         let seats = data.seats || 5;
@@ -1567,7 +1690,7 @@ async function startServer() {
               }
               bodyStyle = getBodyStyle(modelObj.class, modelObj.name);
               fuelType = getFuelType(modelObj.class, data.trim || '');
-              seats = modelObj.class.includes('3-Row') || modelObj.class.includes('Minivan') ? 7 : 5;
+              seats = (modelObj.class || '').includes('3-Row') || (modelObj.class || '').includes('Minivan') ? 7 : 5;
               
               if (data.trim) {
                 const trimObj = modelObj.trims?.find((t: any) => t.name.toLowerCase() === data.trim.toLowerCase());
@@ -1614,6 +1737,8 @@ async function startServer() {
           dot: data.dot || 'lv',
           isNew: data.isNew !== undefined ? data.isNew : true,
           isFirstTimeBuyerEligible: deal.isFirstTimeBuyerEligible,
+          displayPayment: payment,
+          displayType: type,
           image: imageUrl,
           availableIncentives: data.availableIncentives || [],
           // New fields for detailed deal page
@@ -1634,15 +1759,49 @@ async function startServer() {
         };
       }).filter(Boolean);
 
-      // Return database deals only, or fallback to static DEALS if empty
-      if (mappedDeals.length === 0) {
-        res.json(DEALS);
-      } else {
-        res.json(mappedDeals);
-      }
+      // Return database deals only
+      res.json(mappedDeals);
     } catch (error) {
       console.error("Failed to fetch published deals:", error);
       res.status(500).json({ error: "Failed to fetch deals" });
+    }
+  });
+
+  app.get('/sitemap.xml', async (req, res) => {
+    try {
+      const deals = await prisma.dealRecord.findMany({
+        where: {
+          publishStatus: 'PUBLISHED',
+          reviewStatus: 'APPROVED'
+        },
+        select: { id: true, updatedAt: true }
+      });
+
+      const baseUrl = 'https://hunterlease.com';
+      const staticUrls = [
+        { loc: '/', priority: '1.0', changefreq: 'weekly' },
+        { loc: '/deals', priority: '0.9', changefreq: 'daily' },
+        { loc: '/privacy', priority: '0.5', changefreq: 'monthly' },
+        { loc: '/terms', priority: '0.5', changefreq: 'monthly' },
+      ];
+
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+      staticUrls.forEach(url => {
+        xml += `  <url>\n    <loc>${baseUrl}${url.loc}</loc>\n    <priority>${url.priority}</priority>\n    <changefreq>${url.changefreq}</changefreq>\n  </url>\n`;
+      });
+
+      deals.forEach(deal => {
+        xml += `  <url>\n    <loc>${baseUrl}/deal/${deal.id}</loc>\n    <lastmod>${deal.updatedAt.toISOString().split('T')[0]}</lastmod>\n    <priority>0.8</priority>\n    <changefreq>weekly</changefreq>\n  </url>\n`;
+      });
+
+      xml += '</urlset>';
+      res.header('Content-Type', 'application/xml');
+      res.send(xml);
+    } catch (error) {
+      console.error("Failed to generate sitemap:", error);
+      res.status(500).send("Error generating sitemap");
     }
   });
 
@@ -1661,10 +1820,29 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // In production, serve from dist
+    // In production, serve from dist with correct caching headers
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    
+    // 1. Assets (JS, CSS, Images with hashes) - Cache for 1 year
+    app.use("/assets", express.static(path.join(distPath, "assets"), {
+      maxAge: "1y",
+      immutable: true,
+      index: false,
+    }));
+
+    // 2. Other static files in dist
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".html")) {
+          // 3. HTML - Never cache, always revalidate
+          res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+        }
+      }
+    }));
+
     app.get("*", (req, res) => {
+      // 4. SPA Fallback - Never cache index.html
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

@@ -37,6 +37,7 @@ export interface Lead {
   dealersAccepted: number;
   acceptedBy?: string;
   appointmentDate?: string;
+  creditApp?: boolean;
   createdAt: string;
   updatedAt: string;
 }

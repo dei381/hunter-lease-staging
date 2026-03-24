@@ -1,4 +1,4 @@
-import { FinancialData, CalcMode } from '../types/engine';
+import { FinancialData, CalcMode } from '../../src/types/engine';
 import { CALCULATOR_DB } from '../data/calculator-snapshot';
 
 export class CalculationEngine {

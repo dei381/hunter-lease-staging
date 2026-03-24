@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useLanguageStore } from '../store/languageStore';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Globe } from 'lucide-react';
 
 export const LanguageWelcomeModal = () => {
@@ -36,7 +36,7 @@ export const LanguageWelcomeModal = () => {
           <div className="flex flex-col gap-4">
             <button
               onClick={() => setLanguage('ru')}
-              className="w-full bg-[var(--lime)] text-black font-bold uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-colors"
+              className="w-full bg-[var(--lime)] text-white font-bold uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-colors"
             >
               Русский
             </button>

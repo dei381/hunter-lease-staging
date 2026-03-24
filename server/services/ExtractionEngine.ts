@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { FinancialData } from '../types/engine';
+import { FinancialData } from '../../src/types/engine';
 
 export class ExtractionEngine {
   static async extract(fileBuffer: Buffer, mimeType: string, customApiKey?: string): Promise<FinancialData> {

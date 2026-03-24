@@ -44,14 +44,15 @@ import { VisitTracker } from './components/VisitTracker';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageWelcomeModal } from './components/LanguageWelcomeModal';
 import { Lead } from './types';
-import { X, ShieldCheck, LogIn, LogOut } from 'lucide-react';
+import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useLanguageStore } from './store/languageStore';
 import { useAuthStore } from './store/authStore';
 import { useFeedbackStore } from './store/feedbackStore';
 import { auth, db } from './firebase';
 import { translations } from './translations';
-import { doc, getDocFromCache, getDocFromServer, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, getDocFromCache, getDocFromServer, addDoc, setDoc, onSnapshot, collection, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './utils/firestoreErrorHandler';
+import { cn } from './utils/cn';
 
 function MainApp() {
   const { language } = useLanguageStore();
@@ -161,18 +162,20 @@ function MainApp() {
 
       const { leadId: prismaLeadId } = await response.json();
       
-      // Also add to Firestore for real-time tracking (optional, but good for redundancy)
+      // Also add to Firestore for real-time tracking
       try {
-        await addDoc(collection(db, 'leads'), {
+        await setDoc(doc(db, 'leads', prismaLeadId.toString()), {
           ...payload,
-          prismaId: prismaLeadId
+          prismaId: prismaLeadId,
+          status: 'pending',
+          updatedAt: serverTimestamp()
         });
       } catch (fsError) {
         console.warn("Firestore backup failed, but backend succeeded:", fsError);
       }
 
-      setLeadId(prismaLeadId);
-      localStorage.setItem('leadId', prismaLeadId);
+      setLeadId(prismaLeadId.toString());
+      localStorage.setItem('leadId', prismaLeadId.toString());
       localStorage.setItem('activeSelection', JSON.stringify(activeSelection));
       
       return true; // Indicate success
@@ -199,42 +202,38 @@ function MainApp() {
     }
   }, [location]);
 
+  // Real-time lead tracking via Firestore
   useEffect(() => {
-    if (leadId) {
-      const fetchStatus = async () => {
-        try {
-          const res = await fetch(`/api/lead/${leadId}`);
-          if (!res.ok) {
-            if (res.status === 404) {
-              setLeadId(null);
-              setLeadData(null);
-              localStorage.removeItem('leadId');
-            }
-            return;
-          }
-          const data = await res.json();
-          if (data.error) {
-            setLeadId(null);
-            setLeadData(null);
-            localStorage.removeItem('leadId');
-            return;
-          }
-          setLeadData(data);
-          
-          // If credit app is not submitted, open DepositModal
-          if (!data.creditApp) {
-            setIsModalOpen(true);
-          } else if (data.status === 'active' || data.status === 'closed') {
-            setIsTrackingModalOpen(true);
-          }
-        } catch (err) {
-          console.error('Failed to fetch lead status:', err);
+    if (!leadId) return;
+
+    const leadRef = doc(db, 'leads', leadId);
+    const unsubscribe = onSnapshot(leadRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as Lead;
+        setLeadData(data);
+        
+        // If credit app is not submitted, open DepositModal
+        if (!data.creditApp) {
+          setIsModalOpen(true);
+        } else if (data.status === 'active' || data.status === 'closed') {
+          setIsTrackingModalOpen(true);
         }
-      };
-      fetchStatus();
-      const interval = setInterval(fetchStatus, 5000);
-      return () => clearInterval(interval);
-    }
+      } else {
+        // Fallback to API if doc doesn't exist yet or was deleted
+        fetch(`/api/lead/${leadId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && !data.error) {
+              setLeadData(data);
+            }
+          })
+          .catch(err => console.error("API fallback failed:", err));
+      }
+    }, (error) => {
+      console.error("Error tracking lead:", error);
+    });
+
+    return () => unsubscribe();
   }, [leadId]);
 
   const scrollToSection = (id: string) => {
@@ -260,12 +259,41 @@ function MainApp() {
         <meta property="og:description" content="AI dealer monitoring in LA and transparent lease/finance calculations. Get the best car lease deals with no markup." />
         <meta property="og:image" content="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=1200&h=630" />
         <meta property="og:type" content="website" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "Hunter Lease",
+            "url": "https://hunterlease.com",
+            "logo": "https://hunterlease.com/logo.png",
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "telephone": "+1-213-555-0123",
+              "contactType": "customer service",
+              "areaServed": "US",
+              "availableLanguage": ["en", "ru"]
+            },
+            "sameAs": [
+              "https://www.facebook.com/hunterlease",
+              "https://www.instagram.com/hunterlease",
+              "https://www.twitter.com/hunterlease"
+            ]
+          })}
+        </script>
       </Helmet>
       <main className="max-w-7xl mx-auto px-6 py-12 pb-32">
         {/* Hero Section */}
         <div className="grid lg:grid-cols-[1.2fr,0.8fr] gap-16 mb-32 items-center pt-12">
           <div className="space-y-10">
             <div className="space-y-6">
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--lime)]/10 border border-[var(--lime)]/20 text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-[var(--lime)] animate-pulse" />
+                {t.hero.badge}
+              </motion.div>
               <motion.h1 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -279,29 +307,34 @@ function MainApp() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { step: '01', title: t.hero.step1, desc: t.hero.step1Desc },
-                { step: '02', title: t.hero.step2, desc: t.hero.step2Desc },
-                { step: '03', title: t.hero.step3, desc: t.hero.step3Desc }
-              ].map((item, i) => (
-                <div key={i} className="bg-[var(--s1)] border border-[var(--b2)] p-6 rounded-2xl space-y-2 relative overflow-hidden group hover:border-[var(--lime)]/30 transition-colors">
-                  <div className="text-4xl font-display text-[var(--lime)]/10 absolute -right-2 -bottom-2 group-hover:text-[var(--lime)]/20 transition-colors">{item.step}</div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-[var(--lime)]">{item.title}</div>
-                  <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{item.desc}</div>
-                </div>
-              ))}
-            </div>
-
             <div className="flex flex-wrap gap-4">
-              <button onClick={() => scrollToSection('calc')} className="bg-[var(--lime)] text-white font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
-                <span>{t.hero.btnCalc}</span>
+              <button onClick={() => scrollToSection('calc')} className="group bg-[var(--lime)] text-white font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
+                <div className="flex items-center gap-2">
+                  <span>{t.hero.btnCalc}</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </div>
                 <span className="text-[10px] font-sans font-bold uppercase opacity-70 mt-1">{t.hero.btnCalcSub}</span>
               </button>
               <button onClick={() => navigate('/deals')} className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:border-[var(--b3)] transition-all flex flex-col items-center justify-center w-full sm:w-auto">
                 <span>{t.hero.btnDeals}</span>
                 <span className="text-[10px] font-sans font-normal text-[var(--mu2)] mt-1">{t.hero.btnDealsSub}</span>
               </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-8 border-t border-[var(--b2)]">
+              {[
+                { step: '01', title: t.hero.step1, desc: t.hero.step1Desc },
+                { step: '02', title: t.hero.step2, desc: t.hero.step2Desc },
+                { step: '03', title: t.hero.step3, desc: t.hero.step3Desc }
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-3 group">
+                  <div className="text-xl font-display text-[var(--lime)]/20 group-hover:text-[var(--lime)]/40 transition-colors">{item.step}</div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--w)]">{item.title}</div>
+                    <div className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-medium">{item.desc}</div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="mt-8 flex items-center gap-3">
@@ -377,7 +410,7 @@ function MainApp() {
             <h2 className="font-display text-4xl tracking-widest uppercase">{t.calc.title}</h2>
             <div className="flex-1 h-px bg-[var(--b2)]" />
           </div>
-          <Calculator onProceed={handleSelect} />
+          <Calculator onProceed={() => navigate('/deals')} mode="standalone" />
         </div>
 
         {/* How it works / Why us Consolidated */}
@@ -669,74 +702,156 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const isHome = location.pathname === '/';
   const { language, setLanguage } = useLanguageStore();
   const { user, role, isAuthModalOpen, setIsAuthModalOpen } = useAuthStore();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const t = translations[language];
+
+  const navLinks = [
+    { to: '/#calc', label: t.nav.calculator, id: 'calc' },
+    { to: '/deals', label: t.nav.dealsCatalog },
+    { to: '/saved', label: t.nav.savedDeals },
+    { to: '/blog', label: t.nav.blog },
+    ...(user ? [{ to: '/dashboard', label: t.nav.dashboard }] : []),
+    ...(role === 'admin' ? [{ to: '/admin', label: t.nav.admin, isAdmin: true }] : [])
+  ];
+
+  const handleNavClick = (link: any, e: React.MouseEvent) => {
+    setIsMobileMenuOpen(false);
+    if (link.id === 'calc' && isHome) {
+      e.preventDefault();
+      const el = document.getElementById('calc');
+      if (el) {
+        window.scrollTo({
+          top: el.getBoundingClientRect().top + window.scrollY - 80,
+          behavior: 'smooth'
+        });
+      }
+    }
+  };
   
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] selection:bg-[var(--lime)] selection:text-black">
       <BetaBanner />
       {/* Header */}
       <nav className="h-[var(--nh)] border-b border-[var(--b1)] flex items-center justify-between px-6 sticky top-0 bg-[var(--bg)]/90 backdrop-blur-xl z-50">
-        <Link to="/" className="font-display text-xl tracking-widest cursor-pointer flex items-center gap-2">
+        <Link to="/" className="font-display text-xl tracking-widest cursor-pointer flex items-center gap-2 shrink-0">
           HUNTER<span className="text-[var(--lime)]">.</span>LEASE
         </Link>
-        <div className="flex items-center gap-6">
-          <div className="hidden md:flex items-center gap-4 mr-4">
+
+        {/* Desktop Nav */}
+        <div className="hidden md:flex items-center gap-6">
+          {navLinks.map((link) => (
             <Link 
-              to="/#calc" 
-              onClick={(e) => {
-                if (isHome) {
-                  e.preventDefault();
-                  const el = document.getElementById('calc');
-                  if (el) {
-                    window.scrollTo({
-                      top: el.getBoundingClientRect().top + window.scrollY - 80,
-                      behavior: 'smooth'
-                    });
-                  }
-                }
-              }}
-              className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${isHome ? 'text-[var(--lime)]' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
+              key={link.to}
+              to={link.to}
+              onClick={(e) => handleNavClick(link, e)}
+              className={cn(
+                "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                link.isAdmin ? "text-[var(--lime)] hover:text-[var(--w)]" : 
+                (location.pathname === link.to || (link.id === 'calc' && isHome)) ? "text-[var(--lime)]" : "text-[var(--mu2)] hover:text-[var(--w)]"
+              )}
             >
-              {t.nav.calculator}
+              {link.label}
             </Link>
-            <Link to="/deals" className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${location.pathname === '/deals' ? 'text-[var(--lime)]' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}>{t.nav.dealsCatalog}</Link>
-            <Link to="/saved" className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${location.pathname === '/saved' ? 'text-[var(--lime)]' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}>{t.nav.savedDeals}</Link>
-            <Link to="/blog" className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${location.pathname === '/blog' ? 'text-[var(--lime)]' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}>{t.nav.blog}</Link>
-            {user && (
-              <Link to="/dashboard" className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${location.pathname === '/dashboard' ? 'text-[var(--lime)]' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}>{t.nav.dashboard}</Link>
-            )}
-            {role === 'admin' && (
-              <Link to="/admin" className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)] hover:text-[var(--w)] transition-colors">{t.nav.admin}</Link>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
+          ))}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-4">
             {user ? (
               <button onClick={() => auth.signOut()} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--w)] transition-colors">
                 <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">{t.nav.signOut}</span>
+                <span>{t.nav.signOut}</span>
               </button>
             ) : (
               <button onClick={() => setIsAuthModalOpen(true)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--w)] transition-colors">
                 <LogIn className="w-4 h-4" />
-                <span className="hidden sm:inline">{t.nav.signIn}</span>
+                <span>{t.nav.signIn}</span>
               </button>
             )}
             <div className="flex items-center bg-[var(--s2)] rounded-lg p-0.5 border border-[var(--b2)] ml-2">
               <button 
                 onClick={() => setLanguage('en')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--w)] text-white' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--w)] text-black' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
               >
                 EN
               </button>
               <button 
                 onClick={() => setLanguage('ru')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--w)] text-white' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--w)] text-black' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
               >
                 RU
               </button>
             </div>
           </div>
+
+          {/* Mobile Menu Toggle */}
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 text-[var(--mu2)] hover:text-[var(--w)] transition-colors"
+          >
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="absolute top-[var(--nh)] left-0 right-0 bg-[var(--bg)] border-b border-[var(--b1)] p-6 md:hidden flex flex-col gap-6 z-40 shadow-2xl"
+            >
+              <div className="flex flex-col gap-4">
+                {navLinks.map((link) => (
+                  <Link 
+                    key={link.to}
+                    to={link.to}
+                    onClick={(e) => handleNavClick(link, e)}
+                    className={cn(
+                      "text-sm font-bold uppercase tracking-widest transition-colors py-2",
+                      link.isAdmin ? "text-[var(--lime)]" : 
+                      (location.pathname === link.to || (link.id === 'calc' && isHome)) ? "text-[var(--lime)]" : "text-[var(--mu2)]"
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+              
+              <div className="h-px bg-[var(--b1)]" />
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center bg-[var(--s2)] rounded-lg p-0.5 border border-[var(--b2)]">
+                  <button 
+                    onClick={() => setLanguage('en')}
+                    className={`px-4 py-2 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--w)] text-white' : 'text-[var(--mu2)]'}`}
+                  >
+                    ENGLISH
+                  </button>
+                  <button 
+                    onClick={() => setLanguage('ru')}
+                    className={`px-4 py-2 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--w)] text-white' : 'text-[var(--mu2)]'}`}
+                  >
+                    РУССКИЙ
+                  </button>
+                </div>
+                
+                {user ? (
+                  <button onClick={() => { auth.signOut(); setIsMobileMenuOpen(false); }} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-red-400">
+                    <LogOut className="w-4 h-4" />
+                    <span>{t.nav.signOut}</span>
+                  </button>
+                ) : (
+                  <button onClick={() => { setIsAuthModalOpen(true); setIsMobileMenuOpen(false); }} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--lime)]">
+                    <LogIn className="w-4 h-4" />
+                    <span>{t.nav.signIn}</span>
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
       {children}
       <Footer />

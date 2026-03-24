@@ -113,7 +113,7 @@ export function ReviewsAdmin() {
         <button
           onClick={startAdd}
           disabled={isAdding}
-          className="flex items-center gap-2 bg-[var(--lime)] text-black px-4 py-2 rounded-lg font-bold hover:bg-[var(--lime2)] transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 bg-[var(--lime)] text-white px-4 py-2 rounded-lg font-bold hover:bg-[var(--lime2)] transition-colors disabled:opacity-50"
         >
           <Plus className="w-4 h-4" /> Add Review
         </button>

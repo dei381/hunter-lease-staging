@@ -1,4 +1,4 @@
-import { FinancialData, PublishEligibility, PublishMode } from '../types/engine';
+import { FinancialData, PublishEligibility, PublishMode } from '../../src/types/engine';
 
 export class EligibilityEngine {
   /**

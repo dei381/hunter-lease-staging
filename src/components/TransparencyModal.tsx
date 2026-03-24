@@ -12,6 +12,7 @@ interface TransparencyModalProps {
   deal: any;
   mileage: string;
   isFirstTimeBuyer?: boolean;
+  quoteResult?: any;
 }
 
 const fmt = (n: any) => {
@@ -30,7 +31,7 @@ const Tooltip = ({ text, children }: { text: string, children: React.ReactNode }
   </div>
 );
 
-export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeBuyer = false }: TransparencyModalProps) => {
+export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeBuyer = false, quoteResult }: TransparencyModalProps) => {
   const { language } = useLanguageStore();
   const { settings } = useSettingsStore();
   const t = translations[language].transparency;
@@ -38,67 +39,69 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
 
   if (!isOpen || !deal) return null;
 
-  // Calculate transparency data based on deal
-  const msrp = Number(deal.msrp) || 0;
-  const leaseCash = Number(deal.leaseCash || deal.rebates) || 0;
-  const acqFee = deal.acquisitionFee !== undefined ? Number(deal.acquisitionFee) : 695;
-  const docFee = 85;
-  const taxRate = (Number(settings.taxRateDefault) || 8.875) / 100;
-  const term = parseInt(deal.displayTerm || deal.term) || 36;
-  const isFinance = deal.displayType === 'finance' || deal.type === 'finance';
-  const downPayment = Number(deal.down) || 3000; // This is now total DAS
-  const savings = Number(deal.savings) || 0;
-  const sellingPrice = deal.price || (msrp - savings) || msrp * 0.92;
+  // Use quoteResult if available, otherwise fallback to calculations
+  const calc = quoteResult?.calculation;
   
-  // Basic lease math for transparency
-  const parseRV = (val: any) => {
-    if (typeof val === 'number') return val > 1 ? val / 100 : val;
-    if (typeof val === 'string') {
-      const num = parseFloat(val);
-      if (val.includes('%') || num > 1) return num / 100;
-      return num;
-    }
-    return 0.60;
-  };
-
-  const rvPct = parseRV(deal.rv);
-  const rvAmt = msrp * rvPct;
-  const mf = typeof deal.mf === 'string' ? parseFloat(deal.mf) : (deal.mf || 0.0025);
-  const apr = typeof deal.apr === 'string' ? parseFloat(deal.apr) : (deal.apr || 4.99);
+  const msrp = calc ? calc.msrpCents / 100 : (Number(deal.msrp) || 0);
+  const leaseCash = calc ? calc.incentivesCents / 100 : (Number(deal.leaseCash || deal.rebates) || 0);
+  const taxRate = calc ? quoteResult.metadata?.salesTaxRate : ((Number(settings.taxRateDefault) || 8.875) / 100);
+  const term = parseInt(deal.displayTerm || deal.term) || 36;
+  const isFinance = (quoteResult?.quoteType || deal.displayType || deal.type) === 'FINANCE' || (quoteResult?.quoteType || deal.displayType || deal.type) === 'finance';
+  const totalDas = calc ? calc.totalDueAtSigningCents / 100 : (Number(deal.down) || 3000);
+  const sellingPrice = calc ? calc.sellingPriceCents / 100 : (deal.price || msrp * 0.92);
+  
+  const rvAmt = calc ? calc.residualValueCents / 100 : (msrp * 0.60);
+  const rvPct = rvAmt / msrp;
+  
+  const mf = quoteResult?.metadata?.debug?.bankProgram?.mf || (typeof deal.mf === 'string' ? parseFloat(deal.mf) : (deal.mf || 0.0025));
+  const apr = quoteResult?.metadata?.debug?.bankProgram?.apr || (typeof deal.apr === 'string' ? parseFloat(deal.apr) : (deal.apr || 4.99));
   
   let basePayment = 0;
   let totalPayment = 0;
-  let totalDas = downPayment; // User input is the total DAS
   let firstPayment = 0;
   let totalFees = 0;
   let taxOnFees = 0;
+  let feesList = calc?.fees || [];
 
-  if (isFinance) {
-    totalFees = docFee;
-    const amountFinanced = sellingPrice + docFee + (sellingPrice * taxRate) - totalDas;
-    const monthlyRate = (apr / 100) / 12;
-    totalPayment = (amountFinanced * (monthlyRate * Math.pow(1 + monthlyRate, term)) / (Math.pow(1 + monthlyRate, term) - 1));
-    basePayment = totalPayment;
-    firstPayment = 0;
-  } else {
-    totalFees = acqFee + docFee;
+  if (calc) {
+    totalPayment = quoteResult.monthlyPayment;
+    basePayment = totalPayment / (1 + taxRate);
+    totalFees = feesList.reduce((sum: number, f: any) => sum + f.amountCents, 0) / 100;
     taxOnFees = totalFees * taxRate;
-    
-    // Approximate first payment to find cap reduction
-    const approxCapCost = sellingPrice - totalDas + totalFees;
-    const approxDepreciation = (approxCapCost - rvAmt) / term;
-    const approxRent = (approxCapCost + rvAmt) * mf;
-    const approxFirstPayment = (approxDepreciation + approxRent) * (1 + taxRate);
-    
-    const capReduction = Math.max(0, totalDas - approxFirstPayment - totalFees - taxOnFees);
-    const capCost = sellingPrice - capReduction + totalFees;
-    
-    const depreciation = (capCost - rvAmt) / term;
-    const rentCharge = (capCost + rvAmt) * mf;
-    basePayment = depreciation + rentCharge;
-    totalPayment = basePayment * (1 + taxRate);
-    firstPayment = totalPayment;
+    firstPayment = isFinance ? 0 : totalPayment;
+  } else {
+    // Fallback calculation logic (existing)
+    const acqFee = deal.acquisitionFee !== undefined ? Number(deal.acquisitionFee) : 695;
+    const docFee = 85;
+    if (isFinance) {
+      totalFees = docFee;
+      const amountFinanced = sellingPrice + docFee + (sellingPrice * taxRate) - totalDas;
+      const monthlyRate = (apr / 100) / 12;
+      totalPayment = (amountFinanced * (monthlyRate * Math.pow(1 + monthlyRate, term)) / (Math.pow(1 + monthlyRate, term) - 1));
+      basePayment = totalPayment;
+      firstPayment = 0;
+    } else {
+      totalFees = acqFee + docFee;
+      taxOnFees = totalFees * taxRate;
+      const approxCapCost = sellingPrice - totalDas + totalFees;
+      const approxDepreciation = (approxCapCost - rvAmt) / term;
+      const approxRent = (approxCapCost + rvAmt) * mf;
+      const approxFirstPayment = (approxDepreciation + approxRent) * (1 + taxRate);
+      const capReduction = Math.max(0, totalDas - approxFirstPayment - totalFees - taxOnFees);
+      const capCost = sellingPrice - capReduction + totalFees;
+      const depreciation = (capCost - rvAmt) / term;
+      const rentCharge = (capCost + rvAmt) * mf;
+      basePayment = depreciation + rentCharge;
+      totalPayment = basePayment * (1 + taxRate);
+      firstPayment = totalPayment;
+    }
+    feesList = [
+      { name: 'Acquisition Fee', amountCents: (!isFinance ? acqFee : 0) * 100 },
+      { name: 'Doc Fee', amountCents: docFee * 100 }
+    ];
   }
+
+  const finalMonthlyPayment = totalPayment;
 
   return (
     <AnimatePresence>
@@ -157,11 +160,11 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-[var(--mu2)]">{t.salesTax} ({(taxRate * 100).toFixed(2)}%)</span>
-                      <span className="text-black font-medium">{fmt(basePayment * taxRate)}</span>
+                      <span className="text-black font-medium">{fmt(totalPayment - basePayment)}</span>
                     </div>
                     <div className="pt-3 border-t border-[var(--b1)] flex justify-between items-end">
                       <span className="text-[10px] font-bold text-black uppercase tracking-widest">{t.totalMonthly}</span>
-                      <span className="text-2xl font-display text-[var(--lime)] leading-none">{fmt(totalPayment)}</span>
+                      <span className="text-2xl font-display text-[var(--lime)] leading-none">{fmt(finalMonthlyPayment)}</span>
                     </div>
                   </div>
                 </section>
@@ -172,32 +175,24 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                     <h3 className="text-[10px] font-bold text-black uppercase tracking-widest">{t.dueAtSigning}</h3>
                   </div>
                   <div className="bg-[var(--s1)] rounded-2xl p-5 border border-[var(--b1)] space-y-3">
-                    {downPayment > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-[var(--mu2)]">{tc.downPayment}</span>
-                        <span className="text-black font-medium">{fmt(downPayment)}</span>
-                      </div>
-                    )}
+                    {feesList.map((fee: any, idx: number) => {
+                      const key = fee.name.toLowerCase().replace(' ', '');
+                      const tooltipKey = Object.keys(t.tooltips).find(k => k.toLowerCase() === key) as keyof typeof t.tooltips;
+                      return fee.amountCents > 0 && (
+                        <div key={idx} className="flex justify-between text-xs">
+                          <Tooltip text={t.tooltips[tooltipKey] || fee.name}>
+                            <span className="text-[var(--mu2)] border-b border-dashed border-[var(--mu2)]">{fee.name}</span>
+                          </Tooltip>
+                          <span className="text-black font-medium">{fmt(fee.amountCents / 100)}</span>
+                        </div>
+                      );
+                    })}
                     {!isFinance && (
                       <div className="flex justify-between text-xs">
                         <span className="text-[var(--mu2)]">{t.firstPayment}</span>
                         <span className="text-black font-medium">{fmt(firstPayment)}</span>
                       </div>
                     )}
-                    {!isFinance && (
-                      <div className="flex justify-between text-xs">
-                        <Tooltip text={t.tooltips.acquisitionFee}>
-                          <span className="text-[var(--mu2)] border-b border-dashed border-[var(--mu2)]">{t.acquisitionFee}</span>
-                        </Tooltip>
-                        <span className="text-black font-medium">{fmt(acqFee)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-xs">
-                      <Tooltip text={t.tooltips.docFee}>
-                        <span className="text-[var(--mu2)] border-b border-dashed border-[var(--mu2)]">{t.docFee}</span>
-                      </Tooltip>
-                      <span className="text-black font-medium">{fmt(docFee)}</span>
-                    </div>
                     {!isFinance && (
                       <div className="flex justify-between text-xs">
                         <Tooltip text={t.tooltips.taxOnFees}>

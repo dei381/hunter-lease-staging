@@ -72,6 +72,7 @@ export function AdminDashboard() {
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [carDb, setCarDb] = useState<any>(null);
+  const [syncReport, setSyncReport] = useState<any>(null);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -253,6 +254,14 @@ export function AdminDashboard() {
         }
 
         setStats(data);
+      }
+
+      // Fetch sync report
+      const syncRes = await fetch('/api/admin/sync-report', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+      });
+      if (syncRes.ok) {
+        setSyncReport(await syncRes.json());
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -946,6 +955,99 @@ export function AdminDashboard() {
                 </div>
                 <p className="text-2xl font-bold text-slate-900">{stats.totalUsers}</p>
                 <p className="text-sm text-slate-500">{t.users}</p>
+              </div>
+            </div>
+
+            {/* Marketcheck Auto-Sync Status */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center space-x-2">
+                  <Database className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-bold text-slate-900">Marketcheck Auto-Sync Status</h3>
+                </div>
+                {syncReport?.isSyncing ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
+                    <Activity className="w-3 h-3 mr-1" /> Syncing...
+                  </span>
+                ) : (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    syncReport?.report?.status === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {syncReport?.report?.status === 'success' ? 'Healthy' : 'Sync Required'}
+                  </span>
+                )}
+              </div>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Last Global Sync</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {syncReport?.lastSync ? new Date(syncReport.lastSync).toLocaleString() : 'Never'}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Next scheduled sync: {syncReport?.nextSync ? new Date(syncReport.nextSync).toLocaleDateString() : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Sync Performance</p>
+                  {syncReport?.report?.stats ? (
+                    <div className="space-y-1">
+                      <p className="text-sm text-slate-700">
+                        <span className="font-bold">{syncReport.report.stats.updatedModelsCount}</span> models updated
+                      </p>
+                      <p className="text-sm text-slate-700">
+                        <span className="font-bold">{syncReport.report.stats.updatedTrimsCount}</span> trims updated
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {syncReport.report.stats.requestCount} API requests used
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">No recent sync stats available</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Status Message</p>
+                  <p className={`text-sm ${syncReport?.report?.status === 'error' ? 'text-red-600 font-medium' : 'text-slate-700'}`}>
+                    {syncReport?.report?.message || 'Waiting for first sync...'}
+                  </p>
+                  {syncReport?.report?.stats?.errors?.length > 0 && (
+                    <div className="mt-2 p-2 bg-red-50 rounded border border-red-100">
+                      <p className="text-[10px] font-bold text-red-700 mb-1">Recent Errors:</p>
+                      <ul className="text-[10px] text-red-600 list-disc pl-3 space-y-0.5">
+                        {syncReport.report.stats.errors.map((err: string, i: number) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                <p className="text-[10px] text-slate-500 max-w-md">
+                  Auto-sync runs every 15 days on server startup. It fetches the latest MSRP, rebates, and finance data from Marketcheck.
+                </p>
+                <button 
+                  onClick={async () => {
+                    if (confirm('Manually trigger a full sync? This will use about 480 API requests.')) {
+                      try {
+                        const res = await fetch('/api/admin/sync-external', {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+                        });
+                        if (res.ok) {
+                          alert('Sync started in background. Refresh in a few minutes.');
+                          fetchStats();
+                        }
+                      } catch (e) {
+                        alert('Failed to trigger sync');
+                      }
+                    }
+                  }}
+                  disabled={syncReport?.isSyncing}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-500 disabled:opacity-50"
+                >
+                  Trigger Manual Sync
+                </button>
               </div>
             </div>
 

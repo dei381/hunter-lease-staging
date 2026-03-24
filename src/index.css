@@ -8,24 +8,24 @@
 }
 
 :root {
-  /* Auto Bandit Inspired Theme */
+  /* Classic Light Theme */
   --bg: #FFFFFF;
-  --s1: #F8F9FA;
-  --s2: #F1F3F5;
-  --b1: #E9ECEF;
-  --b2: #DEE2E6;
-  --b3: #CED4DA;
+  --s1: #F9FAFB;
+  --s2: #F3F4F6;
+  --b1: #E5E7EB;
+  --b2: #D1D5DB;
+  --b3: #9CA3AF;
   
-  --w: #1A1A1A;
-  --mu: #495057;
-  --mu2: #6C757D;
+  --w: #000000;
+  --mu: #4B5563;
+  --mu2: #6B7280;
   
-  --primary: #002C5F; /* Auto Bandit Blue */
-  --accent: #E63946;  /* Auto Bandit Red */
-  --lime: #20C997; 
-  --lime2: #12B886;
-  --teal: #0CA678;
-  --grn: #37B24D;
+  --primary: #002C5F;
+  --accent: #E63946;
+  --lime: #22c997; /* New Emerald/Mint Green */
+  --lime2: #1eb386;
+  --teal: #22c997;
+  --grn: #22C55E;
   
   --nh: 80px;
 }
@@ -34,9 +34,6 @@
   body {
     @apply bg-[var(--bg)] text-[var(--w)] antialiased overflow-x-hidden;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-    overflow-wrap: break-word;
-    word-wrap: break-word;
-    hyphens: auto;
   }
 }
 
@@ -67,11 +64,11 @@
 }
 
 .glass {
-  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-sm;
+  @apply bg-white/5 backdrop-blur-md border border-white/10 shadow-sm;
 }
 
 .card-premium {
-  @apply bg-white border border-[var(--b2)] rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300;
+  @apply bg-[var(--s1)] border border-[var(--b1)] rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.2)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.3)] transition-all duration-300;
 }
 
 @keyframes marquee {

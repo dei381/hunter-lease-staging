@@ -61,15 +61,18 @@ export const CarsAdmin = () => {
     });
   };
 
-  const syncExternal = async () => {
-    showConfirm('Sync with API', 'Are you sure you want to sync with the external API? This will update financial data for all models.', async () => {
+  const syncExternal = async (makeName?: string, modelName?: string) => {
+    const targetMsg = modelName ? `for ${makeName} ${modelName}` : (makeName ? `for all ${makeName} models` : 'for all models');
+    showConfirm('Sync with API', `Are you sure you want to sync with the external API? This will update financial data ${targetMsg}.`, async () => {
       setIsSyncing(true);
       try {
         const res = await fetch('/api/admin/sync-external', {
           method: 'POST',
           headers: { 
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
-          }
+            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ make: makeName, model: modelName })
         });
         const data = await res.json();
         if (res.ok) {
@@ -334,7 +337,7 @@ export const CarsAdmin = () => {
             {isTestingApi ? 'Testing...' : 'Test API'}
           </button>
           <button 
-            onClick={syncExternal}
+            onClick={() => syncExternal()}
             disabled={isSyncing}
             className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all disabled:opacity-50"
           >
@@ -382,9 +385,19 @@ export const CarsAdmin = () => {
                 {expandedMake === make.id ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 {make.name}
               </div>
-              <button onClick={(e) => { e.stopPropagation(); deleteMake(make.id); }} className="text-[var(--mu2)] hover:text-red-400 p-2">
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); syncExternal(make.name); }} 
+                  className="text-[var(--lime)] hover:bg-[var(--lime)]/10 px-3 py-1 rounded-md text-sm font-bold flex items-center gap-2 transition-colors"
+                  disabled={isSyncing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Sync Brand
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); deleteMake(make.id); }} className="text-[var(--mu2)] hover:text-red-400 p-2">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {expandedMake === make.id && (
@@ -481,6 +494,15 @@ export const CarsAdmin = () => {
                           {model.name} <span className="text-xs text-[var(--mu2)] font-normal">({model.class})</span>
                         </div>
                         <div className="flex items-center gap-2">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); syncExternal(make.name, model.name); }} 
+                            className="text-[var(--lime)] hover:bg-[var(--lime)]/10 px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors"
+                            disabled={isSyncing}
+                            title="Sync Model"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                            Sync
+                          </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); duplicateModel(make.id, model); }} 
                             className="text-[var(--mu2)] hover:text-[var(--lime)] p-1"

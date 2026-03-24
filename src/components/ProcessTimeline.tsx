@@ -66,7 +66,7 @@ export const ProcessTimeline = () => {
           </div>
           <button 
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="bg-[var(--lime)] text-black font-display text-lg tracking-widest px-10 py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-xl shadow-[var(--lime)]/20 w-full md:w-auto"
+            className="bg-[var(--lime)] text-white font-display text-lg tracking-widest px-10 py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-xl shadow-[var(--lime)]/20 w-full md:w-auto"
           >
             {t.btnStart}
           </button>

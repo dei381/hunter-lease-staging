@@ -153,7 +153,7 @@ export const InventoryAlertModal: React.FC<InventoryAlertModalProps> = ({ isOpen
                   <button 
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full bg-[var(--lime)] text-black font-bold py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full bg-[var(--lime)] text-white font-bold py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isSubmitting ? 'Setting up...' : t.btnNotify}
                   </button>

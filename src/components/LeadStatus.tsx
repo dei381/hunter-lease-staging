@@ -62,7 +62,7 @@ export const LeadStatus = ({ lead }: { lead: Lead }) => {
           { i: '🛡️', t: 'Contract Protection', d: 'We will check documents before you sign', s: lead.acceptedBy ? 'active' : 'pending' },
         ].map((item, i) => (
           <div key={i} className="flex gap-6 items-start relative pl-10">
-            <div className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center text-sm z-10 border-2 ${item.s === 'done' ? 'bg-[var(--lime)] text-black border-[var(--lime)]' : item.s === 'active' ? 'bg-[var(--s2)] border-[var(--lime)] animate-pulse' : 'bg-[var(--b2)] border-[var(--b1)] text-[var(--mu)]'}`}>
+            <div className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center text-sm z-10 border-2 ${item.s === 'done' ? 'bg-[var(--lime)] text-white border-[var(--lime)]' : item.s === 'active' ? 'bg-[var(--s2)] border-[var(--lime)] animate-pulse' : 'bg-[var(--b2)] border-[var(--b1)] text-[var(--mu)]'}`}>
               {item.s === 'done' ? '✓' : item.i}
             </div>
             <div>
@@ -83,7 +83,7 @@ export const LeadStatus = ({ lead }: { lead: Lead }) => {
         </a>
         <button 
           onClick={() => window.location.reload()}
-          className="flex-1 bg-[var(--lime)] text-black font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl text-center hover:bg-[var(--lime2)] transition-all"
+          className="flex-1 bg-[var(--lime)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl text-center hover:bg-[var(--lime2)] transition-all"
         >
           Refresh Status
         </button>

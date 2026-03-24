@@ -5,7 +5,6 @@ import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
 import { motion, AnimatePresence } from 'motion/react';
-import { ImageGallery } from '../components/ImageGallery';
 import { Calculator } from '../components/Calculator';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { DepositModal } from '../components/DepositModal';
@@ -15,11 +14,8 @@ import { FAQ } from '../components/FAQ';
 import { CaseStudies } from '../components/CaseStudies';
 import { TrustSection } from '../components/TrustSection';
 import { DealAuditor } from '../components/DealAuditor';
-import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight } from 'lucide-react';
+import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon } from 'lucide-react';
 import { cn } from '../utils/cn';
-
-import { CalculationEngine } from '../services/CalculationEngine';
-import { getSpecsForCar } from '../data/carSpecs';
 
 export const DealPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -38,18 +34,7 @@ export const DealPage = () => {
   const [activeTab, setActiveTab] = useState<'specs' | 'options'>('specs');
   const [mileage, setMileage] = useState('10k');
 
-  const enrichedDeal = useMemo(() => {
-    if (!deal) return null;
-    const dbSpecs = getSpecsForCar(deal.make, deal.model, deal.trim);
-    if (!dbSpecs) return deal;
-
-    return {
-      ...deal,
-      detailedSpecs: { ...dbSpecs.specs, ...deal.detailedSpecs },
-      features: [...new Set([...(dbSpecs.features || []), ...(deal.features || [])])],
-      categorizedFeatures: { ...dbSpecs.categorizedFeatures, ...deal.categorizedFeatures }
-    };
-  }, [deal]);
+  const enrichedDeal = deal;
 
   const currentFeatures = language === 'ru' && enrichedDeal?.categorizedFeaturesRu && Object.keys(enrichedDeal.categorizedFeaturesRu).length > 0 ? enrichedDeal.categorizedFeaturesRu : enrichedDeal?.categorizedFeatures;
   const currentVerdict = language === 'ru' && enrichedDeal?.ownerVerdictRu && Object.keys(enrichedDeal.ownerVerdictRu).length > 0 ? enrichedDeal.ownerVerdictRu : enrichedDeal?.ownerVerdict;
@@ -177,6 +162,31 @@ export const DealPage = () => {
       <Helmet>
         <title>{`${deal.year} ${deal.make} ${deal.model} | Hunter Lease`}</title>
         <meta name="description" content={`Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}. Save $${deal.savings?.toLocaleString() || 0}.`} />
+        <meta property="og:title" content={`${deal.year} ${deal.make} ${deal.model} | Hunter Lease`} />
+        <meta property="og:description" content={`Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}. Save $${deal.savings?.toLocaleString() || 0}.`} />
+        <meta property="og:image" content={deal.image} />
+        <meta property="og:type" content="product" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org/",
+            "@type": "Product",
+            "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`,
+            "image": deal.image,
+            "description": `Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}.`,
+            "brand": {
+              "@type": "Brand",
+              "name": deal.make
+            },
+            "offers": {
+              "@type": "Offer",
+              "url": window.location.href,
+              "priceCurrency": "USD",
+              "price": deal.payment,
+              "priceValidUntil": new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              "availability": "https://schema.org/InStock"
+            }
+          })}
+        </script>
       </Helmet>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
@@ -233,7 +243,7 @@ export const DealPage = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
               >
-                <ImageGallery mainImage={deal.image} dealId={String(deal.id)} />
+                <div className="w-full aspect-[16/9] bg-[var(--s2)] rounded-3xl overflow-hidden border border-[var(--b2)] relative"><img src={deal.image} alt={`${deal.make} ${deal.model}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" /></div>
               </motion.div>
 
               {/* Technical Trust Grid */}
@@ -580,6 +590,7 @@ export const DealPage = () => {
                     viewCount={viewCount}
                     onProceed={handleProceed}
                     onMileageChange={(m) => setMileage(m)}
+                    mode="offer"
                   />
                 </motion.div>
               </div>

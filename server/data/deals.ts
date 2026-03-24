@@ -1,9 +1,9 @@
-import { Deal } from '../types';
+import { Deal } from '../../src/types';
 import { CAR_DB } from './cars';
 
-export const getBodyStyle = (className: string, modelName: string): 'SUV' | 'Sedan' | 'Truck' | 'Coupe' | 'Hatchback' | 'Van' | 'Minivan' | 'Wagon' => {
-  const c = className.toLowerCase();
-  const m = modelName.toLowerCase();
+export const getBodyStyle = (className: string = '', modelName: string = ''): 'SUV' | 'Sedan' | 'Truck' | 'Coupe' | 'Hatchback' | 'Van' | 'Minivan' | 'Wagon' => {
+  const c = (className || '').toLowerCase();
+  const m = (modelName || '').toLowerCase();
   
   if (c.includes('sedan')) return 'Sedan';
   if (c.includes('suv')) return 'SUV';
@@ -29,9 +29,9 @@ export const getBodyStyle = (className: string, modelName: string): 'SUV' | 'Sed
   return 'SUV';
 };
 
-export const getFuelType = (className: string, trimName: string): 'Gas' | 'Hybrid' | 'Electric' | 'PHEV' => {
-  const c = className.toLowerCase();
-  const t = trimName.toLowerCase();
+export const getFuelType = (className: string = '', trimName: string = ''): 'Gas' | 'Hybrid' | 'Electric' | 'PHEV' => {
+  const c = (className || '').toLowerCase();
+  const t = (trimName || '').toLowerCase();
   if (c.includes('ev') || t.includes('ev')) return 'Electric';
   if (t.includes('phev') || t.includes('h+')) return 'PHEV';
   if (c.includes('hybrid') || t.includes('hybrid')) return 'Hybrid';

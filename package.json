@@ -4,10 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "npx prisma db push && npx prisma generate && tsx server.ts",
     "start": "node dist/server.js",
-    "build": "prisma generate && rm -f prisma/dev.db && prisma db push --accept-data-loss && vite build && npx esbuild server.ts --bundle --platform=node --format=esm --packages=external --external:better-sqlite3 --outfile=dist/server.js",
+    "build": "npm run clean && prisma generate && vite build && npx esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js",
     "preview": "vite preview",
+    "test": "vitest run",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
@@ -55,8 +56,10 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
+    "puppeteer": "^24.40.0",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^4.1.1"
   }
 }
