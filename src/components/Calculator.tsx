@@ -112,9 +112,11 @@ export const Calculator: React.FC<CalculatorProps> = ({
             selectedIncentives,
             isFirstTimeBuyer,
             hasCosigner,
-            rv: currentCar.rv,
-            mf: currentCar.mf,
-            apr: currentCar.apr,
+            rv: currentCar.tiersData?.[tier]?.rv36 !== undefined ? currentCar.tiersData[tier].rv36 : (currentCar.rv36 || currentCar.rv),
+            mf: currentCar.tiersData?.[tier]?.mf !== undefined ? currentCar.tiersData[tier].mf : currentCar.mf,
+            apr: currentCar.tiersData?.[tier]?.baseAPR !== undefined ? currentCar.tiersData[tier].baseAPR : (currentCar.baseAPR || currentCar.apr),
+            leaseCash: currentCar.tiersData?.[tier]?.leaseCash !== undefined ? currentCar.tiersData[tier].leaseCash : (currentCar.leaseCash || 0),
+            usedTiersData: !!currentCar.tiersData?.[tier],
             msrp: currentCar.msrp,
             savings: currentCar.savings
           })
@@ -934,11 +936,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 ) : (
                   <>
                     <div className="flex items-baseline justify-end gap-2">
-                      {isCalculating ? (
-                        <div className="h-12 w-32 bg-[var(--b2)] animate-pulse rounded-lg" />
-                      ) : (
-                        <span className="text-6xl font-display text-[var(--lime)] leading-none">{fmt(calculatedPayment)}</span>
-                      )}
+                      <span className={cn(
+                        "text-6xl font-display text-[var(--lime)] leading-none transition-opacity duration-300",
+                        isCalculating ? "opacity-50" : "opacity-100"
+                      )}>
+                        {fmt(calculatedPayment)}
+                      </span>
                       <span className="text-sm text-[var(--mu2)] font-bold uppercase tracking-widest">per month</span>
                     </div>
                     <div className="flex items-center justify-end gap-2 mt-2">
@@ -988,9 +991,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
           term,
           down,
           type: calcType,
-          rv: currentCar?.rv || 0.55,
+          rv: currentCar?.rv36 || currentCar?.rv || 0.55,
           mf: currentCar?.mf || 0.002,
-          apr: currentCar?.apr || 4.9,
+          apr: currentCar?.baseAPR || currentCar?.apr || 4.9,
           rebates: totalIncentives
         } : null}
         mileage={mileage}
@@ -998,9 +1001,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
           calculation: { 
             msrpCents: (currentCar?.msrp || 0) * 100, 
             sellingPriceCents: ((currentCar?.msrp || 0) - (currentCar?.savings || 0)) * 100, 
-            residualValueCents: (currentCar?.msrp || 0) * (currentCar?.rv || 0.55) * 100, 
+            residualValueCents: (currentCar?.msrp || 0) * (parseFloat(String(currentCar?.rv36 || currentCar?.rv || 0.55).replace('%', '')) > 1 ? parseFloat(String(currentCar?.rv36 || currentCar?.rv || 0.55).replace('%', '')) / 100 : parseFloat(String(currentCar?.rv36 || currentCar?.rv || 0.55).replace('%', ''))) * 100, 
             dealerDiscountCents: -(currentCar?.savings || 0) * 100, 
-            incentivesCents: totalIncentives * 100, 
+            incentivesCents: (totalIncentives + (calcType === 'lease' ? (currentCar?.tiersData?.[tier]?.leaseCash !== undefined ? currentCar.tiersData[tier].leaseCash : (currentCar?.leaseCash || 0)) : 0)) * 100, 
             fees: [
               {name: "Acquisition Fee", amountCents: 65000}, 
               {name: "Doc Fee", amountCents: 8500}, 
@@ -1013,9 +1016,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
           metadata: { 
             debug: { 
               bankProgram: { 
-                rv: currentCar?.rv || 0.55, 
-                mf: currentCar?.mf || 0.002, 
-                apr: currentCar?.apr || 4.9 
+                rv: currentCar?.tiersData?.[tier]?.rv36 !== undefined ? currentCar.tiersData[tier].rv36 : (currentCar?.rv36 || currentCar?.rv || 0.55), 
+                mf: currentCar?.tiersData?.[tier]?.mf !== undefined ? currentCar.tiersData[tier].mf : (currentCar?.mf || 0.002), 
+                apr: currentCar?.tiersData?.[tier]?.baseAPR !== undefined ? currentCar.tiersData[tier].baseAPR : (currentCar?.baseAPR || currentCar?.apr || 4.9),
+                leaseCash: currentCar?.tiersData?.[tier]?.leaseCash !== undefined ? currentCar.tiersData[tier].leaseCash : (currentCar?.leaseCash || 0)
               } 
             } 
           } 

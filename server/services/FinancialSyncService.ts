@@ -20,6 +20,8 @@ export class FinancialSyncService {
    * Reverse calculates APR from finance parameters using Newton-Raphson method.
    */
   static solveForAPR(payment: number, principal: number, term: number): number {
+    if (payment * term <= principal) return 0;
+    
     let r = 0.05 / 12; // Initial guess (5% APR)
     const precision = 0.000001;
     let iteration = 0;
@@ -44,15 +46,18 @@ export class FinancialSyncService {
   /**
    * Syncs with Marketcheck Universe API and writes to normalized tables (VehicleCache, BankProgram)
    */
-  static async syncFromExternalAPI(rawApiKey: string, currentDb: any, targetMake?: string, targetModel?: string) {
+  static async syncFromExternalAPI(rawApiKey: string, currentDb: any, targetMakesInput?: string | string[], targetModel?: string) {
     const apiKey = rawApiKey.trim();
-    console.log(`Starting Optimized Marketcheck API Sync... ${targetMake ? `Target Make: ${targetMake}` : ''} ${targetModel ? `Target Model: ${targetModel}` : ''}`);
+    const targetMakes = typeof targetMakesInput === 'string' ? [targetMakesInput] : targetMakesInput;
+    const targetMakesStr = targetMakes?.length ? targetMakes.join(', ') : '';
+    console.log(`Starting Optimized Marketcheck API Sync... ${targetMakesStr ? `Target Makes: ${targetMakesStr}` : ''} ${targetModel ? `Target Model: ${targetModel}` : ''}`);
     
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     let requestCount = 0;
     let updatedModelsCount = 0;
     let updatedTrimsCount = 0;
     let errors: string[] = [];
+    const report: any[] = [];
     let quotaExhausted = false;
 
     // Find active batch for programs
@@ -63,22 +68,38 @@ export class FinancialSyncService {
       });
     }
 
-    // Collect all existing models from VehicleCache
-    const whereClause: any = {};
-    if (targetMake) whereClause.make = targetMake;
-    if (targetModel) whereClause.model = targetModel;
+    // Collect all existing models from currentDb (car_db) or fallback to VehicleCache
+    let modelsToUpdate: { make: string, model: string, year: number }[] = [];
+    
+    if (currentDb && currentDb.makes && currentDb.makes.length > 0) {
+      for (const make of currentDb.makes) {
+        if (targetMakes && targetMakes.length > 0 && !targetMakes.some(m => m.toLowerCase() === make.name.toLowerCase())) continue;
+        for (const model of make.models || []) {
+          if (targetModel && model.name.toLowerCase() !== targetModel.toLowerCase()) continue;
+          // Use 2026 as default year for new cars, or extract from trims if available
+          let year = 2026;
+          if (model.trims && model.trims.length > 0 && model.trims[0].year) {
+            year = model.trims[0].year;
+          }
+          modelsToUpdate.push({ make: make.name, model: model.name, year });
+        }
+      }
+    } else {
+      const whereClause: any = {};
+      if (targetMakes && targetMakes.length > 0) whereClause.make = { in: targetMakes };
+      if (targetModel) whereClause.model = targetModel;
 
-    const vehicles = await db.vehicleCache.findMany({
-      where: whereClause,
-      select: { make: true, model: true, year: true },
-      distinct: ['make', 'model', 'year']
-    });
+      const vehicles = await db.vehicleCache.findMany({
+        where: whereClause,
+        select: { make: true, model: true, year: true },
+        distinct: ['make', 'model', 'year']
+      });
+      modelsToUpdate = vehicles;
+    }
 
-    let modelsToUpdate = vehicles;
-
-    if (!targetMake && !targetModel) {
+    if (!targetMakes?.length && !targetModel) {
       // If no specific target, just take first 50 to avoid rate limits
-      modelsToUpdate = vehicles.slice(0, 50);
+      modelsToUpdate = modelsToUpdate.slice(0, 50);
       console.log(`Selected ${modelsToUpdate.length} models to update.`);
     } else {
       console.log(`Selected ${modelsToUpdate.length} models matching target criteria.`);
@@ -86,7 +107,7 @@ export class FinancialSyncService {
 
     for (const { make, model, year } of modelsToUpdate) {
       try {
-        if (!targetMake && !targetModel && requestCount >= 50) {
+        if (!targetMakes?.length && !targetModel && requestCount >= 50) {
           console.warn("Reached 50 requests limit for this sync run. Stopping to save quota.");
           break;
         } else if (requestCount >= 480) {
@@ -140,10 +161,11 @@ export class FinancialSyncService {
             const trimName = listing.build?.trim || 'Base';
             const msrp = listing.msrp || listing.price || 0;
             
-            const rebates = listing.rebates || 
+            const rawRebates = listing.rebates || 
                            listing.extra?.rebates || 
                            listing.finance_details?.lease_details?.rebates || 
                            listing.finance_details?.finance_details?.rebates || 0;
+            const rebates = parseFloat(rawRebates) || 0;
 
             let calculatedMF = 0;
             let calculatedAPR = 0;
@@ -152,22 +174,33 @@ export class FinancialSyncService {
             let mileage = 10000;
 
             const lease = listing.finance_details?.lease_details;
-            if (lease && lease.monthly_payment && lease.term && lease.residual_value) {
-              const payment = lease.monthly_payment;
-              term = lease.term;
-              const residual = lease.residual_value;
-              const capCost = lease.net_cap_cost || (msrp - (lease.down_payment || 0));
-              
-              if (capCost > residual) {
-                calculatedMF = FinancialSyncService.solveForMF(payment, capCost, residual, term);
-                residualValue = residual / msrp;
+            if (lease) {
+              if (lease.money_factor !== undefined && lease.money_factor !== null) {
+                calculatedMF = parseFloat(lease.money_factor);
+              } else if (lease.monthly_payment && lease.term && lease.residual_value) {
+                const payment = lease.monthly_payment;
+                term = lease.term;
+                const residual = lease.residual_value;
+                const capCost = lease.net_cap_cost || (msrp - (lease.down_payment || 0));
+                
+                if (capCost > residual) {
+                  calculatedMF = FinancialSyncService.solveForMF(payment, capCost, residual, term);
+                }
               }
+              if (lease.residual_value && msrp > 0) {
+                residualValue = lease.residual_value / msrp;
+              }
+              if (lease.term) term = lease.term;
             }
 
             const finance = listing.finance_details?.finance_details;
-            if (finance && finance.monthly_payment && finance.term && finance.loan_amount) {
-              calculatedAPR = FinancialSyncService.solveForAPR(finance.monthly_payment, finance.loan_amount, finance.term);
-              if (!lease) term = finance.term; // Use finance term if no lease
+            if (finance) {
+              if (finance.apr !== undefined && finance.apr !== null) {
+                calculatedAPR = parseFloat(finance.apr);
+              } else if (finance.monthly_payment && finance.term && finance.loan_amount) {
+                calculatedAPR = FinancialSyncService.solveForAPR(finance.monthly_payment, finance.loan_amount, finance.term);
+              }
+              if (!lease && finance.term) term = finance.term; // Use finance term if no lease
             }
 
             if (msrp > 0) {
@@ -213,7 +246,7 @@ export class FinancialSyncService {
                 if (existingLease) {
                   await db.bankProgram.update({
                     where: { id: existingLease.id },
-                    data: { mf: val.mf || existingLease.mf, rv: val.rv || existingLease.rv, rebates: val.rebates * 100 }
+                    data: { mf: val.mf || existingLease.mf, rv: val.rv || existingLease.rv, rebates: Math.round(val.rebates * 100) }
                   });
                 } else {
                   await db.bankProgram.create({
@@ -225,7 +258,7 @@ export class FinancialSyncService {
                       mileage: val.mileage,
                       mf: val.mf || 0.0025,
                       rv: val.rv || 0.60,
-                      rebates: val.rebates * 100
+                      rebates: Math.round(val.rebates * 100)
                     }
                   });
                 }
@@ -239,7 +272,7 @@ export class FinancialSyncService {
                 if (existingFinance) {
                   await db.bankProgram.update({
                     where: { id: existingFinance.id },
-                    data: { apr: val.apr, rebates: val.rebates * 100 }
+                    data: { apr: val.apr, rebates: Math.round(val.rebates * 100) }
                   });
                 } else {
                   await db.bankProgram.create({
@@ -249,9 +282,63 @@ export class FinancialSyncService {
                       make, model, year, trim: trimName,
                       term: val.term,
                       apr: val.apr,
-                      rebates: val.rebates * 100
+                      rebates: Math.round(val.rebates * 100)
                     }
                   });
+                }
+              }
+
+              // 4. Update currentDb (carDb)
+              if (currentDb && currentDb.makes) {
+                const makeObj = currentDb.makes.find((m: any) => m.name.toLowerCase() === make.toLowerCase());
+                if (makeObj && makeObj.models) {
+                  const modelObj = makeObj.models.find((m: any) => m.name.toLowerCase() === model.toLowerCase());
+                  if (modelObj && modelObj.trims) {
+                    // Find exact trim, or try to do a partial match if API trim name differs slightly
+                    let trimObj = modelObj.trims.find((t: any) => t.name.toLowerCase() === trimName.toLowerCase());
+                    
+                    if (!trimObj) {
+                      // Try partial match
+                      trimObj = modelObj.trims.find((t: any) => 
+                        t.name.toLowerCase().includes(trimName.toLowerCase()) || 
+                        trimName.toLowerCase().includes(t.name.toLowerCase())
+                      );
+                    }
+                    
+                    if (!trimObj && trimName === 'Base' && modelObj.trims.length > 0) {
+                      trimObj = modelObj.trims[0]; // Apply to first trim if API just says "Base"
+                    }
+                    
+                    if (trimObj) {
+                      const oldMsrp = trimObj.msrp || 0;
+                      const oldMf = trimObj.mf || 0;
+                      const oldRv = trimObj.rv36 || 0;
+                      const oldApr = trimObj.baseAPR || 0;
+
+                      if (val.msrp > 0) trimObj.msrp = val.msrp;
+                      if (val.mf > 0) trimObj.mf = Number(val.mf.toFixed(5));
+                      if (val.rv > 0) trimObj.rv36 = Number(val.rv.toFixed(2));
+                      if (val.apr > 0) trimObj.baseAPR = Number(val.apr.toFixed(2));
+                      // We don't overwrite savings here, as requested by user
+                      
+                      // Note: We don't add rebates to availableIncentives here because 
+                      // they are already applied directly to the BankProgram.
+                      // Adding them here would cause double-counting in the calculator.
+                      
+                      report.push({
+                        make: makeObj.name,
+                        model: modelObj.name,
+                        trim: trimObj.name,
+                        changes: {
+                          msrp: { old: oldMsrp, new: trimObj.msrp },
+                          mf: { old: oldMf, new: trimObj.mf },
+                          rv: { old: oldRv, new: trimObj.rv36 },
+                          apr: { old: oldApr, new: trimObj.baseAPR },
+                          rebates: { old: 0, new: val.rebates }
+                        }
+                      });
+                    }
+                  }
                 }
               }
 
@@ -283,7 +370,8 @@ export class FinancialSyncService {
         updatedModelsCount,
         updatedTrimsCount,
         quotaExhausted,
-        errors: errors.slice(0, 10)
+        errors: errors.slice(0, 10),
+        report
       }
     };
   }

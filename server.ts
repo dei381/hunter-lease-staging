@@ -12,6 +12,13 @@ import { adminAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
 
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -31,8 +38,13 @@ const prisma = db;
 
 // Helper to get CAR_DB from Postgres
 const getCarDb = async () => {
-  const record = await prisma.siteSettings.findUnique({ where: { id: 'car_db' } });
-  return record ? JSON.parse(record.data) : {};
+  try {
+    const record = await prisma.siteSettings.findUnique({ where: { id: 'car_db' } });
+    return record ? JSON.parse(record.data) : {};
+  } catch (error) {
+    console.error("Error in getCarDb:", error);
+    return {};
+  }
 };
 
 // Helper to save CAR_DB to Postgres
@@ -50,8 +62,13 @@ const saveCarDb = async (data: any) => {
 
 // Helper to get CAR_PHOTOS from Postgres
 const getCarPhotos = async () => {
-  const record = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
-  return record ? JSON.parse(record.data) : [];
+  try {
+    const record = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
+    return record ? JSON.parse(record.data) : [];
+  } catch (error) {
+    console.error("Error in getCarPhotos:", error);
+    return [];
+  }
 };
 
 // Helper to save CAR_PHOTOS to Postgres
@@ -1257,10 +1274,11 @@ async function startServer() {
         return res.status(400).json({ error: "Marketcheck API Key is not configured. Please set MARKETCHECK_API_KEY in Secrets or use the Select Key dialog." });
       }
 
-      const { make, model } = req.body || {};
+      const { make, makes, model } = req.body || {};
+      const targetMakes = makes || (make ? [make] : undefined);
 
       const carDb = await getCarDb();
-      const result = await FinancialSyncService.syncFromExternalAPI(apiKey, carDb, make, model);
+      const result = await FinancialSyncService.syncFromExternalAPI(apiKey, carDb, targetMakes, model);
       
       // Update the carDb object
       Object.assign(carDb, result.updatedDb);
@@ -2556,13 +2574,21 @@ async function startServer() {
         prisma.siteSettings.findUnique({ where: { id: 'global' } })
       ]);
 
-      const settings = settingsRecord ? JSON.parse(settingsRecord.data) : {
-        brokerFee: 595,
-        taxRateDefault: 8.875,
-        dmvFee: 400,
-        docFee: 85,
-        acquisitionFee: 650
-      };
+      let settings;
+      try {
+        settings = settingsRecord ? JSON.parse(settingsRecord.data) : null;
+      } catch (e) {
+        console.error("Failed to parse settings:", e);
+      }
+      if (!settings) {
+        settings = {
+          brokerFee: 595,
+          taxRateDefault: 8.875,
+          dmvFee: 400,
+          docFee: 85,
+          acquisitionFee: 650
+        };
+      }
 
       const acqFeeCents = (settings.acquisitionFee || 650) * 100;
       const docFeeCents = (settings.docFee || 85) * 100;
@@ -2572,7 +2598,12 @@ async function startServer() {
 
       // Map DB deals to the format expected by the frontend
       const mappedDeals = (dbDeals as any[]).map(deal => {
-        const data = deal.financialData ? JSON.parse(deal.financialData) : null;
+        let data = null;
+        try {
+          data = deal.financialData ? JSON.parse(deal.financialData) : null;
+        } catch (e) {
+          console.error(`Failed to parse financialData for deal ${deal.id}:`, e);
+        }
         if (!data) return null;
 
         const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
@@ -2588,11 +2619,13 @@ async function startServer() {
         let savings = getVal(data.savings, 0);
         let discount = getVal(data.discount, 0);
         let rebates = getVal(data.rebates, 0);
+        let apr = getVal(data.apr, 4.9);
 
         // Use totalGlobalSavings if it's greater than 0, otherwise fallback to existing savings logic
         const effectiveSavings = totalGlobalSavings > 0 ? totalGlobalSavings : savings;
         let type = data.type || 'lease';
 
+        let usedTiersData = false;
         // AUTOMATIC UPDATE: Check CAR_DB for latest data
         if (data.make && data.model && data.trim) {
           const makeObj = (CAR_DB as any).makes?.find((m: any) => m.name.toLowerCase() === data.make.toLowerCase());
@@ -2602,10 +2635,42 @@ async function startServer() {
               const trimObj = modelObj.trims?.find((t: any) => t.name.toLowerCase() === data.trim.toLowerCase());
               if (trimObj) {
                 // Use latest data from catalog
-                msrp = trimObj.msrp || msrp;
-                mf = trimObj.mf || mf;
-                rv = trimObj.rv36 || rv;
-                leaseCash = trimObj.leaseCash || leaseCash;
+                msrp = Number(trimObj.msrp) || msrp;
+                mf = Number(trimObj.mf) || Number(modelObj.mf) || Number(makeObj.baseMF) || Number(mf) || 0.002;
+                rv = Number(trimObj.rv36) || Number(modelObj.rv36) || Number(rv) || 0.55;
+                leaseCash = Number(trimObj.leaseCash) || Number(leaseCash) || 0;
+                apr = Number(trimObj.baseAPR) || Number(modelObj.baseAPR) || Number(makeObj.baseAPR) || Number(apr) || 4.9;
+
+                if (queryTier) {
+                  const tierId = queryTier as string;
+                  const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
+                  
+                  if (makeTier || modelObj.tiersData?.[tierId] || trimObj.tiersData?.[tierId]) {
+                    const fallbackMakeTier = makeTier || { mfAdd: 0, aprAdd: 0 };
+                    const modelTier = modelObj.tiersData?.[tierId] || fallbackMakeTier;
+                    const trimTier = trimObj.tiersData?.[tierId];
+
+                    if (trimTier) {
+                      mf = Number(trimTier.mf) || mf;
+                      rv = Number(trimTier.rv36) || rv;
+                      leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
+                      apr = Number(trimTier.baseAPR) || apr;
+                    } else {
+                      mf = mf + (Number(modelTier.mfAdd) || 0);
+                      apr = apr + (Number(modelTier.aprAdd) || 0);
+                    }
+                    
+                    // Attach the resolved tier data to the object so the frontend can use it
+                    if (!data.tiersData) data.tiersData = {};
+                    data.tiersData[tierId] = {
+                      mf: mf,
+                      rv36: rv,
+                      baseAPR: apr,
+                      leaseCash: leaseCash
+                    };
+                    usedTiersData = true;
+                  }
+                }
               }
             }
           }
@@ -2619,7 +2684,7 @@ async function startServer() {
           else if (queryMileage === '7.5k') rv += 0.01;
         }
 
-        if (queryTier) {
+        if (queryTier && !usedTiersData) {
           if (queryTier === 't2') mf *= 1.1;
           else if (queryTier === 't3') mf *= 1.2;
           else if (queryTier === 't4') mf *= 1.35;
@@ -2646,8 +2711,7 @@ async function startServer() {
         });
         payment = lease.finalPaymentCents / 100;
 
-        let apr = getVal(data.apr, 4.9);
-        if (queryTier) {
+        if (queryTier && !usedTiersData) {
           if (queryTier === 't2') apr += 1.0;
           else if (queryTier === 't3') apr += 2.5;
           else if (queryTier === 't4') apr += 4.5;

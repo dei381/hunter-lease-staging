@@ -15,6 +15,24 @@ export const CarsAdmin = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [debugData, setDebugData] = useState<string | null>(null);
+  const [selectedMakes, setSelectedMakes] = useState<string[]>([]);
+  const [syncReport, setSyncReport] = useState<any[] | null>(null);
+
+  const toggleMakeSelection = (makeName: string, isSelected: boolean) => {
+    if (isSelected) {
+      setSelectedMakes(prev => [...prev, makeName]);
+    } else {
+      setSelectedMakes(prev => prev.filter(m => m !== makeName));
+    }
+  };
+
+  const selectAllMakes = (isSelected: boolean) => {
+    if (isSelected && carDb?.makes) {
+      setSelectedMakes(carDb.makes.map((m: any) => m.name));
+    } else {
+      setSelectedMakes([]);
+    }
+  };
 
   const [modal, setModal] = useState<{
     isOpen: boolean;
@@ -61,28 +79,48 @@ export const CarsAdmin = () => {
     });
   };
 
-  const syncExternal = async (makeName?: string, modelName?: string) => {
-    const targetMsg = modelName ? `for ${makeName} ${modelName}` : (makeName ? `for all ${makeName} models` : 'for all models');
+  const syncExternal = async (makeName?: string | string[], modelName?: string) => {
+    let targetMsg = 'for all models';
+    if (modelName && typeof makeName === 'string') {
+      targetMsg = `for ${makeName} ${modelName}`;
+    } else if (typeof makeName === 'string') {
+      targetMsg = `for all ${makeName} models`;
+    } else if (Array.isArray(makeName) && makeName.length > 0) {
+      targetMsg = `for ${makeName.length} selected brands`;
+    }
+
     showConfirm('Sync with API', `Are you sure you want to sync with the external API? This will update financial data ${targetMsg}.`, async () => {
       setIsSyncing(true);
       try {
+        const payload: any = { model: modelName };
+        if (Array.isArray(makeName)) {
+          payload.makes = makeName;
+        } else if (typeof makeName === 'string') {
+          payload.make = makeName;
+        }
+
         const res = await fetch('/api/admin/sync-external', {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ make: makeName, model: modelName })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (res.ok) {
           const { stats } = data;
-          let msg = `Sync completed!\n\nModels updated: ${stats.updatedModelsCount}\nTrims updated: ${stats.updatedTrimsCount}\nAPI Requests: ${stats.requestCount}`;
-          if (stats.errors && stats.errors.length > 0) {
-            msg += `\n\nWarnings:\n${stats.errors.join('\n')}`;
+          if (stats.report && stats.report.length > 0) {
+            setSyncReport(stats.report);
+          } else {
+            let msg = `Sync completed!\n\nModels updated: ${stats.updatedModelsCount}\nTrims updated: ${stats.updatedTrimsCount}\nAPI Requests: ${stats.requestCount}`;
+            if (stats.errors && stats.errors.length > 0) {
+              msg += `\n\nWarnings:\n${stats.errors.join('\n')}`;
+            }
+            showAlert('Sync Success', msg);
           }
-          showAlert('Sync Success', msg);
           fetchCars(); // Refresh local state
+          setSelectedMakes([]); // Clear selection after sync
         } else {
           showAlert('Sync Failed', `${data.error}${data.details ? '\n\n' + data.details : ''}`);
         }
@@ -344,6 +382,20 @@ export const CarsAdmin = () => {
     }
   };
 
+  const initializeTiers = (makeId: string) => {
+    const newDb = { ...carDb };
+    const make = newDb.makes.find((m: any) => m.id === makeId);
+    if (make && (!make.tiers || make.tiers.length === 0)) {
+      make.tiers = [
+        { id: "t1", label: "Tier 1", score: "740+", aprAdd: 0, mfAdd: 0, cls: "r1" },
+        { id: "t2", label: "Tier 2", score: "700–739", aprAdd: 1.5, mfAdd: 0.00040, cls: "r2" },
+        { id: "t3", label: "Tier 3", score: "660–699", aprAdd: 4.5, mfAdd: 0.00120, cls: "r3" },
+        { id: "t4", label: "Tier 4", score: "620–659", aprAdd: 9.0, mfAdd: 0.00240, cls: "r4" }
+      ];
+      saveCars(newDb);
+    }
+  };
+
   if (!carDb) return <div className="text-center py-12">{t.loadingCars}</div>;
 
   return (
@@ -359,14 +411,27 @@ export const CarsAdmin = () => {
             <Terminal className={`w-3 h-3 ${isTestingApi ? 'animate-pulse' : ''}`} />
             {isTestingApi ? t.testing : t.testApi}
           </button>
-          <button 
-            onClick={() => syncExternal()}
-            disabled={isSyncing}
-            className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? t.syncing : t.syncWithApi}
-          </button>
+          
+          {selectedMakes.length > 0 ? (
+            <button 
+              onClick={() => syncExternal(selectedMakes)}
+              disabled={isSyncing}
+              className="flex items-center gap-2 bg-[var(--lime)] text-[var(--ink)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-opacity-80 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? t.syncing : `Sync Selected (${selectedMakes.length})`}
+            </button>
+          ) : (
+            <button 
+              onClick={() => syncExternal()}
+              disabled={isSyncing}
+              className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? t.syncing : t.syncWithApi}
+            </button>
+          )}
+
           <button 
             onClick={snapshotCalculator}
             className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all"
@@ -399,6 +464,16 @@ export const CarsAdmin = () => {
       </div>
 
       <div className="space-y-4">
+        <div className="flex items-center gap-3 p-4 bg-[var(--s1)] border border-[var(--b2)] rounded-xl">
+          <input 
+            type="checkbox" 
+            className="w-4 h-4 accent-[var(--lime)] cursor-pointer"
+            checked={carDb.makes.length > 0 && selectedMakes.length === carDb.makes.length}
+            onChange={(e) => selectAllMakes(e.target.checked)}
+          />
+          <span className="font-bold text-sm text-[var(--mu2)] uppercase tracking-widest">Select All Brands</span>
+        </div>
+        
         {carDb.makes
           .filter((make: any) => {
             if (!searchTerm) return true;
@@ -412,7 +487,14 @@ export const CarsAdmin = () => {
               className="p-4 flex items-center justify-between cursor-pointer hover:bg-[var(--s2)] transition-colors"
               onClick={() => setExpandedMake(expandedMake === make.id ? null : make.id)}
             >
-              <div className="flex items-center gap-2 font-bold text-lg">
+              <div className="flex items-center gap-3 font-bold text-lg">
+                <input 
+                  type="checkbox" 
+                  className="w-4 h-4 accent-[var(--lime)] cursor-pointer"
+                  checked={selectedMakes.includes(make.name)}
+                  onChange={(e) => toggleMakeSelection(make.name, e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                />
                 {expandedMake === make.id ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 {make.name}
               </div>
@@ -444,7 +526,7 @@ export const CarsAdmin = () => {
                         type="number" 
                         step="0.00001" 
                         value={make.baseMF || 0} 
-                        onChange={e => updateMake(make.id, 'baseMF', parseFloat(e.target.value))} 
+                        onChange={e => updateMake(make.id, 'baseMF', e.target.value)} 
                         className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" 
                       />
                     </label>
@@ -455,7 +537,7 @@ export const CarsAdmin = () => {
                         type="number" 
                         step="0.1" 
                         value={make.baseAPR || 0} 
-                        onChange={e => updateMake(make.id, 'baseAPR', parseFloat(e.target.value))} 
+                        onChange={e => updateMake(make.id, 'baseAPR', e.target.value)} 
                         className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" 
                       />
                     </label>
@@ -463,7 +545,7 @@ export const CarsAdmin = () => {
                 </div>
 
                 {/* Brand Tiers Configuration */}
-                {make.tiers && (
+                {make.tiers && make.tiers.length > 0 ? (
                   <div className="bg-[var(--s2)] border border-[var(--b1)] rounded-lg p-4 mb-6">
                     <h3 className="text-sm font-bold text-[var(--w)] mb-3">{t.brandTiersConfig}</h3>
                     <div className="overflow-x-auto">
@@ -486,7 +568,7 @@ export const CarsAdmin = () => {
                                   type="number" 
                                   step="0.00001" 
                                   value={t_item.mfAdd} 
-                                  onChange={e => updateMakeTier(make.id, t_item.id, 'mfAdd', parseFloat(e.target.value))} 
+                                  onChange={e => updateMakeTier(make.id, t_item.id, 'mfAdd', e.target.value)} 
                                   className="w-full max-w-[120px] bg-[var(--bg)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" 
                                 />
                               </td>
@@ -495,7 +577,7 @@ export const CarsAdmin = () => {
                                   type="number" 
                                   step="0.1" 
                                   value={t_item.aprAdd} 
-                                  onChange={e => updateMakeTier(make.id, t_item.id, 'aprAdd', parseFloat(e.target.value))} 
+                                  onChange={e => updateMakeTier(make.id, t_item.id, 'aprAdd', e.target.value)} 
                                   className="w-full max-w-[120px] bg-[var(--bg)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" 
                                 />
                               </td>
@@ -504,6 +586,19 @@ export const CarsAdmin = () => {
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                ) : (
+                  <div className="bg-[var(--s2)] border border-[var(--b1)] rounded-lg p-4 mb-6 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--w)] mb-1">{t.brandTiersConfig}</h3>
+                      <p className="text-xs text-[var(--mu2)]">Tiers are missing for this brand. Initialize them to configure markups.</p>
+                    </div>
+                    <button 
+                      onClick={() => initializeTiers(make.id)}
+                      className="bg-[var(--lime)] text-[var(--ink)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-opacity-80 transition-all"
+                    >
+                      Initialize Tiers
+                    </button>
                   </div>
                 )}
 
@@ -563,12 +658,12 @@ export const CarsAdmin = () => {
                               <label className="space-y-1">
                                 <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">{t.baseMfModelDefault}</span>
                                 <p className="text-[10px] text-[var(--mu2)] italic">This is the baseline MF before any tier markups.</p>
-                                <input type="number" step="0.00001" value={model.mf || 0} onChange={e => updateModel(make.id, model.id, 'mf', parseFloat(e.target.value))} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
+                                <input type="number" step="0.00001" value={model.mf || 0} onChange={e => updateModel(make.id, model.id, 'mf', e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
                               <label className="space-y-1">
                                 <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">{t.baseRvModelDefault}</span>
                                 <p className="text-[10px] text-[var(--mu2)] italic">This is the baseline RV % (e.g. 0.60 for 60%) before any tier markups.</p>
-                                <input type="number" step="0.01" value={model.rv36 || 0} onChange={e => updateModel(make.id, model.id, 'rv36', parseFloat(e.target.value))} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
+                                <input type="number" step="0.01" value={model.rv36 || 0} onChange={e => updateModel(make.id, model.id, 'rv36', e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
                             </div>
 
@@ -585,23 +680,36 @@ export const CarsAdmin = () => {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {make.tiers && make.tiers.map((t_item: any) => {
-                                        const tData = model.tiersData?.[t_item.id] || {
-                                          mfAdd: t_item.mfAdd || 0,
-                                          aprAdd: t_item.aprAdd || 0
-                                        };
-                                        return (
-                                          <tr key={t_item.id} className="border-b border-[var(--b2)]/50">
-                                            <td className="py-2 font-bold text-[var(--w)]">{t_item.label}</td>
-                                            <td className="py-2 pr-2">
-                                              <input type="number" step="0.00001" value={tData.mfAdd} onChange={e => updateModelTier(make.id, model.id, t_item.id, 'mfAdd', parseFloat(e.target.value))} className="w-full max-w-[120px] bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
-                                            </td>
-                                            <td className="py-2 pr-2">
-                                              <input type="number" step="0.1" value={tData.aprAdd} onChange={e => updateModelTier(make.id, model.id, t_item.id, 'aprAdd', parseFloat(e.target.value))} className="w-full max-w-[120px] bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
+                                      {(!make.tiers || make.tiers.length === 0) ? (
+                                        <tr>
+                                          <td colSpan={3} className="py-4 text-center">
+                                            <button 
+                                              onClick={() => initializeTiers(make.id)}
+                                              className="bg-[var(--lime)] text-[var(--ink)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-opacity-80 transition-all"
+                                            >
+                                              Initialize Tiers
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        make.tiers.map((t_item: any) => {
+                                          const tData = model.tiersData?.[t_item.id] || {
+                                            mfAdd: t_item.mfAdd || 0,
+                                            aprAdd: t_item.aprAdd || 0
+                                          };
+                                          return (
+                                            <tr key={t_item.id} className="border-b border-[var(--b2)]/50">
+                                              <td className="py-2 font-bold text-[var(--w)]">{t_item.label}</td>
+                                              <td className="py-2 pr-2">
+                                                <input type="number" step="0.00001" value={tData.mfAdd} onChange={e => updateModelTier(make.id, model.id, t_item.id, 'mfAdd', e.target.value)} className="w-full max-w-[120px] bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                              </td>
+                                              <td className="py-2 pr-2">
+                                                <input type="number" step="0.1" value={tData.aprAdd} onChange={e => updateModelTier(make.id, model.id, t_item.id, 'aprAdd', e.target.value)} className="w-full max-w-[120px] bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      )}
                                     </tbody>
                                   </table>
                                 </div>
@@ -628,7 +736,7 @@ export const CarsAdmin = () => {
                                           type="number" 
                                           step="0.00001" 
                                           value={trim.mf || 0} 
-                                          onChange={e => updateTrim(make.id, model.id, trim.name, 'mf', parseFloat(e.target.value))}
+                                          onChange={e => updateTrim(make.id, model.id, trim.name, 'mf', e.target.value)}
                                           className="bg-transparent border-b border-[var(--b2)] outline-none text-xs w-20"
                                         />
                                       </div>
@@ -638,7 +746,7 @@ export const CarsAdmin = () => {
                                           type="number" 
                                           step="0.01" 
                                           value={trim.rv36 || 0} 
-                                          onChange={e => updateTrim(make.id, model.id, trim.name, 'rv36', parseFloat(e.target.value))}
+                                          onChange={e => updateTrim(make.id, model.id, trim.name, 'rv36', e.target.value)}
                                           className="bg-transparent border-b border-[var(--b2)] outline-none text-xs w-16"
                                         />
                                       </div>
@@ -660,32 +768,45 @@ export const CarsAdmin = () => {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {make.tiers && make.tiers.map((t_item: any) => {
-                                          const modelTier = model.tiersData?.[t_item.id] || t_item;
-                                          const tData = trim.tiersData?.[t_item.id] || {
-                                            mf: (trim.mf || 0) + (modelTier.mfAdd || 0),
-                                            rv36: trim.rv36 || 0,
-                                            baseAPR: (trim.baseAPR || 0) + (modelTier.aprAdd || 0),
-                                            leaseCash: trim.leaseCash || 0
-                                          };
-                                          return (
-                                            <tr key={t_item.id} className="border-b border-[var(--b2)]/50">
-                                              <td className="py-2 font-bold text-[var(--w)]">{t_item.label}</td>
-                                              <td className="py-2 pr-2">
-                                                <input type="number" step="0.00001" value={tData.mf} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'mf', parseFloat(e.target.value))} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
-                                              </td>
-                                              <td className="py-2 pr-2">
-                                                <input type="number" step="0.01" value={tData.rv36} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'rv36', parseFloat(e.target.value))} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
-                                              </td>
-                                              <td className="py-2 pr-2">
-                                                <input type="number" step="0.1" value={tData.baseAPR} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'baseAPR', parseFloat(e.target.value))} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
-                                              </td>
-                                              <td className="py-2">
-                                                <input type="number" value={tData.leaseCash} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'leaseCash', parseInt(e.target.value))} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
+                                        {(!make.tiers || make.tiers.length === 0) ? (
+                                          <tr>
+                                            <td colSpan={5} className="py-4 text-center">
+                                              <button 
+                                                onClick={() => initializeTiers(make.id)}
+                                                className="bg-[var(--lime)] text-[var(--ink)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-opacity-80 transition-all"
+                                              >
+                                                Initialize Tiers
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ) : (
+                                          make.tiers.map((t_item: any) => {
+                                            const modelTier = model.tiersData?.[t_item.id] || t_item;
+                                            const tData = trim.tiersData?.[t_item.id] || {
+                                              mf: (trim.mf || 0) + (modelTier.mfAdd || 0),
+                                              rv36: trim.rv36 || 0,
+                                              baseAPR: (trim.baseAPR || 0) + (modelTier.aprAdd || 0),
+                                              leaseCash: trim.leaseCash || 0
+                                            };
+                                            return (
+                                              <tr key={t_item.id} className="border-b border-[var(--b2)]/50">
+                                                <td className="py-2 font-bold text-[var(--w)]">{t_item.label}</td>
+                                                <td className="py-2 pr-2">
+                                                  <input type="number" step="0.00001" value={tData.mf} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'mf', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                </td>
+                                                <td className="py-2 pr-2">
+                                                  <input type="number" step="0.01" value={tData.rv36} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'rv36', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                </td>
+                                                <td className="py-2 pr-2">
+                                                  <input type="number" step="0.1" value={tData.baseAPR} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'baseAPR', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                </td>
+                                                <td className="py-2">
+                                                  <input type="number" value={tData.leaseCash} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'leaseCash', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                </td>
+                                              </tr>
+                                            );
+                                          })
+                                        )}
                                       </tbody>
                                     </table>
                                   </div>
@@ -723,7 +844,7 @@ export const CarsAdmin = () => {
                                       value={trim.msrp} 
                                       onChange={e => {
                                         const newDb = {...carDb};
-                                        newDb.makes.find((m:any)=>m.id===make.id).models.find((m:any)=>m.id===model.id).trims[idx].msrp = parseInt(e.target.value);
+                                        newDb.makes.find((m:any)=>m.id===make.id).models.find((m:any)=>m.id===model.id).trims[idx].msrp = e.target.value;
                                         saveCars(newDb);
                                       }}
                                       className="w-24 bg-transparent outline-none text-sm text-right" 
@@ -813,6 +934,85 @@ export const CarsAdmin = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sync Report Modal */}
+      {syncReport && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-[var(--s2)] border border-[var(--b1)] rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-display tracking-widest text-[var(--lime)] uppercase">Sync Report</h3>
+              <button onClick={() => setSyncReport(null)} className="text-[var(--mu2)] hover:text-[var(--w)] transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+              {syncReport.map((item, idx) => (
+                <div key={idx} className="bg-[var(--bg)] border border-[var(--b2)] rounded-lg p-4">
+                  <h4 className="font-bold text-[var(--w)] mb-2">{item.make} {item.model} - {item.trim}</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase text-[var(--mu2)]">MSRP</span>
+                      <div className="flex items-center gap-2">
+                        {item.changes.msrp.old !== item.changes.msrp.new && (
+                          <span className="line-through text-[var(--mu2)]">${item.changes.msrp.old}</span>
+                        )}
+                        <span className={item.changes.msrp.old !== item.changes.msrp.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>${item.changes.msrp.new}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase text-[var(--mu2)]">MF</span>
+                      <div className="flex items-center gap-2">
+                        {item.changes.mf.old !== item.changes.mf.new && (
+                          <span className="line-through text-[var(--mu2)]">{item.changes.mf.old}</span>
+                        )}
+                        <span className={item.changes.mf.old !== item.changes.mf.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>{item.changes.mf.new}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase text-[var(--mu2)]">RV</span>
+                      <div className="flex items-center gap-2">
+                        {item.changes.rv.old !== item.changes.rv.new && (
+                          <span className="line-through text-[var(--mu2)]">{item.changes.rv.old}</span>
+                        )}
+                        <span className={item.changes.rv.old !== item.changes.rv.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>{item.changes.rv.new}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase text-[var(--mu2)]">APR</span>
+                      <div className="flex items-center gap-2">
+                        {item.changes.apr.old !== item.changes.apr.new && (
+                          <span className="line-through text-[var(--mu2)]">{item.changes.apr.old}%</span>
+                        )}
+                        <span className={item.changes.apr.old !== item.changes.apr.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>{item.changes.apr.new}%</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase text-[var(--mu2)]">Rebates</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--lime)] font-bold">${item.changes.rebates.new}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-6 flex justify-end">
+              <button 
+                onClick={() => setSyncReport(null)}
+                className="px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] bg-[var(--lime)] text-[var(--bg)] hover:scale-105 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
 

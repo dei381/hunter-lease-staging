@@ -250,17 +250,33 @@ router.post('/quote', async (req, res) => {
     // 5. Calculate Math for all programs
     const msrpCents = body.msrp ? body.msrp * 100 : vehicle.msrpCents;
     const results = bankPrograms.map(bankProgram => {
-      const bankRebatesCents = (bankProgram.rebates || 0) * 100;
-      const combinedRebatesCents = bankRebatesCents + totalRebatesCents;
+      // bankProgram.rebates is already stored in cents in the database
+      const bankRebatesCents = bankProgram.rebates || 0;
+      const leaseCashCents = (quoteType === 'LEASE' && body.leaseCash) ? body.leaseCash * 100 : 0;
+      const combinedRebatesCents = bankRebatesCents + totalRebatesCents + leaseCashCents;
       const sellingPriceCents = msrpCents + adjustmentAmountCents - combinedRebatesCents;
       let finalPaymentCents = 0;
       let residualValueCents = 0;
       let totalFeesCents = acqFeeCents + docFeeCents + dmvFeeCents + brokerFeeCents;
 
-      let mf = bankProgram.mf || 0;
-      let apr = bankProgram.apr || 0;
+      let parsedMf = body.mf !== undefined ? parseFloat(String(body.mf)) : undefined;
+      let parsedApr = body.apr !== undefined ? parseFloat(String(body.apr)) : undefined;
+      let parsedRv = body.rv !== undefined ? parseFloat(String(body.rv).replace('%', '')) : undefined;
+      if (parsedRv !== undefined && parsedRv > 1) parsedRv = parsedRv / 100;
 
-      if (queryTier) {
+      let mf = parsedMf !== undefined ? parsedMf : (bankProgram.mf || 0);
+      let apr = parsedApr !== undefined ? parsedApr : (bankProgram.apr || 0);
+      let rv = parsedRv !== undefined ? parsedRv : (bankProgram.rv || 0);
+
+      if (parsedRv !== undefined) {
+        // Adjust for mileage if using body.rv
+        if (mileage === 12000) rv -= 0.01;
+        else if (mileage === 15000) rv -= 0.03;
+        else if (mileage === 20000) rv -= 0.05;
+        else if (mileage === 7500) rv += 0.01;
+      }
+
+      if (queryTier && !body.usedTiersData) {
         if (queryTier === 't2') { mf *= 1.1; apr += 1.0; }
         else if (queryTier === 't3') { mf *= 1.2; apr += 2.5; }
         else if (queryTier === 't4') { mf *= 1.35; apr += 4.5; }
@@ -269,7 +285,7 @@ router.post('/quote', async (req, res) => {
       }
 
       if (quoteType === 'LEASE') {
-        const rvPercent = (bankProgram.rv || 0) > 1 ? (bankProgram.rv || 0) / 100 : (bankProgram.rv || 0);
+        const rvPercent = rv > 1 ? rv / 100 : rv;
         const leaseResult = LeaseCalculationEngine.calculate({
           msrpCents: msrpCents,
           sellingPriceCents,
@@ -311,7 +327,10 @@ router.post('/quote', async (req, res) => {
         sellingPriceCents,
         residualValueCents,
         totalFeesCents,
-        combinedRebatesCents
+        combinedRebatesCents,
+        mf,
+        apr,
+        rv
       };
     });
 
@@ -352,9 +371,9 @@ router.post('/quote', async (req, res) => {
           mileage: quoteType === 'LEASE' ? mileage : null,
           msrp: vehicle.msrpCents,
           sellingPrice: bestResult.sellingPriceCents,
-          mf: bestResult.bankProgram.mf,
-          apr: bestResult.bankProgram.apr,
-          residual: bestResult.bankProgram.rv,
+          mf: bestResult.mf,
+          apr: bestResult.apr,
+          residual: bestResult.rv,
           rebatesCents: bestResult.combinedRebatesCents,
           dealerAdjustment: adjustmentAmountCents,
           fees: {

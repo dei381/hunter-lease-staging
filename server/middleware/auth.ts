@@ -11,7 +11,10 @@ export const adminAuth = (req: Request, res: Response, next: NextFunction) => {
 
   const secretToUse = adminSecret || (process.env.NODE_ENV === 'production' ? null : 'default_dev_secret');
 
+  console.log(`adminAuth: authHeader=${authHeader}, secretToUse=${secretToUse}`);
+
   if (!authHeader || !secretToUse || authHeader !== `Bearer ${secretToUse}`) {
+    console.log(`adminAuth: Unauthorized access!`);
     return res.status(401).json({ error: 'Unauthorized access' });
   }
   next();
