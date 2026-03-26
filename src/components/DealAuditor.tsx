@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { ShieldAlert, FileText, Search, AlertTriangle, CheckCircle, Loader2, UploadCloud } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -42,33 +41,21 @@ export const DealAuditor: React.FC = () => {
     setError(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
       const imagePart = await fileToPart(file);
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              imagePart as any,
-              { text: `Analyze this car dealer offer/contract. 
-              1. Identify the MSRP, Selling Price, and all fees (Doc fee, Acquisition fee, Registration, etc.).
-              2. Look for hidden markups or unnecessary add-ons (Paint protection, VIN etching, nitrogen tires, etc.).
-              3. Compare the Money Factor/APR if visible to market averages.
-              4. Provide a clear summary: Is this a good deal or are there hidden markups?
-              5. Give a recommendation on what the user should negotiate.
-              6. Generate a 0-100 "Deal Score" where 100 is a perfect wholesale deal and 0 is a total rip-off.
-              7. Provide a word-for-word "Negotiation Script" the user can copy-paste to email the dealer.
-              
-              Respond in ${language === 'ru' ? 'Russian' : 'English'}. 
-              Use Markdown for the main analysis. 
-              Crucially, include the Deal Score at the very beginning of your response in the format: [SCORE: XX].` }
-            ]
-          }
-        ]
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagePart,
+          language
+        })
       });
 
-      setResult(response.text || 'Could not analyze the document.');
+      if (!res.ok) throw new Error('Audit failed');
+      const data = await res.json();
+
+      setResult(data.text || 'Could not analyze the document.');
     } catch (err) {
       console.error('Audit error:', err);
       setError('Failed to analyze the document. Please make sure it is a clear image or PDF.');

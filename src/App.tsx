@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import { SEO } from './components/SEO';
 import { Calculator } from './components/Calculator';
 import { DealsGrid } from './components/DealsGrid';
 import { LeadStatus } from './components/LeadStatus';
@@ -27,14 +28,20 @@ import { Footer } from './components/Footer';
 import { FeedbackWidget } from './components/FeedbackWidget';
 import { AdminDashboard } from './components/AdminDashboard';
 import { DealsPage } from './pages/DealsPage';
+import { ComparePage } from './pages/ComparePage';
 import { DealPage } from './pages/DealPage';
 import { BlogPage } from './pages/BlogPage';
+import { BlogPost } from './pages/BlogPost';
+import { GlossaryPage } from './pages/GlossaryPage';
+import { AboutPage } from './pages/AboutPage';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsConditions } from './pages/TermsConditions';
-import { BrokerDisclosure } from './pages/BrokerDisclosure';
+import { LegalDisclosure } from './pages/LegalDisclosure';
 import { AccessibilityStatement } from './pages/AccessibilityStatement';
 import { FinishSignUp } from './pages/FinishSignUp';
 import { Dashboard } from './pages/Dashboard';
+import { DealerPortal } from './pages/DealerPortal';
+import { LeaseTransfersPage } from './pages/LeaseTransfersPage';
 import { SavedDealsPage } from './pages/SavedDealsPage';
 import { AuthModal } from './components/AuthModal';
 import { ExpertChat } from './components/ExpertChat';
@@ -252,35 +259,22 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] selection:bg-[var(--lime)] selection:text-black">
-      <Helmet>
-        <title>Hunter Lease — Best Car Deals in Los Angeles</title>
-        <meta name="description" content="AI dealer monitoring in LA and transparent lease/finance calculations. Get the best car lease deals with no markup." />
-        <meta property="og:title" content="Hunter Lease — Best Car Deals in Los Angeles" />
-        <meta property="og:description" content="AI dealer monitoring in LA and transparent lease/finance calculations. Get the best car lease deals with no markup." />
-        <meta property="og:image" content="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=1200&h=630" />
-        <meta property="og:type" content="website" />
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            "name": "Hunter Lease",
-            "url": "https://hunterlease.com",
-            "logo": "https://hunterlease.com/logo.png",
-            "contactPoint": {
-              "@type": "ContactPoint",
-              "telephone": "+1-213-555-0123",
-              "contactType": "customer service",
-              "areaServed": "US",
-              "availableLanguage": ["en", "ru"]
-            },
-            "sameAs": [
-              "https://www.facebook.com/hunterlease",
-              "https://www.instagram.com/hunterlease",
-              "https://www.twitter.com/hunterlease"
-            ]
-          })}
-        </script>
-      </Helmet>
+      <SEO 
+        title="Hunter Lease | The Marketplace for Pre-Negotiated Car Leases"
+        description="Skip the dealership. Browse pre-negotiated new car lease deals, customize your payment online, and secure your vehicle with zero hidden markups."
+        ogImage="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=1200&h=630"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "name": "Hunter Lease",
+          "url": "https://hunterlease.com",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://hunterlease.com/deals?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        }}
+      />
       <main className="max-w-7xl mx-auto px-6 py-12 pb-32">
         {/* Hero Section */}
         <div className="grid lg:grid-cols-[1.2fr,0.8fr] gap-16 mb-32 items-center pt-12">
@@ -308,14 +302,14 @@ function MainApp() {
             </div>
 
             <div className="flex flex-wrap gap-4">
-              <button onClick={() => scrollToSection('calc')} className="group bg-[var(--lime)] text-white font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
+              <button onClick={() => navigate('/deals')} className="group bg-[var(--lime)] text-white font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
                 <div className="flex items-center gap-2">
                   <span>{t.hero.btnCalc}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </div>
                 <span className="text-[10px] font-sans font-bold uppercase opacity-70 mt-1">{t.hero.btnCalcSub}</span>
               </button>
-              <button onClick={() => navigate('/deals')} className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:border-[var(--b3)] transition-all flex flex-col items-center justify-center w-full sm:w-auto">
+              <button onClick={() => scrollToSection('how-it-works')} className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:border-[var(--b3)] transition-all flex flex-col items-center justify-center w-full sm:w-auto">
                 <span>{t.hero.btnDeals}</span>
                 <span className="text-[10px] font-sans font-normal text-[var(--mu2)] mt-1">{t.hero.btnDealsSub}</span>
               </button>
@@ -554,7 +548,7 @@ function MainApp() {
 
         <div className="mt-32 text-center space-y-8">
           <h2 className="font-display text-5xl md:text-6xl tracking-tight">{t.cta.title}</h2>
-          <button onClick={() => scrollToSection('calc')} className="bg-[var(--lime)] text-white font-display text-2xl tracking-widest px-12 py-6 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-2xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center mx-auto">
+          <button onClick={() => navigate('/deals')} className="bg-[var(--lime)] text-white font-display text-2xl tracking-widest px-12 py-6 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-2xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center mx-auto">
             <span>{t.hero.btnCalc}</span>
             <span className="text-xs font-sans font-bold uppercase opacity-70 mt-2">{t.hero.btnCalcSub}</span>
           </button>
@@ -708,6 +702,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const navLinks = [
     { to: '/#calc', label: t.nav.calculator, id: 'calc' },
     { to: '/deals', label: t.nav.dealsCatalog },
+    { to: '/lease-transfers', label: t.nav.leaseTransfers },
     { to: '/saved', label: t.nav.savedDeals },
     { to: '/blog', label: t.nav.blog },
     ...(user ? [{ to: '/dashboard', label: t.nav.dashboard }] : []),
@@ -771,13 +766,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <div className="flex items-center bg-[var(--s2)] rounded-lg p-0.5 border border-[var(--b2)] ml-2">
               <button 
                 onClick={() => setLanguage('en')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--w)] text-black' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--s1)] text-[var(--w)] border border-[var(--b2)]' : 'text-[var(--mu2)] hover:text-[var(--w)] border border-transparent'}`}
               >
                 EN
               </button>
               <button 
                 onClick={() => setLanguage('ru')}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--w)] text-black' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--s1)] text-[var(--w)] border border-[var(--b2)]' : 'text-[var(--mu2)] hover:text-[var(--w)] border border-transparent'}`}
               >
                 RU
               </button>
@@ -825,13 +820,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 <div className="flex items-center bg-[var(--s2)] rounded-lg p-0.5 border border-[var(--b2)]">
                   <button 
                     onClick={() => setLanguage('en')}
-                    className={`px-4 py-2 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--w)] text-white' : 'text-[var(--mu2)]'}`}
+                    className={`px-4 py-2 text-[10px] font-bold rounded-md transition-colors ${language === 'en' ? 'bg-[var(--s1)] text-[var(--w)] border border-[var(--b2)]' : 'text-[var(--mu2)] border border-transparent'}`}
                   >
                     ENGLISH
                   </button>
                   <button 
                     onClick={() => setLanguage('ru')}
-                    className={`px-4 py-2 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--w)] text-white' : 'text-[var(--mu2)]'}`}
+                    className={`px-4 py-2 text-[10px] font-bold rounded-md transition-colors ${language === 'ru' ? 'bg-[var(--s1)] text-[var(--w)] border border-[var(--b2)]' : 'text-[var(--mu2)] border border-transparent'}`}
                   >
                     РУССКИЙ
                   </button>
@@ -870,16 +865,22 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Layout><MainApp /></Layout>} />
         <Route path="/deals" element={<Layout><DealsPage /></Layout>} />
+        <Route path="/lease-transfers" element={<Layout><LeaseTransfersPage /></Layout>} />
+        <Route path="/compare" element={<Layout><ComparePage /></Layout>} />
         <Route path="/deal/:id" element={<Layout><DealPage /></Layout>} />
         <Route path="/saved" element={<Layout><SavedDealsPage /></Layout>} />
         <Route path="/blog" element={<Layout><BlogPage /></Layout>} />
+        <Route path="/blog/:id" element={<Layout><BlogPost /></Layout>} />
+        <Route path="/glossary" element={<Layout><GlossaryPage /></Layout>} />
+        <Route path="/about" element={<Layout><AboutPage /></Layout>} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/privacy" element={<Layout><PrivacyPolicy /></Layout>} />
         <Route path="/terms" element={<Layout><TermsConditions /></Layout>} />
-        <Route path="/broker-disclosure" element={<Layout><BrokerDisclosure /></Layout>} />
+        <Route path="/legal-disclosure" element={<Layout><LegalDisclosure /></Layout>} />
         <Route path="/accessibility" element={<Layout><AccessibilityStatement /></Layout>} />
         <Route path="/finish-sign-up" element={<Layout><FinishSignUp /></Layout>} />
         <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+        <Route path="/dealer" element={<Layout><DealerPortal /></Layout>} />
       </Routes>
     </ErrorBoundary>
   );

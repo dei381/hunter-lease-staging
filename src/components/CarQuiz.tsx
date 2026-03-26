@@ -301,7 +301,7 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
                       <div className="mt-auto pt-4 border-t border-[var(--b2)] flex items-end justify-between">
                         <div>
                           <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest mb-1">Est. Payment</div>
-                          <div className="font-display text-2xl text-[var(--lime)]">${Math.round(deal.payment + (settings.brokerFee / parseInt(deal.term || '36')))}<span className="text-sm text-[var(--mu2)]">/mo</span></div>
+                          <div className="font-display text-2xl text-[var(--lime)]">${Math.round(deal.payment)}<span className="text-sm text-[var(--mu2)]">/mo</span></div>
                         </div>
                         <button 
                           onClick={() => onSelect(deal)}

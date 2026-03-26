@@ -4,6 +4,82 @@ import db from '../lib/db';
 
 const router = express.Router();
 
+// --- Bulk Updates ---
+router.post('/bulk-update', adminAuth, async (req, res) => {
+  try {
+    const { filters, updates } = req.body;
+    
+    let updatedProgramsCount = 0;
+
+    // 1. Update Bank Programs (RV and MF)
+    if (updates.rvAdjustment || updates.mfAdjustment) {
+      const activeBatch = await db.programBatch.findFirst({
+        where: { status: 'ACTIVE' }
+      });
+
+      if (activeBatch) {
+        const whereClause: any = { batchId: activeBatch.id };
+        if (filters.make) whereClause.make = filters.make;
+        if (filters.model) whereClause.model = filters.model;
+        if (filters.year) whereClause.year = filters.year;
+        if (filters.trim) whereClause.trim = filters.trim;
+
+        const programsToUpdate = await db.bankProgram.findMany({ where: whereClause });
+        
+        for (const prog of programsToUpdate) {
+          const dataToUpdate: any = {};
+          if (updates.rvAdjustment && prog.rv !== null) {
+            dataToUpdate.rv = prog.rv + (updates.rvAdjustment / 100);
+          }
+          if (updates.mfAdjustment && prog.mf !== null) {
+            dataToUpdate.mf = prog.mf + updates.mfAdjustment;
+          }
+          
+          if (Object.keys(dataToUpdate).length > 0) {
+            await db.bankProgram.update({
+              where: { id: prog.id },
+              data: dataToUpdate
+            });
+            updatedProgramsCount++;
+          }
+        }
+      }
+    }
+
+    // 2. Add Incentive
+    if (updates.addIncentive) {
+      await db.oemIncentiveProgram.create({
+        data: {
+          name: updates.addIncentive.name,
+          amountCents: updates.addIncentive.amountCents,
+          type: updates.addIncentive.type,
+          dealApplicability: 'ALL',
+          make: filters.make || 'ALL',
+          model: filters.model || null,
+        }
+      });
+      updatedProgramsCount++; // Just count as an action
+    }
+
+    // 3. Add Dealer Discount
+    if (updates.dealerDiscount) {
+      await db.dealerAdjustment.create({
+        data: {
+          make: filters.make || null,
+          model: filters.model || null,
+          trim: filters.trim || null,
+          amount: -Math.abs(updates.dealerDiscount * 100),
+        }
+      });
+      updatedProgramsCount++;
+    }
+
+    res.json({ success: true, updatedProgramsCount });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- Lenders ---
 router.get('/lenders', adminAuth, async (req, res) => {
   try {

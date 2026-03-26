@@ -106,6 +106,33 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["vin", "make", "model", "year", "updatedAt"]
+    },
+    "BlogPost": {
+      "title": "BlogPost",
+      "description": "A blog post.",
+      "type": "object",
+      "properties": {
+        "title_en": { "type": "string" },
+        "title_ru": { "type": "string" },
+        "excerpt_en": { "type": "string" },
+        "excerpt_ru": { "type": "string" },
+        "content_en": { "type": "string" },
+        "content_ru": { "type": "string" },
+        "date": { "type": "string" },
+        "author": { "type": "string" },
+        "authorRole_en": { "type": "string" },
+        "authorRole_ru": { "type": "string" },
+        "authorImage": { "type": "string" },
+        "readTime_en": { "type": "string" },
+        "readTime_ru": { "type": "string" },
+        "category_en": { "type": "string" },
+        "category_ru": { "type": "string" },
+        "image": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title_en", "title_ru", "content_en", "content_ru", "createdAt"]
     }
   },
   "firestore": {
@@ -140,6 +167,10 @@
     "visits": {
       "schema": "object",
       "description": "Analytics data for site visits."
+    },
+    "blogPosts": {
+      "schema": { "$ref": "#/entities/BlogPost" },
+      "description": "Collection of blog posts."
     }
   }
 }

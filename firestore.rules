@@ -147,6 +147,29 @@ service cloud.firestore {
              (data.updatedAt is string || data.updatedAt is timestamp);
     }
 
+    function isValidBlogPost(data) {
+      return data.keys().hasAll(['title_en', 'title_ru', 'content_en', 'content_ru', 'createdAt']) &&
+             data.title_en is string && data.title_en.size() > 0 && data.title_en.size() < 200 &&
+             data.title_ru is string && data.title_ru.size() > 0 && data.title_ru.size() < 200 &&
+             data.content_en is string && data.content_en.size() > 0 && data.content_en.size() < 100000 &&
+             data.content_ru is string && data.content_ru.size() > 0 && data.content_ru.size() < 100000 &&
+             (!('excerpt_en' in data) || (data.excerpt_en is string && data.excerpt_en.size() < 1000)) &&
+             (!('excerpt_ru' in data) || (data.excerpt_ru is string && data.excerpt_ru.size() < 1000)) &&
+             (!('date' in data) || (data.date is string && data.date.size() < 50)) &&
+             (!('author' in data) || (data.author is string && data.author.size() < 100)) &&
+             (!('authorRole_en' in data) || (data.authorRole_en is string && data.authorRole_en.size() < 100)) &&
+             (!('authorRole_ru' in data) || (data.authorRole_ru is string && data.authorRole_ru.size() < 100)) &&
+             (!('authorImage' in data) || (data.authorImage is string && data.authorImage.size() < 1000)) &&
+             (!('readTime_en' in data) || (data.readTime_en is string && data.readTime_en.size() < 50)) &&
+             (!('readTime_ru' in data) || (data.readTime_ru is string && data.readTime_ru.size() < 50)) &&
+             (!('category_en' in data) || (data.category_en is string && data.category_en.size() < 100)) &&
+             (!('category_ru' in data) || (data.category_ru is string && data.category_ru.size() < 100)) &&
+             (!('image' in data) || (data.image is string && data.image.size() < 1000)) &&
+             (!('featured' in data) || data.featured is bool) &&
+             data.createdAt is timestamp &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -249,6 +272,13 @@ service cloud.firestore {
                        request.resource.data.eventName is string &&
                        request.resource.data.timestamp is timestamp;
       allow update, delete: if isAdmin();
+    }
+
+    match /blogPosts/{id} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidBlogPost(request.resource.data);
+      allow update: if isAdmin() && isValidBlogPost(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
     }
   }
 }

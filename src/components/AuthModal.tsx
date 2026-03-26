@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, ArrowRight } from 'lucide-react';
 import { auth, googleProvider, appleProvider, sendSignInLinkToEmail } from '../firebase';
@@ -60,7 +59,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <AnimatePresence>
-      {isOpen && createPortal(
+      {isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
@@ -152,8 +151,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               </form>
             )}
           </motion.div>
-        </div>,
-        document.body
+        </div>
       )}
     </AnimatePresence>
   );

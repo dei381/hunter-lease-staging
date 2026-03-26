@@ -291,12 +291,12 @@ const generateDeals = (): Deal[] => {
       model.trims.forEach(trim => {
         const msrp = trim.msrp;
         const savings = Math.round(msrp * 0.06); // 6% average discount
-        const leaseCash = trim.leaseCash || 0;
+        const leaseCash = trim.leaseCash || 1500; // Ensure at least $1500 lease cash
         const down = 3000;
         const fee = 650;
         const term = 36;
-        const mf = trim.mf;
-        const rv = trim.rv36;
+        const mf = trim.mf || 0.002;
+        const rv = trim.rv36 || 0.60;
 
         // Lease calculation
         const netCap = msrp - savings - leaseCash - down + fee;

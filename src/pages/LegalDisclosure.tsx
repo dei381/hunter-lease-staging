@@ -2,7 +2,7 @@ import React from 'react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
-export const BrokerDisclosure = () => {
+export const LegalDisclosure = () => {
   const { language } = useLanguageStore();
   const t = translations[language].legal;
 
@@ -13,7 +13,7 @@ export const BrokerDisclosure = () => {
       <div className="space-y-6">
         <p>{t.brokerText}</p>
         <h2 className="text-xl font-bold text-[var(--w)]">California Vehicle Code Section 11713.26</h2>
-        <p>As a licensed vehicle leasing broker, we are required to provide you with a written disclosure that includes the following information:</p>
+        <p>As a licensed vehicle leasing platform, we are required to provide you with a written disclosure that includes the following information:</p>
         <ul className="list-disc pl-6 space-y-4">
           <li>
             <strong className="text-[var(--w)]">1. Independent Status:</strong> Hunter Lease is not a franchised new motor vehicle dealer and does not represent any specific manufacturer.

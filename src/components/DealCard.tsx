@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Scale, Info, ArrowRight } from 'lucide-react';
+import { Heart, Scale, Info, ArrowRight, Star } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { cn } from '../utils/cn';
+import { getCarImage, CarPhoto } from '../utils/carImage';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
@@ -16,6 +17,14 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
   const { toggleDeal, isSaved, addToCompare, removeFromCompare, isInCompare } = useGarageStore();
   const t = translations[language].deals;
   const tcalc = translations[language].calc;
+  const [photos, setPhotos] = useState<CarPhoto[]>([]);
+
+  useEffect(() => {
+    fetch('/api/car-photos')
+      .then(res => res.json())
+      .then(data => setPhotos(data || []))
+      .catch(err => console.error('Failed to fetch car photos:', err));
+  }, []);
 
   return (
     <div 
@@ -34,9 +43,9 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
       {deal.hot && <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--lime)] to-[var(--teal)]" />}
       
       <div className="relative h-48 overflow-hidden group">
-        {deal.image ? (
+        {deal.image || getCarImage(photos, deal.make, deal.model, deal.year) ? (
           <img 
-            src={deal.image} 
+            src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} 
             alt={`${deal.make} ${deal.model}`} 
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
             referrerPolicy="no-referrer" 
@@ -64,6 +73,10 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
               ⚡ {t.evBadge}
             </span>
           )}
+          <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-black/60 text-white backdrop-blur-md border border-white/10">
+            <Star size={10} className="fill-[var(--lime)] text-[var(--lime)]" />
+            <span>4.8</span>
+          </div>
         </div>
 
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
@@ -122,12 +135,6 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
         </div>
         <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
           {tcalc.msrp}: <span className="text-[var(--w)] font-mono">{fmt(deal.msrp || 0)}</span>
-          <div className="group relative">
-            <Info size={10} className="text-[var(--lime)] opacity-50 cursor-help" />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 text-[10px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center normal-case">
-              {language === 'ru' ? 'MSRP включает стоимость доставки до дилера' : 'MSRP includes destination and delivery fees'}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -136,7 +143,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
           <div>
             <div className="text-[8px] font-bold text-[var(--mu)] uppercase tracking-widest mb-1">{t.monthly}</div>
             <div className="font-display text-5xl text-[var(--lime)] leading-none mb-2">
-              {fmt(((deal.displayPayment || deal.payment || 0) + (settings?.brokerFee ? (settings.brokerFee / parseInt(deal.displayTerm || deal.term || '36')) : 0)))}
+              {fmt(deal.displayPayment || deal.payment || 0)}
             </div>
             
             {effectiveFTB && (
@@ -149,15 +156,15 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
             <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-xl p-3 space-y-2 mb-4">
               <div className="flex justify-between items-center text-[8px]">
                 <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{tcalc.opportunityCost}</span>
-                <span className="text-[var(--mu2)] line-through font-mono">{fmt(((deal.displayPayment || deal.payment || 0) + (settings?.brokerFee ? (settings.brokerFee / parseInt(deal.displayTerm || deal.term || '36')) : 0)) * 1.267)}</span>
+                <span className="text-[var(--mu2)] line-through font-mono">{fmt((deal.displayPayment || deal.payment || 0) * 1.267)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[8px] text-[var(--w)] uppercase font-bold tracking-widest">{tcalc.hunterPrice}</span>
-                <span className="text-lg font-display text-[var(--w)]">{fmt(((deal.displayPayment || deal.payment || 0) + (settings?.brokerFee ? (settings.brokerFee / parseInt(deal.displayTerm || deal.term || '36')) : 0)))}</span>
+                <span className="text-lg font-display text-[var(--w)]">{fmt(deal.displayPayment || deal.payment || 0)}</span>
               </div>
               <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
                 <span className="text-[8px] text-[var(--lime)] uppercase font-bold tracking-widest">{tcalc.avoidableMarkup}</span>
-                <span className="text-sm font-display text-[var(--lime)]">{fmt((((deal.displayPayment || deal.payment || 0) + (settings?.brokerFee ? (settings.brokerFee / parseInt(deal.displayTerm || deal.term || '36')) : 0)) * 0.267) * parseInt(deal.displayTerm || deal.term || '36'))}</span>
+                <span className="text-sm font-display text-[var(--lime)]">{fmt(((deal.displayPayment || deal.payment || 0) * 0.267) * parseInt(deal.displayTerm || deal.term || '36'))}</span>
               </div>
             </div>
           </div>

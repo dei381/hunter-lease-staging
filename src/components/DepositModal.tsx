@@ -331,7 +331,7 @@ export const DepositModal = ({
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-display text-4xl">{t.depositTitle}</h2>
                   <div className="bg-[var(--lime)] text-white px-4 py-2 rounded-xl font-display text-2xl tracking-widest shadow-lg shadow-[var(--lime)]/20">
-                    {pt.standardPrice}
+                    $95
                   </div>
                 </div>
                 <p className="text-[var(--mu2)] text-base mb-8">{t.depositDesc}</p>

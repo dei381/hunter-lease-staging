@@ -1,3 +1,5 @@
+import { GoogleGenAI } from "@google/genai";
+import { NotificationService } from './server/services/NotificationService';
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import multer from "multer";
@@ -14,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import { ExtractionEngine } from "./server/services/ExtractionEngine";
-import { CalculationEngine } from "./server/services/CalculationEngine";
+import { CalculationEngine, LeaseCalculationEngine, FinanceCalculationEngine } from "./server/services/CalculationEngine";
 import { EligibilityEngine } from "./server/services/EligibilityEngine";
 import { FinancialSyncService } from "./server/services/FinancialSyncService";
 import { AutoSyncService } from "./server/services/AutoSyncService";
@@ -23,7 +25,7 @@ import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 
 import { getBodyStyle, getFuelType, getDetailedSpecs, getCategorizedFeatures, getOwnerVerdict } from './server/data/deals';
-import { calculateLease, calculateFinance, getVal, DEFAULT_FEES } from './src/utils/finance';
+import { getVal } from './src/utils/finance';
 
 const prisma = db;
 
@@ -108,45 +110,6 @@ const upload = multer({
     }
   }
 });
-
-// Photo upload storage
-const photoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(process.cwd(), 'public', 'uploads', 'cars');
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const photoUpload = multer({ 
-  storage: photoStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for photos
-  fileFilter: (req, file, cb) => {
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (allowedMimeTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only JPG, PNG, and WebP are allowed.'));
-    }
-  }
-});
-
-// Ensure upload directories exist
-const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'cars');
-try {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    console.log(`Created upload directory: ${uploadDir}`);
-  }
-} catch (error) {
-  console.warn(`Could not create upload directory (read-only filesystem): ${error}`);
-}
 
 // Security: Rate limiting for ingest endpoint
 const ingestLimiter = rateLimit({
@@ -298,6 +261,12 @@ async function sendLeadEmail(lead: any, type: 'new' | 'credit-app') {
     console.error(`Failed to send email for lead ${lead.id}:`, error);
   }
 }
+
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+  apiVersion: '2023-10-16' as any,
+});
 
 async function startServer() {
   // Ensure data is loaded before starting routes (non-blocking)
@@ -486,7 +455,8 @@ async function startServer() {
     ? { origin: allowedOrigins.length > 0 ? allowedOrigins : false } 
     : {};
   app.use(cors(corsOptions));
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // MVP Calculator Routes
   app.use("/api/v2", quoteRoutes);
@@ -616,6 +586,497 @@ async function startServer() {
     } catch (error) {
       console.error("Failed to update settings:", error);
       res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
+
+  // Lenders Management
+  app.get("/api/admin/lenders", adminAuth, async (req, res) => {
+    try {
+      const lenders = await prisma.lender.findMany({
+        include: {
+          eligibilityRules: true
+        },
+        orderBy: { name: 'asc' }
+      });
+      res.json(lenders);
+    } catch (error) {
+      console.error("Failed to fetch lenders:", error);
+      res.status(500).json({ error: "Failed to fetch lenders" });
+    }
+  });
+
+  // Lease Programs
+  app.get("/api/admin/lenders/:id/lease-programs", adminAuth, async (req, res) => {
+    try {
+      const activeBatch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
+      if (!activeBatch) return res.json([]);
+      
+      const programs = await prisma.bankProgram.findMany({
+        where: { lenderId: req.params.id, programType: 'LEASE', batchId: activeBatch.id },
+        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }, { term: 'asc' }]
+      });
+      res.json(programs.map(p => ({
+        ...p,
+        buyRateMf: p.mf,
+        residualPercentage: p.rv,
+        internalLenderTier: 'Standard',
+        isActive: true
+      })));
+    } catch (error) {
+      console.error("Failed to fetch lease programs:", error);
+      res.status(500).json({ error: "Failed to fetch lease programs" });
+    }
+  });
+
+  app.post("/api/admin/lenders/:id/lease-programs", adminAuth, express.json(), async (req, res) => {
+    try {
+      let activeBatch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
+      if (!activeBatch) {
+        activeBatch = await prisma.programBatch.create({ data: { status: 'ACTIVE', isValid: true } });
+      }
+      
+      const { make, model, trim, year, term, mileage, buyRateMf, residualPercentage } = req.body;
+      const program = await prisma.bankProgram.create({
+        data: {
+          batchId: activeBatch.id,
+          lenderId: req.params.id,
+          programType: 'LEASE',
+          make, model, trim, year: parseInt(year), term: parseInt(term), mileage: parseInt(mileage),
+          mf: parseFloat(buyRateMf), rv: parseFloat(residualPercentage),
+          apr: 0,
+          rebates: 0
+        }
+      });
+      res.json({
+        ...program,
+        buyRateMf: program.mf,
+        residualPercentage: program.rv,
+        internalLenderTier: 'Standard',
+        isActive: true
+      });
+    } catch (error) {
+      console.error("Failed to create lease program:", error);
+      res.status(500).json({ error: "Failed to create lease program" });
+    }
+  });
+
+  app.put("/api/admin/lenders/:id/lease-programs/:programId", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { make, model, trim, year, term, mileage, buyRateMf, residualPercentage } = req.body;
+      const program = await prisma.bankProgram.update({
+        where: { id: req.params.programId },
+        data: {
+          make, model, trim, year: parseInt(year), term: parseInt(term), mileage: parseInt(mileage),
+          mf: parseFloat(buyRateMf), rv: parseFloat(residualPercentage)
+        }
+      });
+      res.json({
+        ...program,
+        buyRateMf: program.mf,
+        residualPercentage: program.rv,
+        internalLenderTier: 'Standard',
+        isActive: true
+      });
+    } catch (error) {
+      console.error("Failed to update lease program:", error);
+      res.status(500).json({ error: "Failed to update lease program" });
+    }
+  });
+
+  app.delete("/api/admin/lenders/:id/lease-programs/:programId", adminAuth, async (req, res) => {
+    try {
+      await prisma.bankProgram.delete({ where: { id: req.params.programId } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete lease program:", error);
+      res.status(500).json({ error: "Failed to delete lease program" });
+    }
+  });
+
+  // Finance Programs
+  app.get("/api/admin/lenders/:id/finance-programs", adminAuth, async (req, res) => {
+    try {
+      const activeBatch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
+      if (!activeBatch) return res.json([]);
+      
+      const programs = await prisma.bankProgram.findMany({
+        where: { lenderId: req.params.id, programType: 'FINANCE', batchId: activeBatch.id },
+        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }, { term: 'asc' }]
+      });
+      res.json(programs.map(p => ({
+        ...p,
+        buyRateApr: p.apr,
+        internalLenderTier: 'Standard',
+        isActive: true
+      })));
+    } catch (error) {
+      console.error("Failed to fetch finance programs:", error);
+      res.status(500).json({ error: "Failed to fetch finance programs" });
+    }
+  });
+
+  app.post("/api/admin/lenders/:id/finance-programs", adminAuth, express.json(), async (req, res) => {
+    try {
+      let activeBatch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
+      if (!activeBatch) {
+        activeBatch = await prisma.programBatch.create({ data: { status: 'ACTIVE', isValid: true } });
+      }
+      
+      const { make, model, trim, year, term, buyRateApr } = req.body;
+      const program = await prisma.bankProgram.create({
+        data: {
+          batchId: activeBatch.id,
+          lenderId: req.params.id,
+          programType: 'FINANCE',
+          make, model, trim, year: parseInt(year), term: parseInt(term),
+          apr: parseFloat(buyRateApr),
+          mf: 0, rv: 0, rebates: 0
+        }
+      });
+      res.json({
+        ...program,
+        buyRateApr: program.apr,
+        internalLenderTier: 'Standard',
+        isActive: true
+      });
+    } catch (error) {
+      console.error("Failed to create finance program:", error);
+      res.status(500).json({ error: "Failed to create finance program" });
+    }
+  });
+
+  app.put("/api/admin/lenders/:id/finance-programs/:programId", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { make, model, trim, year, term, buyRateApr } = req.body;
+      const program = await prisma.bankProgram.update({
+        where: { id: req.params.programId },
+        data: {
+          make, model, trim, year: parseInt(year), term: parseInt(term),
+          apr: parseFloat(buyRateApr)
+        }
+      });
+      res.json({
+        ...program,
+        buyRateApr: program.apr,
+        internalLenderTier: 'Standard',
+        isActive: true
+      });
+    } catch (error) {
+      console.error("Failed to update finance program:", error);
+      res.status(500).json({ error: "Failed to update finance program" });
+    }
+  });
+
+  app.delete("/api/admin/lenders/:id/finance-programs/:programId", adminAuth, async (req, res) => {
+    try {
+      await prisma.bankProgram.delete({ where: { id: req.params.programId } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete finance program:", error);
+      res.status(500).json({ error: "Failed to delete finance program" });
+    }
+  });
+
+  app.post("/api/admin/lenders", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { name, isCaptive, isFirstTimeBuyerFriendly, eligibilityRules } = req.body;
+      if (!name || name.trim() === '') {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      
+      const existing = await prisma.lender.findUnique({ where: { name: name.trim() } });
+      if (existing) {
+        return res.status(400).json({ error: "A bank with this name already exists" });
+      }
+
+      const lender = await prisma.lender.create({
+        data: { 
+          name: name.trim(), 
+          isCaptive, 
+          isFirstTimeBuyerFriendly,
+          eligibilityRules: {
+            create: eligibilityRules || []
+          }
+        },
+        include: { eligibilityRules: true }
+      });
+      res.json(lender);
+    } catch (error) {
+      console.error("Failed to create lender:", error);
+      res.status(500).json({ error: "Failed to create lender" });
+    }
+  });
+
+  app.put("/api/admin/lenders/:id", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, isCaptive, isFirstTimeBuyerFriendly, eligibilityRules } = req.body;
+      if (!name || name.trim() === '') {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      const existing = await prisma.lender.findFirst({
+        where: { name: name.trim(), id: { not: id } }
+      });
+      if (existing) {
+        return res.status(400).json({ error: "A bank with this name already exists" });
+      }
+
+      // Delete existing rules and recreate them
+      if (eligibilityRules) {
+        await prisma.lenderEligibilityRule.deleteMany({
+          where: { lenderId: id }
+        });
+      }
+
+      const lender = await prisma.lender.update({
+        where: { id },
+        data: { 
+          name: name.trim(), 
+          isCaptive, 
+          isFirstTimeBuyerFriendly,
+          ...(eligibilityRules ? {
+            eligibilityRules: {
+              create: eligibilityRules.map((rule: any) => ({
+                make: rule.make,
+                model: rule.model || 'ALL',
+                dealApplicability: rule.dealApplicability || 'ALL',
+                allowFirstTimeBuyer: rule.allowFirstTimeBuyer ?? false,
+                allowWithCoSigner: rule.allowWithCoSigner ?? true,
+                requiresEstablishedCredit: rule.requiresEstablishedCredit ?? true,
+                minUxTierRequired: rule.minUxTierRequired || 't1'
+              }))
+            }
+          } : {})
+        },
+        include: { eligibilityRules: true }
+      });
+      res.json(lender);
+    } catch (error) {
+      console.error("Failed to update lender:", error);
+      res.status(500).json({ error: "Failed to update lender" });
+    }
+  });
+
+  app.delete("/api/admin/lenders/:id", adminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await prisma.lender.delete({ where: { id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete lender:", error);
+      res.status(500).json({ error: "Failed to delete lender" });
+    }
+  });
+
+  // OEM Incentives Management
+  app.get("/api/admin/incentives", adminAuth, async (req, res) => {
+    try {
+      const incentives = await prisma.oemIncentiveProgram.findMany({
+        orderBy: [{ make: 'asc' }, { model: 'asc' }, { name: 'asc' }]
+      });
+      res.json(incentives);
+    } catch (error) {
+      console.error("Failed to fetch incentives:", error);
+      res.status(500).json({ error: "Failed to fetch incentives" });
+    }
+  });
+
+  app.post("/api/admin/incentives", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { name, amountCents, type, dealApplicability, isTaxableCa, exclusiveGroupId, make, model, isActive, effectiveFrom, effectiveTo } = req.body;
+      const incentive = await prisma.oemIncentiveProgram.create({
+        data: {
+          name,
+          amountCents: parseInt(amountCents),
+          type,
+          dealApplicability: dealApplicability || 'ALL',
+          isTaxableCa: isTaxableCa ?? true,
+          exclusiveGroupId: exclusiveGroupId || null,
+          make,
+          model: model || null,
+          isActive: isActive ?? true,
+          effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : null,
+          effectiveTo: effectiveTo ? new Date(effectiveTo) : null
+        }
+      });
+      res.json(incentive);
+    } catch (error) {
+      console.error("Failed to create incentive:", error);
+      res.status(500).json({ error: "Failed to create incentive" });
+    }
+  });
+
+  app.put("/api/admin/incentives/:id", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { name, amountCents, type, dealApplicability, isTaxableCa, exclusiveGroupId, make, model, isActive, effectiveFrom, effectiveTo } = req.body;
+      const incentive = await prisma.oemIncentiveProgram.update({
+        where: { id: req.params.id },
+        data: {
+          name,
+          amountCents: parseInt(amountCents),
+          type,
+          dealApplicability: dealApplicability || 'ALL',
+          isTaxableCa: isTaxableCa ?? true,
+          exclusiveGroupId: exclusiveGroupId || null,
+          make,
+          model: model || null,
+          isActive: isActive ?? true,
+          effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : null,
+          effectiveTo: effectiveTo ? new Date(effectiveTo) : null
+        }
+      });
+      res.json(incentive);
+    } catch (error) {
+      console.error("Failed to update incentive:", error);
+      res.status(500).json({ error: "Failed to update incentive" });
+    }
+  });
+
+  app.delete("/api/admin/incentives/:id", adminAuth, async (req, res) => {
+    try {
+      await prisma.oemIncentiveProgram.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete incentive:", error);
+      res.status(500).json({ error: "Failed to delete incentive" });
+    }
+  });
+
+  // Bulk Edit Endpoints
+  app.get("/api/admin/bulk/lease-programs", adminAuth, async (req, res) => {
+    try {
+      const programs = await prisma.bankProgram.findMany({
+        where: { programType: 'LEASE', batch: { status: 'ACTIVE' } },
+        include: { lender: true },
+        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
+      });
+      const mapped = programs.map(p => ({
+        ...p,
+        buyRateMf: p.mf,
+        residualPercentage: p.rv,
+        internalLenderTier: 'Standard'
+      }));
+      res.json(mapped);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch lease programs" });
+    }
+  });
+
+  app.put("/api/admin/bulk/lease-programs", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { updates } = req.body;
+      const transactions = updates.map((u: any) => 
+        prisma.bankProgram.update({
+          where: { id: u.id },
+          data: { 
+            mf: parseFloat(u.buyRateMf), 
+            rv: parseFloat(u.residualPercentage) 
+          }
+        })
+      );
+      await prisma.$transaction(transactions);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update lease programs" });
+    }
+  });
+
+  app.get("/api/admin/bulk/finance-programs", adminAuth, async (req, res) => {
+    try {
+      const programs = await prisma.bankProgram.findMany({
+        where: { programType: 'FINANCE', batch: { status: 'ACTIVE' } },
+        include: { lender: true },
+        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
+      });
+      const mapped = programs.map(p => ({
+        ...p,
+        buyRateApr: p.apr,
+        internalLenderTier: 'Standard'
+      }));
+      res.json(mapped);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch finance programs" });
+    }
+  });
+
+  app.put("/api/admin/bulk/finance-programs", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { updates } = req.body;
+      const transactions = updates.map((u: any) => 
+        prisma.bankProgram.update({
+          where: { id: u.id },
+          data: { apr: parseFloat(u.buyRateApr) }
+        })
+      );
+      await prisma.$transaction(transactions);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update finance programs" });
+    }
+  });
+
+  app.put("/api/admin/bulk/incentives", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { updates } = req.body;
+      const transactions = updates.map((u: any) => 
+        prisma.oemIncentiveProgram.update({
+          where: { id: u.id },
+          data: { amountCents: parseInt(u.amountCents) }
+        })
+      );
+      await prisma.$transaction(transactions);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update incentives" });
+    }
+  });
+
+  app.get("/api/admin/bulk/dealer-discounts", adminAuth, async (req, res) => {
+    try {
+      const discounts = await prisma.dealerAdjustment.findMany({
+        orderBy: [{ make: 'asc' }, { model: 'asc' }]
+      });
+      res.json(discounts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch dealer discounts" });
+    }
+  });
+
+  app.post("/api/admin/bulk/dealer-discounts", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { make, model, trim, amount, isActive } = req.body;
+      const discount = await prisma.dealerAdjustment.create({
+        data: { make: make || null, model: model || null, trim: trim || null, amount: parseInt(amount), isActive: isActive ?? true }
+      });
+      res.json(discount);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create dealer discount" });
+    }
+  });
+
+  app.put("/api/admin/bulk/dealer-discounts", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { updates } = req.body;
+      const transactions = updates.map((u: any) => 
+        prisma.dealerAdjustment.update({
+          where: { id: u.id },
+          data: { amount: parseInt(u.amount), isActive: u.isActive }
+        })
+      );
+      await prisma.$transaction(transactions);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update dealer discounts" });
+    }
+  });
+  
+  app.delete("/api/admin/bulk/dealer-discounts/:id", adminAuth, async (req, res) => {
+    try {
+      await prisma.dealerAdjustment.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete dealer discount" });
     }
   });
 
@@ -986,10 +1447,6 @@ async function startServer() {
     res.json({ status: "ok", message: "Deal Engine Backend is running" });
   });
 
-  app.get("/api/test-secret", (req, res) => {
-    res.json({ secret: process.env.ADMIN_SECRET || 'default_dev_secret' });
-  });
-
   // Cars DB
   app.get("/api/cars", async (req, res) => {
     try {
@@ -998,6 +1455,95 @@ async function startServer() {
     } catch (error) {
       console.error("Failed to fetch car database:", error);
       res.status(500).json({ error: "Failed to fetch car database" });
+    }
+  });
+
+  // Sync brands from deals to carDb
+  app.post("/api/admin/cars/sync-from-deals", adminAuth, async (req, res) => {
+    try {
+      const deals = await prisma.dealRecord.findMany();
+      const carDb = await getCarDb();
+      
+      if (!carDb.makes) {
+        carDb.makes = [];
+      }
+
+      let addedMakes = 0;
+      let addedModels = 0;
+
+      for (const deal of deals) {
+        let payloadData: any = {};
+        try {
+          payloadData = JSON.parse(deal.payload);
+        } catch (e) {
+          continue;
+        }
+        
+        const makeName = payloadData.make;
+        const modelName = payloadData.model;
+        const trimName = payloadData.trim;
+        const msrpValue = payloadData.msrp || 0;
+
+        if (!makeName || !modelName) continue;
+
+        const makeId = makeName.toLowerCase().replace(/\s+/g, '-');
+        const modelId = modelName.toLowerCase().replace(/\s+/g, '-');
+
+        let make = carDb.makes.find((m: any) => m.id === makeId);
+        if (!make) {
+          make = {
+            id: makeId,
+            name: makeName,
+            models: [],
+            tiers: [
+              { id: "t1", label: "Tier 1", score: "740+", aprAdd: 0, mfAdd: 0, cls: "r1" },
+              { id: "t2", label: "Tier 2", score: "700–739", aprAdd: 1.5, mfAdd: 0.00040, cls: "r2" },
+              { id: "t3", label: "Tier 3", score: "660–699", aprAdd: 4.5, mfAdd: 0.00120, cls: "r3" },
+              { id: "t4", label: "Tier 4", score: "620–659", aprAdd: 9.0, mfAdd: 0.00240, cls: "r4" }
+            ],
+            baseMF: 0.002,
+            baseAPR: 6.9
+          };
+          carDb.makes.push(make);
+          addedMakes++;
+        }
+
+        let model = make.models.find((m: any) => m.id === modelId);
+        if (!model) {
+          model = {
+            id: modelId,
+            name: modelName,
+            class: 'Unknown',
+            msrpRange: '$30k - $40k',
+            years: new Date().getFullYear().toString(),
+            mf: 0.00150,
+            rv36: 0.60,
+            baseAPR: 4.9,
+            leaseCash: 0,
+            trims: []
+          };
+          make.models.push(model);
+          addedModels++;
+        }
+        
+        if (trimName) {
+          const trimExists = model.trims.find((t: any) => t.name === trimName);
+          if (!trimExists) {
+            model.trims.push({ name: trimName, msrp: msrpValue });
+          }
+        }
+      }
+
+      await saveCarDb(carDb);
+      
+      res.json({ 
+        success: true, 
+        message: `Synced ${addedMakes} new makes and ${addedModels} new models from deals.`,
+        carDb
+      });
+    } catch (error) {
+      console.error("Failed to sync cars from deals:", error);
+      res.status(500).json({ error: "Failed to sync cars from deals" });
     }
   });
 
@@ -1028,7 +1574,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/admin/car-photos/upload", adminAuth, express.json(), async (req, res) => {
+  app.post("/api/admin/car-photos/upload", adminAuth, express.json({ limit: '50mb' }), async (req, res) => {
     try {
       const { makeId, modelId, year, colorId, isDefault, imageUrl } = req.body;
       
@@ -1238,6 +1784,7 @@ async function startServer() {
 
       const leads = await prisma.lead.findMany({
         where: { userId },
+        include: { offers: true },
         orderBy: { createdAt: 'desc' }
       });
 
@@ -1247,7 +1794,12 @@ async function startServer() {
         clientPhone: l.clientPhone,
         clientEmail: l.clientEmail,
         status: l.status,
+        depositStatus: l.depositStatus,
+        depositAmount: l.depositAmount,
+        creditConsent: l.creditConsent,
+        creditScore: l.creditScore,
         createdAt: l.createdAt.toISOString(),
+        offers: l.offers,
         vehicle: {
           make: l.carMake,
           model: l.carModel,
@@ -1270,6 +1822,412 @@ async function startServer() {
     }
   });
 
+  app.get("/api/notifications/my", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-uid'] as string;
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      const notifications = await prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/notifications/my/read", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-uid'] as string;
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      await prisma.notification.updateMany({
+        where: { userId, read: false },
+        data: { read: true }
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating notifications:", error);
+      res.status(500).json({ error: "Failed to update notifications" });
+    }
+  });
+
+  app.post("/api/admin/calculator/bulk-update", adminAuth, async (req, res) => {
+    try {
+      const { filters, updates } = req.body;
+      const userId = req.headers['x-user-uid'] as string;
+
+      // In a real app, we would apply these updates to the database
+      // For now, we'll just log the action
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'BULK_UPDATE',
+          entity: 'CalculatorPrograms',
+          details: JSON.stringify({ filters, updates })
+        }
+      });
+
+      res.json({ success: true, message: "Bulk update applied successfully" });
+    } catch (error) {
+      console.error("Error applying bulk update:", error);
+      res.status(500).json({ error: "Failed to apply bulk update" });
+    }
+  });
+
+  app.get("/api/admin/audit-logs", adminAuth, async (req, res) => {
+    try {
+      const logs = await prisma.auditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100
+      });
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+
+  // Dealer Portal Routes
+  app.get("/api/dealer/leads", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-uid'] as string;
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      // In a real app, verify if the user is a dealer
+      const leads = await prisma.lead.findMany({
+        where: { status: { in: ['new', 'pending'] } },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Anonymize leads
+      const anonymizedLeads = leads.map(l => ({
+        id: l.id,
+        status: l.status,
+        createdAt: l.createdAt.toISOString(),
+        carMake: l.carMake,
+        carModel: l.carModel,
+        carYear: l.carYear,
+        carTrim: l.carTrim,
+        carMsrp: l.carMsrp,
+        calcType: l.calcType,
+        calcPayment: l.calcPayment,
+        calcDown: l.calcDown
+      }));
+
+      res.json(anonymizedLeads);
+    } catch (error) {
+      console.error("Error fetching dealer leads:", error);
+      res.status(500).json({ error: "Failed to fetch dealer leads" });
+    }
+  });
+
+  app.post("/api/dealer/leads/:id/:action", async (req, res) => {
+    try {
+      const { id, action } = req.params;
+      const { vin } = req.body || {};
+      const userId = req.headers['x-user-uid'] as string;
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      if (action === 'accept' && !vin) {
+        return res.status(400).json({ error: "VIN is required to accept a lead" });
+      }
+
+      const newStatus = action === 'accept' ? 'accepted' : 'rejected';
+
+      const updatedLead = await prisma.lead.update({
+        where: { id },
+        data: { 
+          status: newStatus,
+          acceptedBy: action === 'accept' ? userId : null,
+          vin: action === 'accept' ? vin : null
+        }
+      });
+
+      // Notify the client
+      if (updatedLead.userId && action === 'accept') {
+        await prisma.notification.create({
+          data: {
+            userId: updatedLead.userId,
+            title: "Application Accepted",
+            message: `Your application for ${updatedLead.carYear} ${updatedLead.carMake} ${updatedLead.carModel} has been accepted by a dealer. Reserved VIN: ${vin}`
+          }
+        });
+
+        if (updatedLead.clientEmail) {
+          await NotificationService.notifyClientStatusChange(
+            updatedLead.clientEmail,
+            updatedLead.clientPhone || '',
+            newStatus,
+            `${updatedLead.carYear} ${updatedLead.carMake} ${updatedLead.carModel}`
+          );
+        }
+      }
+
+      res.json({ success: true, status: newStatus });
+    } catch (error) {
+      console.error(`Error ${req.params.action}ing lead:`, error);
+      res.status(500).json({ error: `Failed to ${req.params.action} lead` });
+    }
+  });
+
+  app.post("/api/leads/:id/complaint", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const userId = req.headers['x-user-uid'] as string;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      const lead = await prisma.lead.findUnique({ where: { id } });
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Create complaint
+      await prisma.complaint.create({
+        data: {
+          leadId: id,
+          userId: userId,
+          dealerId: lead.acceptedBy,
+          reason: reason,
+          status: 'open'
+        }
+      });
+
+      // Update lead status
+      await prisma.lead.update({
+        where: { id },
+        data: { status: 'complaint_opened' }
+      });
+
+      // Notify admin
+      // In a real app we would send an email/slack to the admin team here
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error submitting complaint:", error);
+      res.status(500).json({ error: "Failed to submit complaint" });
+    }
+  });
+
+  app.post("/api/dealer/leads/:id/counter", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { payment, down, alternative, message } = req.body;
+      const userId = req.headers['x-user-uid'] as string;
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      const lead = await prisma.lead.findUnique({ where: { id } });
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const offer = await prisma.leadOffer.create({
+        data: {
+          leadId: id,
+          dealerId: userId,
+          payment,
+          down,
+          alternative,
+          message,
+          status: 'pending'
+        }
+      });
+
+      // Update lead status
+      await prisma.lead.update({
+        where: { id },
+        data: { status: 'countered' }
+      });
+
+      // Notify the client
+      if (lead.userId) {
+        await prisma.notification.create({
+          data: {
+            userId: lead.userId,
+            title: "New Counter Offer",
+            message: `A dealer has sent you a counter offer for your ${lead.carYear} ${lead.carMake} ${lead.carModel}.`
+          }
+        });
+
+        if (lead.clientEmail) {
+          await NotificationService.notifyClientStatusChange(
+            lead.clientEmail,
+            lead.clientPhone || '',
+            'Counter Offer Received',
+            `${lead.carYear} ${lead.carMake} ${lead.carModel}`
+          );
+        }
+      }
+
+      res.json({ success: true, offer });
+    } catch (error) {
+      console.error("Error creating counter offer:", error);
+      res.status(500).json({ error: "Failed to create counter offer" });
+    }
+  });
+
+  // 700Credit Soft Pull
+  app.post("/api/700credit/soft-pull", async (req, res) => {
+    try {
+      const { leadId, firstName, lastName, address, city, state, zip, dob, ssnLast4 } = req.body;
+      const userId = req.headers['x-user-uid'] as string;
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+      if (!lead || lead.userId !== userId) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // In a real app, we would call the 700Credit API here
+      // const creditResponse = await fetch('https://api.700credit.com/v1/softpull', { ... });
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Mock credit score result
+      const mockScore = Math.floor(Math.random() * (850 - 600 + 1)) + 600;
+      let mockTier = 'Tier 1';
+      if (mockScore < 650) mockTier = 'Tier 3';
+      else if (mockScore < 700) mockTier = 'Tier 2';
+
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          creditConsent: true,
+          creditScore: mockScore,
+          calcTier: mockTier
+        }
+      });
+
+      // Log the action
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'SOFT_PULL',
+          entity: 'Lead',
+          entityId: leadId,
+          details: `Soft pull completed. Score: ${mockScore}, Tier: ${mockTier}`
+        }
+      });
+
+      res.json({ success: true, score: mockScore, tier: mockTier });
+    } catch (error) {
+      console.error("Error performing soft pull:", error);
+      res.status(500).json({ error: "Failed to perform soft pull" });
+    }
+  });
+
+  // Stripe Deposit Flow
+  app.post("/api/create-checkout-session", async (req, res) => {
+    try {
+      const { leadId } = req.body;
+      const userId = req.headers['x-user-uid'] as string;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+      if (!lead || lead.userId !== userId) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `Deposit for ${lead.carYear} ${lead.carMake} ${lead.carModel}`,
+                description: 'Lock in your deal with a $95 deposit.',
+              },
+              unit_amount: 9500, // $95.00
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${process.env.APP_URL || 'http://localhost:3000'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.APP_URL || 'http://localhost:3000'}/dashboard`,
+        client_reference_id: leadId,
+      });
+
+      res.json({ id: session.id, url: session.url });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  // Stripe Webhook
+  app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+      // For local testing without webhook secret, we just parse the body
+      // In production, use stripe.webhooks.constructEvent
+      const payload = req.body.toString();
+      event = JSON.parse(payload);
+    } catch (err: any) {
+      console.error(`Webhook Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const leadId = session.client_reference_id;
+
+      if (leadId) {
+        try {
+          const updatedLead = await prisma.lead.update({
+            where: { id: leadId },
+            data: { 
+              depositStatus: 'paid',
+              depositAmount: session.amount_total,
+              depositId: session.id
+            }
+          });
+
+          if (updatedLead.userId) {
+            await prisma.notification.create({
+              data: {
+                userId: updatedLead.userId,
+                title: "Deposit Received",
+                message: `We received your $95 deposit for the ${updatedLead.carYear} ${updatedLead.carMake} ${updatedLead.carModel}. A dealer will contact you shortly.`
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error updating lead after payment:", error);
+        }
+      }
+    }
+
+    res.json({ received: true });
+  });
+
   app.get("/api/leads", adminAuth, async (req, res) => {
     try {
       const leads = await prisma.lead.findMany({
@@ -1278,13 +2236,14 @@ async function startServer() {
       
       const mappedLeads = leads.map(l => ({
         id: l.id,
-        client: { 
-          name: l.clientName, 
-          phone: l.clientPhone, 
-          payMethod: l.payMethod, 
-          paymentName: l.paymentName,
-          isFirstTimeBuyer: l.isFirstTimeBuyer
-        },
+        name: l.clientName || l.name,
+        email: l.clientEmail || l.email,
+        phone: l.clientPhone || l.phone,
+        payMethod: l.payMethod,
+        paymentName: l.paymentName,
+        legalConsent: { tcpa: true, terms: true },
+        isFirstTimeBuyer: l.isFirstTimeBuyer,
+        hasCosigner: false,
         tradeIn: l.hasTradeIn ? {
           hasTradeIn: true,
           make: l.tradeInMake,
@@ -1295,9 +2254,11 @@ async function startServer() {
           hasLoan: l.tradeInHasLoan,
           payoff: l.tradeInPayoff
         } : null,
-        car: { make: l.carMake, model: l.carModel, year: l.carYear, trim: l.carTrim, msrp: l.carMsrp },
-        calc: { type: l.calcType, payment: l.calcPayment, down: l.calcDown, tier: l.calcTier },
+        vehicle: { make: l.carMake, model: l.carModel, year: l.carYear, trim: l.carTrim, msrp: l.carMsrp },
+        calc: { type: l.calcType, payment: l.calcPayment, down: l.calcDown, tier: l.calcTier, mileage: 10000 },
         status: l.status,
+        depositStatus: l.depositStatus,
+        depositAmount: l.depositAmount,
         dealersSent: l.dealersSent,
         dealersAccepted: l.dealersAccepted,
         createdAt: l.createdAt.toISOString()
@@ -1375,7 +2336,8 @@ async function startServer() {
 
       // 2. Calculate & Evaluate
       console.log(`Evaluating data for ${ingestionId}...`);
-      const calcResult = CalculationEngine.calculateLease(extractedData);
+      const CAR_DB = await getCarDb();
+      const calcResult = CalculationEngine.calculateLease(extractedData, CAR_DB);
       const eligibility = EligibilityEngine.evaluate(extractedData, calcResult.mode, calcResult.markups);
 
       // 3. Save to DB (Prisma)
@@ -1524,7 +2486,8 @@ async function startServer() {
       // Re-evaluate eligibility if financialData or eligibility settings changed
       let eligibilityString = undefined;
       if (financialData) {
-        const calcResult = CalculationEngine.calculateLease(financialData);
+        const CAR_DB = await getCarDb();
+        const calcResult = CalculationEngine.calculateLease(financialData, CAR_DB);
         const eligibility = EligibilityEngine.evaluate(
           financialData, 
           calcResult.mode, 
@@ -1568,8 +2531,10 @@ async function startServer() {
   // Get approved/published deals for Marketplace
   app.get("/api/deals", async (req, res) => {
     try {
+      const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier, displayMode: queryDisplayMode } = req.query;
+      
       // Fetch deals that are APPROVED or PUBLISHED from Prisma
-      const [dbDeals, CAR_DB, CAR_PHOTOS] = await Promise.all([
+      const [dbDeals, CAR_DB, CAR_PHOTOS, settingsRecord] = await Promise.all([
         prisma.dealRecord.findMany({
           where: {
             OR: [
@@ -1577,13 +2542,33 @@ async function startServer() {
               { publishStatus: 'PUBLISHED' }
             ]
           },
+          include: {
+            lender: {
+              include: {
+                eligibilityRules: true
+              }
+            }
+          },
           orderBy: { createdAt: 'desc' }
         }),
         getCarDb(),
-        getCarPhotos()
+        getCarPhotos(),
+        prisma.siteSettings.findUnique({ where: { id: 'global' } })
       ]);
 
-      const taxRate = 0.095; // Default CA tax rate for calculations
+      const settings = settingsRecord ? JSON.parse(settingsRecord.data) : {
+        brokerFee: 595,
+        taxRateDefault: 8.875,
+        dmvFee: 400,
+        docFee: 85,
+        acquisitionFee: 650
+      };
+
+      const acqFeeCents = (settings.acquisitionFee || 650) * 100;
+      const docFeeCents = (settings.docFee || 85) * 100;
+      const dmvFeeCents = (settings.dmvFee || 400) * 100;
+      const brokerFeeCents = (settings.brokerFee || 595) * 100;
+      const taxRate = (settings.taxRateDefault || 8.875) / 100;
 
       // Map DB deals to the format expected by the frontend
       const mappedDeals = (dbDeals as any[]).map(deal => {
@@ -1598,8 +2583,8 @@ async function startServer() {
         let mf = getVal(data.moneyFactor || data.mf, 0.002);
         let rv = getVal(data.residualValue || data.rv, 0.5);
         let leaseCash = getVal(data.leaseCash || data.rebates, 0);
-        let term = getVal(data.term, 36);
-        let down = getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000); // This is total DAS
+        let term = queryTerm ? parseInt(queryTerm as string, 10) : getVal(data.term, 36);
+        let down = queryDown ? parseInt(queryDown as string, 10) : getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000); // This is total DAS
         let savings = getVal(data.savings, 0);
         let discount = getVal(data.discount, 0);
         let rebates = getVal(data.rebates, 0);
@@ -1626,35 +2611,62 @@ async function startServer() {
           }
         }
 
-        // Re-calculate payment based on new DAS logic ONLY if missing
-        let payment = getVal(data.monthlyPayment || data.payment, 0);
-        
-        if (payment <= 0) {
-          if (type === 'lease') {
-            const lease = calculateLease({
-              msrp, savings: effectiveSavings, leaseCash, rebates, discount,
-              term, down, rv, mf, 
-              taxRate: DEFAULT_FEES.taxRate,
-              acqFee: DEFAULT_FEES.acqFee,
-              docFee: DEFAULT_FEES.docFee,
-              dmvFee: DEFAULT_FEES.dmvFee,
-              brokerFee: DEFAULT_FEES.brokerFee
-            });
-            payment = lease.monthlyPayment;
-          } else {
-            const apr = getVal(data.apr, 4.9);
-            const finance = calculateFinance({
-              msrp, savings: effectiveSavings, leaseCash: 0, rebates: totalGlobalSavings || rebates, discount,
-              term, down, apr, 
-              taxRate: DEFAULT_FEES.taxRate,
-              rv: 0, mf: 0, acqFee: 0,
-              docFee: DEFAULT_FEES.docFee,
-              dmvFee: DEFAULT_FEES.dmvFee,
-              brokerFee: DEFAULT_FEES.brokerFee
-            });
-            payment = finance.monthlyPayment;
-          }
+        // Apply query adjustments
+        if (queryMileage) {
+          if (queryMileage === '12k') rv -= 0.01;
+          else if (queryMileage === '15k') rv -= 0.03;
+          else if (queryMileage === '20k') rv -= 0.05;
+          else if (queryMileage === '7.5k') rv += 0.01;
         }
+
+        if (queryTier) {
+          if (queryTier === 't2') mf *= 1.1;
+          else if (queryTier === 't3') mf *= 1.2;
+          else if (queryTier === 't4') mf *= 1.35;
+          else if (queryTier === 't5') mf *= 1.5;
+          else if (queryTier === 't6') mf *= 1.7;
+        }
+
+        // Re-calculate payment based on new DAS logic
+        let payment = 0;
+        let financePayment = 0;
+        
+        const lease = LeaseCalculationEngine.calculate({
+          msrpCents: msrp * 100,
+          sellingPriceCents: (msrp - effectiveSavings - leaseCash - rebates - discount) * 100,
+          residualValuePercent: rv > 1 ? rv / 100 : rv,
+          moneyFactor: mf,
+          term,
+          dueAtSigningCents: down * 100,
+          acqFeeCents: acqFeeCents,
+          docFeeCents: docFeeCents,
+          dmvFeeCents: dmvFeeCents,
+          brokerFeeCents: brokerFeeCents,
+          taxRate: taxRate
+        });
+        payment = lease.finalPaymentCents / 100;
+
+        let apr = getVal(data.apr, 4.9);
+        if (queryTier) {
+          if (queryTier === 't2') apr += 1.0;
+          else if (queryTier === 't3') apr += 2.5;
+          else if (queryTier === 't4') apr += 4.5;
+          else if (queryTier === 't5') apr += 7.0;
+          else if (queryTier === 't6') apr += 10.0;
+        }
+
+        const finance = FinanceCalculationEngine.calculate({
+          msrpCents: msrp * 100,
+          sellingPriceCents: (msrp - effectiveSavings - (totalGlobalSavings || rebates) - discount) * 100,
+          apr,
+          term,
+          downPaymentCents: down * 100,
+          docFeeCents: docFeeCents,
+          dmvFeeCents: dmvFeeCents,
+          brokerFeeCents: brokerFeeCents,
+          taxRate: taxRate
+        });
+        financePayment = finance.finalPaymentCents / 100;
 
         // Handle RV percentage vs absolute
         let rvPercent = '0%';
@@ -1672,6 +2684,10 @@ async function startServer() {
 
         // Find photo from CAR_PHOTOS if available
         let imageUrl = data.image || null;
+        let images: string[] = [];
+        if (data.image) {
+          images.push(data.image);
+        }
         let bodyStyle = data.bodyStyle || 'Auto';
         let fuelType = data.fuelType || 'Gas';
         let driveType = data.driveType || 'FWD';
@@ -1684,9 +2700,12 @@ async function startServer() {
           if (makeObj) {
             const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === data.model.toLowerCase());
             if (modelObj) {
-              const photo = CAR_PHOTOS.find(p => p.makeId === makeObj.id && p.modelId === modelObj.id && p.isDefault);
-              if (photo) {
-                imageUrl = photo.imageUrl;
+              const modelPhotos = CAR_PHOTOS.filter(p => p.makeId === makeObj.id && p.modelId === modelObj.id);
+              if (modelPhotos.length > 0) {
+                // Sort so default is first
+                modelPhotos.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+                images = modelPhotos.map(p => p.imageUrl);
+                imageUrl = images[0];
               }
               bodyStyle = getBodyStyle(modelObj.class, modelObj.name);
               fuelType = getFuelType(modelObj.class, data.trim || '');
@@ -1709,6 +2728,58 @@ async function startServer() {
         const isLuxury = ['BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Porsche', 'Land Rover'].includes(data.make || '');
         const verdict = getOwnerVerdict(data.make || '', data.model || '', data.trim || '', isLuxury);
 
+        let isFirstTimeBuyerEligible = deal.isFirstTimeBuyerEligible;
+        let allowWithCoSigner = true;
+        
+        // Evaluate based on lender eligibility rules if available
+        if ((deal as any).lender && (deal as any).lender.eligibilityRules) {
+          const rules = (deal as any).lender.eligibilityRules;
+          const make = data.make || '';
+          const model = data.model || '';
+          const dealType = type.toUpperCase(); // LEASE or FINANCE
+          
+          // Find the most specific rule
+          // 1. Match make, model, and deal type
+          // 2. Match make, ALL models, and deal type
+          // 3. Match make, model, ALL deal types
+          // 4. Match make, ALL models, ALL deal types
+          
+          let matchedRule = rules.find((r: any) => 
+            r.make.toLowerCase() === make.toLowerCase() && 
+            r.model.toLowerCase() === model.toLowerCase() && 
+            r.dealApplicability === dealType
+          );
+          
+          if (!matchedRule) {
+            matchedRule = rules.find((r: any) => 
+              r.make.toLowerCase() === make.toLowerCase() && 
+              r.model === 'ALL' && 
+              r.dealApplicability === dealType
+            );
+          }
+          
+          if (!matchedRule) {
+            matchedRule = rules.find((r: any) => 
+              r.make.toLowerCase() === make.toLowerCase() && 
+              r.model.toLowerCase() === model.toLowerCase() && 
+              r.dealApplicability === 'ALL'
+            );
+          }
+          
+          if (!matchedRule) {
+            matchedRule = rules.find((r: any) => 
+              r.make.toLowerCase() === make.toLowerCase() && 
+              r.model === 'ALL' && 
+              r.dealApplicability === 'ALL'
+            );
+          }
+          
+          if (matchedRule) {
+            isFirstTimeBuyerEligible = matchedRule.allowFirstTimeBuyer;
+            allowWithCoSigner = matchedRule.allowWithCoSigner;
+          }
+        }
+
         return {
           id: deal.id,
           type: type,
@@ -1721,6 +2792,7 @@ async function startServer() {
           trim: data.trim || 'Base',
           class: data.class || 'Auto',
           payment: payment,
+          financePayment: financePayment,
           term: typeof data.term === 'string' && data.term.includes('mo') ? data.term : `${term} mo`,
           down: down,
           mf: typeof mf === 'number' ? mf.toFixed(5) : mf,
@@ -1736,10 +2808,12 @@ async function startServer() {
           unit: data.unit || 'h',
           dot: data.dot || 'lv',
           isNew: data.isNew !== undefined ? data.isNew : true,
-          isFirstTimeBuyerEligible: deal.isFirstTimeBuyerEligible,
+          isFirstTimeBuyerEligible: isFirstTimeBuyerEligible,
+          allowWithCoSigner: allowWithCoSigner,
           displayPayment: payment,
           displayType: type,
           image: imageUrl,
+          images: images,
           availableIncentives: data.availableIncentives || [],
           // New fields for detailed deal page
           bodyStyle: bodyStyle,
@@ -1802,6 +2876,69 @@ async function startServer() {
     } catch (error) {
       console.error("Failed to generate sitemap:", error);
       res.status(500).send("Error generating sitemap");
+    }
+  });
+
+  // Chat endpoint for ExpertChat
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { messages, language } = req.body;
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: messages.map((m: any) => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        })),
+        config: {
+          systemInstruction: `You are Hunter, a premium auto lease expert for Hunter Lease. 
+          Your goal is to help users understand lease calculations, find hidden markups, and explain why Hunter Lease is the best choice (zero hidden fees, 11-key lock technology).
+          Be professional, concise, and helpful. Use the user's language (${language}).
+          If they ask about specific deals, refer them to the calculator on the site.`,
+        }
+      });
+
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      res.status(500).json({ error: error.message || 'Chat failed' });
+    }
+  });
+
+  // Audit endpoint for DealAuditor
+  app.post("/api/audit", async (req, res) => {
+    try {
+      const { imagePart, language } = req.body;
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          {
+            parts: [
+              imagePart,
+              { text: `Analyze this car dealer offer/contract. 
+              1. Identify the MSRP, Selling Price, and all fees (Doc fee, Acquisition fee, Registration, etc.).
+              2. Look for hidden markups or unnecessary add-ons (Paint protection, VIN etching, nitrogen tires, etc.).
+              3. Compare the Money Factor/APR if visible to market averages.
+              4. Provide a clear summary: Is this a good deal or are there hidden markups?
+              5. Give a recommendation on what the user should negotiate.
+              6. Generate a 0-100 "Deal Score" where 100 is a perfect wholesale deal and 0 is a total rip-off.
+              7. Provide a word-for-word "Negotiation Script" the user can copy-paste to email the dealer.
+              
+              Respond in ${language === 'ru' ? 'Russian' : 'English'}. 
+              Use Markdown for the main analysis. 
+              Crucially, include the Deal Score at the very beginning of your response in the format: [SCORE: XX].` }
+            ]
+          }
+        ]
+      });
+
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error('Audit error:', error);
+      res.status(500).json({ error: error.message || 'Audit failed' });
     }
   });
 

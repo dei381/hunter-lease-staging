@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Building2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Building2, Info, List } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { LenderProgramsAdmin } from './LenderProgramsAdmin';
+import { LenderEligibilityModal } from './admin/LenderEligibilityModal';
 
 export const BanksAdmin = () => {
   const { language } = useLanguageStore();
@@ -10,13 +12,23 @@ export const BanksAdmin = () => {
     banks: adminTranslations.banks || 'Banks & Lenders',
     addBank: adminTranslations.addBank || 'Add Bank',
     name: adminTranslations.name || 'Name',
-    isCaptive: adminTranslations.isCaptive || 'Is Captive?',
-    ftbFriendly: adminTranslations.ftbFriendly || 'FTB Friendly?',
+    bankName: adminTranslations.bankName || 'Bank Name',
+    isCaptive: adminTranslations.isCaptive || 'Captive Bank',
+    isCaptiveDesc: adminTranslations.isCaptiveDesc || 'A bank owned by the car manufacturer (e.g., Toyota Financial Services).',
+    ftbFriendly: adminTranslations.ftbFriendly || 'First-Time Buyer Friendly',
+    ftbFriendlyDesc: adminTranslations.ftbFriendlyDesc || 'Bank that is more likely to approve applicants without prior auto loan history.',
     actions: adminTranslations.actions || 'Actions',
     save: adminTranslations.save || 'Save',
     cancel: adminTranslations.cancel || 'Cancel',
     edit: adminTranslations.edit || 'Edit',
-    delete: adminTranslations.delete || 'Delete'
+    delete: adminTranslations.delete || 'Delete',
+    yes: adminTranslations.yes || 'Yes',
+    no: adminTranslations.no || 'No',
+    noBanks: adminTranslations.noBanks || 'No banks added yet. Click "Add Bank" to get started.',
+    deleteBankConfirm: adminTranslations.deleteBankConfirm || 'Are you sure you want to delete this bank?',
+    saveBankFailed: adminTranslations.saveBankFailed || 'Failed to save bank',
+    saveBankNetworkError: adminTranslations.saveBankNetworkError || 'Failed to save bank due to a network error.',
+    loading: adminTranslations.loading || 'Loading...'
   };
 
   const [lenders, setLenders] = useState<any[]>([]);
@@ -24,6 +36,8 @@ export const BanksAdmin = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<any>({});
   const [isAdding, setIsAdding] = useState(false);
+  const [managingProgramsFor, setManagingProgramsFor] = useState<{id: string, name: string} | null>(null);
+  const [managingEligibilityFor, setManagingEligibilityFor] = useState<any | null>(null);
 
   useEffect(() => {
     fetchLenders();
@@ -63,14 +77,18 @@ export const BanksAdmin = () => {
         setEditingId(null);
         setIsAdding(false);
         fetchLenders();
+      } else {
+        const data = await response.json();
+        alert(`${t.saveBankFailed}: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to save lender:', error);
+      alert(t.saveBankNetworkError);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this bank?')) return;
+    if (!confirm(t.deleteBankConfirm)) return;
     
     try {
       const response = await fetch(`/api/admin/lenders/${id}`, {
@@ -86,7 +104,7 @@ export const BanksAdmin = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Loading...</div>;
+  if (loading) return <div className="p-8 text-center text-slate-500">{t.loading}</div>;
 
   return (
     <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
@@ -114,8 +132,28 @@ export const BanksAdmin = () => {
           <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
             <tr>
               <th className="px-6 py-4 font-medium">{t.name || 'Name'}</th>
-              <th className="px-6 py-4 font-medium">{t.isCaptive || 'Is Captive?'}</th>
-              <th className="px-6 py-4 font-medium">{t.ftbFriendly || 'FTB Friendly?'}</th>
+              <th className="px-6 py-4 font-medium">
+                <div className="flex items-center gap-1">
+                  {t.isCaptive || 'Captive Bank'}
+                  <div className="group relative">
+                    <Info className="w-4 h-4 text-slate-400 cursor-help" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      {t.isCaptiveDesc}
+                    </div>
+                  </div>
+                </div>
+              </th>
+              <th className="px-6 py-4 font-medium">
+                <div className="flex items-center gap-1">
+                  {t.ftbFriendly || 'First-Time Buyer Friendly'}
+                  <div className="group relative">
+                    <Info className="w-4 h-4 text-slate-400 cursor-help" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      {t.ftbFriendlyDesc}
+                    </div>
+                  </div>
+                </div>
+              </th>
               <th className="px-6 py-4 font-medium text-right">{t.actions || 'Actions'}</th>
             </tr>
           </thead>
@@ -128,7 +166,7 @@ export const BanksAdmin = () => {
                     value={editData.name}
                     onChange={e => setEditData({ ...editData, name: e.target.value })}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Bank Name"
+                    placeholder={t.bankName || "Bank Name"}
                   />
                 </td>
                 <td className="px-6 py-4">
@@ -182,7 +220,7 @@ export const BanksAdmin = () => {
                     />
                   ) : (
                     <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${lender.isCaptive ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {lender.isCaptive ? 'Yes' : 'No'}
+                      {lender.isCaptive ? t.yes : t.no}
                     </span>
                   )}
                 </td>
@@ -196,7 +234,7 @@ export const BanksAdmin = () => {
                     />
                   ) : (
                     <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${lender.isFirstTimeBuyerFriendly ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {lender.isFirstTimeBuyerFriendly ? 'Yes' : 'No'}
+                      {lender.isFirstTimeBuyerFriendly ? t.yes : t.no}
                     </span>
                   )}
                 </td>
@@ -212,6 +250,20 @@ export const BanksAdmin = () => {
                     </>
                   ) : (
                     <>
+                      <button 
+                        onClick={() => setManagingEligibilityFor(lender)}
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                        title="Eligibility Rules"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => setManagingProgramsFor({ id: lender.id, name: lender.name })}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                        title="Manage Programs"
+                      >
+                        <List className="w-4 h-4" />
+                      </button>
                       <button 
                         onClick={() => {
                           setEditingId(lender.id);
@@ -235,13 +287,31 @@ export const BanksAdmin = () => {
             {lenders.length === 0 && !isAdding && (
               <tr>
                 <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
-                  No banks added yet. Click "Add Bank" to get started.
+                  {t.noBanks}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {managingProgramsFor && (
+        <LenderProgramsAdmin 
+          lenderId={managingProgramsFor.id} 
+          lenderName={managingProgramsFor.name} 
+          onClose={() => setManagingProgramsFor(null)} 
+        />
+      )}
+
+      {managingEligibilityFor && (
+        <LenderEligibilityModal
+          lender={managingEligibilityFor}
+          onClose={() => setManagingEligibilityFor(null)}
+          onSave={() => {
+            fetchLenders();
+          }}
+        />
+      )}
     </div>
   );
 };

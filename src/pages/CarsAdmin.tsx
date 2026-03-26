@@ -140,6 +140,29 @@ export const CarsAdmin = () => {
     });
   };
 
+  const syncFromDeals = async () => {
+    showConfirm('Sync from Deals', 'This will add missing brands and models from the Deals database into the Car Catalog. Are you sure?', async () => {
+      try {
+        const res = await fetch('/api/admin/cars/sync-from-deals', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showAlert('Sync Success', data.message);
+          fetchCars();
+        } else {
+          showAlert('Sync Failed', data.error);
+        }
+      } catch (err) {
+        console.error('Failed to sync from deals', err);
+        showAlert('Error', 'Failed to sync from deals');
+      }
+    });
+  };
+
   const fetchCars = async () => {
     try {
       const res = await fetch('/api/cars');
@@ -334,7 +357,7 @@ export const CarsAdmin = () => {
             className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all disabled:opacity-50"
           >
             <Terminal className={`w-3 h-3 ${isTestingApi ? 'animate-pulse' : ''}`} />
-            {isTestingApi ? 'Testing...' : 'Test API'}
+            {isTestingApi ? t.testing : t.testApi}
           </button>
           <button 
             onClick={() => syncExternal()}
@@ -342,15 +365,23 @@ export const CarsAdmin = () => {
             className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Syncing...' : 'Sync with API'}
+            {isSyncing ? t.syncing : t.syncWithApi}
           </button>
           <button 
             onClick={snapshotCalculator}
             className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all"
-            title="Snapshot current data to the isolated Calculation Engine"
+            title={t.snapshotDesc}
           >
             <Database className="w-3 h-3" />
-            Snapshot
+            {t.snapshot}
+          </button>
+          <button 
+            onClick={syncFromDeals}
+            className="flex items-center gap-2 bg-[var(--s2)] border border-[var(--b1)] text-[var(--w)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-[var(--b1)] transition-all"
+            title={t.syncFromDealsDesc}
+          >
+            <RefreshCw className="w-3 h-3" />
+            {t.syncDeals}
           </button>
           <div className="relative flex-1 md:w-64">
             <input 
@@ -404,7 +435,7 @@ export const CarsAdmin = () => {
               <div className="p-4 border-t border-[var(--b2)] bg-[var(--bg)]/50 space-y-4">
                 {/* Brand Global Settings */}
                 <div className="bg-[var(--s2)] border border-[var(--b1)] rounded-lg p-4 mb-6">
-                  <h3 className="text-sm font-bold text-[var(--w)] mb-3">Brand Global Financial Settings</h3>
+                  <h3 className="text-sm font-bold text-[var(--w)] mb-3">{t.brandGlobalSettings}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label className="space-y-1">
                       <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">Global Money Factor (Brand Default)</span>
@@ -434,7 +465,7 @@ export const CarsAdmin = () => {
                 {/* Brand Tiers Configuration */}
                 {make.tiers && (
                   <div className="bg-[var(--s2)] border border-[var(--b1)] rounded-lg p-4 mb-6">
-                    <h3 className="text-sm font-bold text-[var(--w)] mb-3">Brand Tiers Configuration</h3>
+                    <h3 className="text-sm font-bold text-[var(--w)] mb-3">{t.brandTiersConfig}</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead>
@@ -530,27 +561,27 @@ export const CarsAdmin = () => {
                                 <input type="text" value={model.imageUrl || ''} onChange={e => updateModel(make.id, model.id, 'imageUrl', e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
                               <label className="space-y-1">
-                                <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">Base Money Factor (Model Default)</span>
+                                <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">{t.baseMfModelDefault}</span>
                                 <p className="text-[10px] text-[var(--mu2)] italic">This is the baseline MF before any tier markups.</p>
                                 <input type="number" step="0.00001" value={model.mf || 0} onChange={e => updateModel(make.id, model.id, 'mf', parseFloat(e.target.value))} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
                               <label className="space-y-1">
-                                <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">Base Residual Value (Model Default)</span>
+                                <span className="text-[10px] uppercase tracking-widest text-[var(--lime)] font-bold">{t.baseRvModelDefault}</span>
                                 <p className="text-[10px] text-[var(--mu2)] italic">This is the baseline RV % (e.g. 0.60 for 60%) before any tier markups.</p>
                                 <input type="number" step="0.01" value={model.rv36 || 0} onChange={e => updateModel(make.id, model.id, 'rv36', parseFloat(e.target.value))} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
                             </div>
 
                             <div className="space-y-6">
-                              <h4 className="text-[10px] uppercase tracking-widest text-[var(--mu2)]">Model Tier Markups (Overrides Make Tier Markups)</h4>
+                              <h4 className="text-[10px] uppercase tracking-widest text-[var(--mu2)]">{t.modelTierMarkups}</h4>
                               <div className="bg-[var(--bg)] border border-[var(--b2)] rounded-lg p-4">
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-left text-sm">
                                     <thead>
                                       <tr className="text-[10px] uppercase tracking-widest text-[var(--mu2)] border-b border-[var(--b2)]">
                                         <th className="pb-2 font-normal">{t.tier}</th>
-                                        <th className="pb-2 font-normal">MF Add</th>
-                                        <th className="pb-2 font-normal">APR Add (%)</th>
+                                        <th className="pb-2 font-normal">{t.mfAdd}</th>
+                                        <th className="pb-2 font-normal">{t.aprAdd}</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -592,7 +623,7 @@ export const CarsAdmin = () => {
                                     </div>
                                     <div className="flex gap-4">
                                       <div className="flex flex-col">
-                                        <span className="text-[10px] uppercase text-[var(--lime)] font-bold">Base MF</span>
+                                        <span className="text-[10px] uppercase text-[var(--lime)] font-bold">{t.baseMf}</span>
                                         <input 
                                           type="number" 
                                           step="0.00001" 
@@ -602,7 +633,7 @@ export const CarsAdmin = () => {
                                         />
                                       </div>
                                       <div className="flex flex-col">
-                                        <span className="text-[10px] uppercase text-[var(--lime)] font-bold">Base RV</span>
+                                        <span className="text-[10px] uppercase text-[var(--lime)] font-bold">{t.baseRv}</span>
                                         <input 
                                           type="number" 
                                           step="0.01" 

@@ -59,13 +59,14 @@ model CatalogDefaultScenario {
 
 
 model Lender {
-  id                    String                      @id @default(uuid())
-  name                  String                      @unique
-  isCaptive             Boolean                     @default(false)
-  lenderType            String                      @default("NATIONAL_BANK")
-  priority              Int                         @default(0)
-  isActive              Boolean                     @default(true)
-  createdAt             DateTime                    @default(now())
+  id                       String                      @id @default(uuid())
+  name                     String                      @unique
+  isCaptive                Boolean                     @default(false)
+  isFirstTimeBuyerFriendly Boolean                     @default(false)
+  lenderType               String                      @default("NATIONAL_BANK")
+  priority                 Int                         @default(0)
+  isActive                 Boolean                     @default(true)
+  createdAt                DateTime                    @default(now())
   financePrograms       FinanceProgram[]
   leasePrograms         LeaseProgram[]
   bankPrograms          BankProgram[]
@@ -94,6 +95,7 @@ model LenderEligibilityRule {
   id                        String  @id @default(uuid())
   lenderId                  String
   make                      String
+  model                     String  @default("ALL")
   dealApplicability         String
   allowFirstTimeBuyer       Boolean @default(false)
   allowWithCoSigner         Boolean @default(true)
@@ -101,7 +103,7 @@ model LenderEligibilityRule {
   minUxTierRequired         String
   lender                    Lender  @relation(fields: [lenderId], references: [id], onDelete: Cascade)
 
-  @@unique([lenderId, make, dealApplicability])
+  @@unique([lenderId, make, model, dealApplicability])
 }
 
 model LenderTierMapping {
@@ -282,7 +284,59 @@ model Lead {
   creditApp        String?
   userId           String?
   payload          String?
+  depositStatus    String   @default("pending")
+  depositAmount    Int?
+  depositId        String?
+  creditConsent    Boolean  @default(false)
+  creditScore      Int?
+  vin              String?
+  offers           LeadOffer[]
+  complaints       Complaint[]
   createdAt        DateTime @default(now())
+}
+
+model Complaint {
+  id          String   @id @default(uuid())
+  leadId      String
+  userId      String
+  dealerId    String?
+  reason      String
+  status      String   @default("open") // open, resolved, refunded
+  createdAt   DateTime @default(now())
+  
+  lead        Lead     @relation(fields: [leadId], references: [id])
+}
+
+model LeadOffer {
+  id          String   @id @default(uuid())
+  leadId      String
+  dealerId    String
+  status      String   @default("pending") // pending, accepted, rejected
+  message     String?
+  payment     Int?
+  down        Int?
+  alternative String?
+  createdAt   DateTime @default(now())
+  lead        Lead     @relation(fields: [leadId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 model SiteSettings {

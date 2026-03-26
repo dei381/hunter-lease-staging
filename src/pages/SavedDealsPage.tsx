@@ -7,6 +7,8 @@ import { DealCard } from '../components/DealCard';
 import { Heart, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { CompareBar } from '../components/CompareBar';
+
 export const SavedDealsPage = () => {
   const { language } = useLanguageStore();
   const t = translations[language];
@@ -82,6 +84,7 @@ export const SavedDealsPage = () => {
           </div>
         )}
       </div>
+      <CompareBar />
     </div>
   );
 };

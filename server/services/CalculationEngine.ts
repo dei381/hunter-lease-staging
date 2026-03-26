@@ -1,11 +1,114 @@
 import { FinancialData, CalcMode } from '../../src/types/engine';
-import { CALCULATOR_DB } from '../data/calculator-snapshot';
+
+export interface LeaseParams {
+  msrpCents: number;
+  sellingPriceCents: number;
+  residualValuePercent: number; // e.g. 0.55 for 55%
+  moneyFactor: number;
+  term: number;
+  dueAtSigningCents: number;
+  acqFeeCents: number;
+  docFeeCents: number;
+  dmvFeeCents: number;
+  brokerFeeCents: number;
+  taxRate: number; // e.g. 0.08875 for 8.875%
+}
+
+export interface FinanceParams {
+  msrpCents: number;
+  sellingPriceCents: number;
+  apr: number; // e.g. 4.9 for 4.9%
+  term: number;
+  downPaymentCents: number;
+  docFeeCents: number;
+  dmvFeeCents: number;
+  brokerFeeCents: number;
+  taxRate: number; // e.g. 0.08875 for 8.875%
+}
+
+export class LeaseCalculationEngine {
+  static calculate(params: LeaseParams) {
+    const {
+      msrpCents,
+      sellingPriceCents,
+      residualValuePercent,
+      moneyFactor,
+      term,
+      dueAtSigningCents,
+      acqFeeCents,
+      docFeeCents,
+      dmvFeeCents,
+      brokerFeeCents,
+      taxRate
+    } = params;
+
+    const totalFeesCents = acqFeeCents + docFeeCents + dmvFeeCents + brokerFeeCents;
+    const residualValueCents = Math.round(msrpCents * residualValuePercent);
+    
+    // Cap cost is selling price + fees - due at signing
+    const capCostCents = sellingPriceCents + totalFeesCents - dueAtSigningCents;
+    
+    const depreciationCents = (capCostCents - residualValueCents) / term;
+    const rentChargeCents = (capCostCents + residualValueCents) * moneyFactor;
+    
+    const basePaymentCents = depreciationCents + rentChargeCents;
+    const finalPaymentCents = Math.round(basePaymentCents * (1 + taxRate));
+
+    return {
+      finalPaymentCents,
+      basePaymentCents: Math.round(basePaymentCents),
+      depreciationCents: Math.round(depreciationCents),
+      rentChargeCents: Math.round(rentChargeCents),
+      capCostCents: Math.round(capCostCents),
+      residualValueCents,
+      totalFeesCents,
+      sellingPriceCents
+    };
+  }
+}
+
+export class FinanceCalculationEngine {
+  static calculate(params: FinanceParams) {
+    const {
+      msrpCents,
+      sellingPriceCents,
+      apr,
+      term,
+      downPaymentCents,
+      docFeeCents,
+      dmvFeeCents,
+      brokerFeeCents,
+      taxRate
+    } = params;
+
+    const totalFeesCents = docFeeCents + dmvFeeCents + brokerFeeCents;
+    const principalCents = sellingPriceCents + totalFeesCents + (sellingPriceCents * taxRate) - downPaymentCents;
+    const monthlyRate = (apr / 100) / 12;
+
+    let finalPaymentCents = 0;
+    if (monthlyRate === 0) {
+      finalPaymentCents = Math.round(principalCents / term);
+    } else {
+      finalPaymentCents = Math.round(
+        (principalCents * monthlyRate * Math.pow(1 + monthlyRate, term)) /
+        (Math.pow(1 + monthlyRate, term) - 1)
+      );
+    }
+
+    return {
+      finalPaymentCents,
+      principalCents: Math.round(principalCents),
+      totalFeesCents,
+      sellingPriceCents
+    };
+  }
+}
 
 export class CalculationEngine {
   /**
    * Calculates a California Lease and determines the Calculation Mode
    */
-  static calculateLease(data: FinancialData, db: any = CALCULATOR_DB): { 
+  static calculateLease(data: FinancialData, db: any): { 
     mode: CalcMode; 
     calculatedPayment: number; 
     delta: number;
@@ -198,3 +301,4 @@ export class CalculationEngine {
     };
   }
 }
+

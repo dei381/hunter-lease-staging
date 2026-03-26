@@ -106,7 +106,7 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
   return (
     <AnimatePresence>
       {createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-[9999] flex flex-col justify-end md:justify-center p-0 md:p-6">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -116,13 +116,14 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
         />
         
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden"
+          initial={{ opacity: 0, y: 100 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 100 }}
+          transition={{ type: "spring", damping: 25, stiffness: 300 }}
+          className="relative w-full max-w-2xl bg-white rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden mt-auto md:my-auto max-h-[90vh] md:max-h-[85vh] flex flex-col"
         >
           {/* Header */}
-          <div className="p-8 pb-4 flex items-center justify-between">
+          <div className="p-8 pb-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-[var(--lime)]/10 flex items-center justify-center">
                 <ShieldCheck className="w-6 h-6 text-[var(--lime)]" />

@@ -8,9 +8,11 @@ import { translations } from '../translations';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
 import { TransparencyModal } from './TransparencyModal';
-import { calculateLease, calculateFinance, getVal, DEFAULT_FEES } from '../utils/finance';
+import { getVal } from '../utils/finance';
+import { TradeInEstimator } from './TradeInEstimator';
 
 const fmt = (n: any) => {
+  if (n === null || n === undefined) return 'N/A';
   const num = Number(n);
   if (isNaN(num)) return '$0';
   return '$' + Math.round(num).toLocaleString('en-US');
@@ -25,6 +27,8 @@ interface CalculatorProps {
   onProceed?: (data: any) => void;
   onMileageChange?: (mileage: string) => void;
   mode?: 'standalone' | 'offer';
+  initialIsFirstTimeBuyer?: boolean;
+  initialHasCosigner?: boolean;
 }
 
 export const Calculator: React.FC<CalculatorProps> = ({ 
@@ -33,7 +37,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
   viewCount = 6, 
   onProceed, 
   onMileageChange,
-  mode = 'offer'
+  mode = 'offer',
+  initialIsFirstTimeBuyer = false,
+  initialHasCosigner = false
 }) => {
   const { language } = useLanguageStore();
   const { settings, fetchSettings } = useSettingsStore();
@@ -48,17 +54,20 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [selectedModel, setSelectedModel] = useState<any>(null);
   const [selectedTrim, setSelectedTrim] = useState<any>(null);
   const [down, setDown] = useState(Number(deal?.down) || 3000);
+  const [tradeInEquity, setTradeInEquity] = useState(0);
   const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 72 : (parseInt(deal?.term) || 36)));
   const [mileage, setMileage] = useState(['Kia', 'Hyundai'].includes(deal?.make) ? '10k' : '7.5k');
   const [zipCode, setZipCode] = useState('90210');
-  const isCalculating = false;
   const [showIncentives, setShowIncentives] = useState(!isStandalone);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);
+  const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(initialIsFirstTimeBuyer);
+  const [hasCosigner, setHasCosigner] = useState(initialHasCosigner);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTransparencyOpen, setIsTransparencyOpen] = useState(false);
-    const [carDb, setCarDb] = useState<any>(null);
+  const [carDb, setCarDb] = useState<any>(null);
   const [lenderOptions, setLenderOptions] = useState<any[]>([]);
   const [isLenderLoading, setIsLenderLoading] = useState(false);
+  const isCalculating = isLenderLoading;
   
   
 
@@ -75,6 +84,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
       ...selectedTrim
     };
   }, [deal, selectedMake, selectedModel, selectedTrim]);
+
+  const [backendPayment, setBackendPayment] = useState<number | null>(null);
+  const [quoteStatus, setQuoteStatus] = useState<string | null>(null);
+  const [quoteData, setQuoteData] = useState<any>(null);
 
   useEffect(() => {
     if (!currentCar) return;
@@ -93,14 +106,33 @@ export const Calculator: React.FC<CalculatorProps> = ({
             type: calcType,
             term,
             mileage: mileage.replace('k', '000'),
-            downPayment: down,
+            downPayment: down + tradeInEquity,
             tier,
-            zipCode
+            zipCode,
+            selectedIncentives,
+            isFirstTimeBuyer,
+            hasCosigner,
+            rv: currentCar.rv,
+            mf: currentCar.mf,
+            apr: currentCar.apr,
+            msrp: currentCar.msrp,
+            savings: currentCar.savings
           })
         });
         const data = await response.json();
+        setQuoteData(data);
+        if (data.status) {
+          setQuoteStatus(data.status);
+        } else {
+          setQuoteStatus(null);
+        }
+        
         if (data.options) {
           setLenderOptions(data.options);
+        }
+        
+        if (data.monthlyPayment !== undefined) {
+          setBackendPayment(data.monthlyPayment);
         }
       } catch (err) {
         console.error('Failed to fetch lender options', err);
@@ -111,7 +143,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
     const timer = setTimeout(fetchLenderOptions, 500);
     return () => clearTimeout(timer);
-  }, [currentCar, calcType, term, down, mileage, tier, zipCode]);
+  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, selectedIncentives, isFirstTimeBuyer, hasCosigner]);
 
   
 
@@ -140,6 +172,15 @@ export const Calculator: React.FC<CalculatorProps> = ({
       .catch(err => console.error('Failed to fetch car db', err));
   }, []);
 
+  useEffect(() => {
+    if (currentCar?.availableIncentives) {
+      const defaultIds = currentCar.availableIncentives.filter((inc: any) => inc.isDefault || inc.type === 'dealer').map((inc: any) => inc.id);
+      setSelectedIncentives(defaultIds);
+    } else {
+      setSelectedIncentives([]);
+    }
+  }, [currentCar?.id, currentCar?.trim]);
+
   const toggleIncentive = (id: string) => {
     const incentive = currentCar?.availableIncentives?.find((inc: any) => inc.id === id);
     if (incentive?.isDefault && role !== 'admin') return;
@@ -150,65 +191,23 @@ export const Calculator: React.FC<CalculatorProps> = ({
   };
 
   const calculatedPayment = useMemo(() => {
-    if (!currentCar) return 0;
-    const msrp = getVal(currentCar.msrp);
-    const savings = getVal(currentCar.savings);
-    const leaseCash = getVal(currentCar.leaseCash);
-    let totalIncentives = leaseCash;
-    if (currentCar?.availableIncentives) {
-      currentCar.availableIncentives.forEach((inc: any) => {
-        if (selectedIncentives.includes(inc.id)) {
-          totalIncentives += getVal(inc.amount);
-        }
-      });
-    }
-    
-    const taxRate = DEFAULT_FEES.taxRate;
-    const acqFee = DEFAULT_FEES.acqFee;
-    const docFee = DEFAULT_FEES.docFee;
-    const dmvFee = DEFAULT_FEES.dmvFee;
-    const brokerFee = getVal(settings.brokerFee, DEFAULT_FEES.brokerFee);
+    if (quoteStatus === 'NO_PROGRAMS_AVAILABLE') return null;
+    if (backendPayment !== null) return backendPayment;
+    return 0;
+  }, [backendPayment, quoteStatus]);
 
-    if (calcType === 'lease') {
-      let rv = getVal(currentCar.rv, 0.5);
-      
-      if (mileage === '12k') rv -= 0.01;
-      else if (mileage === '15k') rv -= 0.03;
-      else if (mileage === '20k') rv -= 0.05;
-      else if (mileage === '7.5k') rv += 0.01;
-      
-      let mf = getVal(currentCar.mf, 0.002);
-      
-      if (tier === 't2') mf *= 1.1;
-      else if (tier === 't3') mf *= 1.2;
-      else if (tier === 't4') mf *= 1.35;
-      else if (tier === 't5') mf *= 1.5;
-      else if (tier === 't6') mf *= 1.7;
-      
-      const lease = calculateLease({
-        msrp, savings, leaseCash: totalIncentives, rebates: 0, discount: 0,
-        term, down, rv, mf, taxRate,
-        acqFee, docFee, dmvFee, brokerFee
-      });
-      
-      return lease.monthlyPayment;
-    } else {
-      let apr = getVal(currentCar.apr, 4.9);
-      if (tier === 't2') apr += 1.0;
-      else if (tier === 't3') apr += 2.5;
-      else if (tier === 't4') apr += 4.5;
-      else if (tier === 't5') apr += 7.0;
-      else if (tier === 't6') apr += 10.0;
-      
-      const finance = calculateFinance({
-        msrp, savings, leaseCash: 0, rebates: totalIncentives, discount: 0,
-        term, down, apr, taxRate,
-        rv: 0, mf: 0, acqFee: 0, docFee, dmvFee, brokerFee
-      });
-      
-      return finance.monthlyPayment;
+  const totalIncentives = useMemo(() => {
+    if (quoteData?.calculation?.incentivesCents !== undefined) {
+      return quoteData.calculation.incentivesCents / 100;
     }
-  }, [currentCar, calcType, term, down, mileage, tier, zipCode, selectedIncentives, settings.brokerFee]);
+    return currentCar?.availableIncentives?.reduce((sum: number, inc: any) => {
+      const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
+      if (selectedIncentives.includes(inc.id) || (isFtbIncentive && isFirstTimeBuyer)) {
+        return sum + (inc.amount || 0);
+      }
+      return sum;
+    }, 0) || 0;
+  }, [quoteData, currentCar, selectedIncentives, isFirstTimeBuyer]);
 
   const marketAvgRatio = useMemo(() => {
     if (!currentCar || !currentCar.displayPayment) return 1.267;
@@ -216,6 +215,18 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [currentCar]);
 
   const tcoData = useMemo(() => {
+    if (quoteData?.tco) {
+      return {
+        totalCost: quoteData.tco.totalCostCents / 100,
+        monthlyAverage: quoteData.tco.monthlyAverageCents / 100,
+        breakdown: {
+          lease: quoteData.tco.breakdownCents.lease / 100,
+          insurance: quoteData.tco.breakdownCents.insurance / 100,
+          maintenance: quoteData.tco.breakdownCents.maintenance / 100,
+          registration: quoteData.tco.breakdownCents.registration / 100
+        }
+      };
+    }
     if (!calculatedPayment || isNaN(calculatedPayment)) return null;
     const insurancePerMonth = 150;
     const maintenancePerMonth = 50;
@@ -239,7 +250,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
         registration: totalRegistration
       }
     };
-  }, [calculatedPayment, term, down, ]);
+  }, [calculatedPayment, term, down, quoteData]);
 
   return (
     <>
@@ -262,21 +273,13 @@ export const Calculator: React.FC<CalculatorProps> = ({
           )}
           <div className="flex items-center gap-2">
             {!isStandalone && <span className="px-1.5 py-0.5 bg-[var(--lime)] text-black text-[10px] font-bold uppercase tracking-tighter rounded">{t.liveDeal}</span>}
-            <span className="font-mono text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.id}: {currentCar?.id ? (currentCar.id * 12345 ^ 0xABCDEF).toString(16).padStart(8, '0').toUpperCase() : 'CUSTOM'}</span>
+            {!isStandalone && <span className="font-mono text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.id}: {currentCar?.id ? (currentCar.id * 12345 ^ 0xABCDEF).toString(16).padStart(8, '0').toUpperCase() : 'CUSTOM'}</span>}
           </div>
           <h1 className="text-xl font-display leading-tight uppercase">
             {currentCar?.make} <span className="text-[var(--mu2)]">{currentCar?.model}</span>
           </h1>
           <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
             {t.msrp}: <span className="text-[var(--w)] font-mono">{fmt(currentCar?.msrp)}</span>
-            <div className="group/msrp relative inline-flex items-center">
-              <Info size={12} className="text-[var(--lime)] cursor-help" />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 border border-white/10 rounded text-[9px] uppercase tracking-widest leading-relaxed opacity-0 group-hover/msrp:opacity-100 transition-opacity pointer-events-none z-50">
-                {language === 'ru' 
-                  ? 'MSRP включает заводскую стоимость доставки (Destination Fee). Никаких скрытых наценок.' 
-                  : 'MSRP includes the factory destination fee. Zero hidden markups.'}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -420,7 +423,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <select 
                 value={term}
                 onChange={(e) => setTerm(parseInt(e.target.value))}
-                className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
+                className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
               >
                 {(calcType === 'lease' ? [24, 36, 48] : [48, 60, 72, 84, 96]).map(v => (
                   <option key={v} value={v}>{v} {t.moShort}</option>
@@ -436,7 +439,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <select 
                 value={down}
                 onChange={(e) => setDown(parseInt(e.target.value))}
-                className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
+                className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
               >
                 {[0, 1000, 2000, 3000, 4000, 5000].map(v => (
                   <option key={v} value={v}>{fmt(v)}</option>
@@ -457,7 +460,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                         <select 
                           value={tier}
                           onChange={(e) => setTier(e.target.value)}
-                          className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
+                          className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
                         >
                           <option value="t1">{t.tier1}</option>
                           <option value="t2">{t.tier2}</option>
@@ -476,7 +479,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                       type="text"
                       value={zipCode}
                       onChange={(e) => setZipCode(e.target.value)}
-                      className="w-full bg-transparent text-sm font-bold outline-none"
+                      className="w-full h-6 bg-transparent text-sm font-bold outline-none"
                       placeholder="90210"
                     />
                   </div>
@@ -491,7 +494,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                             setMileage(e.target.value);
                             onMileageChange?.(e.target.value);
                           }}
-                          className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
+                          className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
                         >
                           <option value="7.5k">{t.mileageOptions['7.5k']} {t.miles}</option>
                           <option value="10k">{t.mileageOptions['10k']} {t.miles}</option>
@@ -508,6 +511,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 </div>
               
         </div>
+        
+        <TradeInEstimator onEquityCalculated={setTradeInEquity} />
 
         <div className="p-6 space-y-6">
           {/* Incentives Toggle - Competitor Style */}
@@ -535,22 +540,67 @@ export const Calculator: React.FC<CalculatorProps> = ({
               </div>
 
               {showIncentives && currentCar?.availableIncentives && (
-                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
-                  <div className="text-xs font-bold text-blue-400">
-                    {translations[language].calc.incentiveSavings
-                      .replace('{amount}', fmt(currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0))
-                      .replace('{count}', selectedIncentives.length.toString())}
+                <div className="space-y-4">
+                  <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+                    <div className="text-xs font-bold text-blue-400">
+                      {translations[language].calc.incentiveSavings
+                        .replace('{amount}', fmt(totalIncentives))
+                        .replace('{count}', selectedIncentives.length.toString())}
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setIsModalOpen(true)}
+                      className="px-3 py-1.5 bg-[var(--s2)] border border-[var(--b2)] rounded-lg text-[9px] font-bold uppercase tracking-widest hover:bg-[var(--b1)] transition-all flex items-center gap-2"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Info size={12} />
+                        {translations[language].calc.incentiveModal.edit}
+                      </span>
+                    </button>
                   </div>
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(true)}
-                    className="px-3 py-1.5 bg-[var(--s2)] border border-[var(--b2)] rounded-lg text-[9px] font-bold uppercase tracking-widest hover:bg-[var(--b1)] transition-all flex items-center gap-2"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Info size={12} />
-                      {translations[language].calc.incentiveModal.edit}
-                    </span>
-                  </button>
+                  
+                  <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--b2)] bg-[var(--s2)]">
+                    <div className="space-y-1">
+                      <div className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">First Time Buyer</div>
+                      <div className="text-[10px] text-[var(--mu2)]">Check if you have never financed or leased a car before.</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsFirstTimeBuyer(!isFirstTimeBuyer);
+                        if (isFirstTimeBuyer) setHasCosigner(false);
+                      }}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-colors relative",
+                        isFirstTimeBuyer ? "bg-[var(--lime)]" : "bg-[var(--b2)]"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                        isFirstTimeBuyer ? "left-7" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+
+                  {isFirstTimeBuyer && (
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--b2)] bg-[var(--s2)] mt-2">
+                      <div className="space-y-1">
+                        <div className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">Has Co-Signer</div>
+                        <div className="text-[10px] text-[var(--mu2)]">Check if you will have a co-signer on the application.</div>
+                      </div>
+                      <button
+                        onClick={() => setHasCosigner(!hasCosigner)}
+                        className={cn(
+                          "w-12 h-6 rounded-full transition-colors relative",
+                          hasCosigner ? "bg-[var(--lime)]" : "bg-[var(--b2)]"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                          hasCosigner ? "left-7" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -560,7 +610,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           {createPortal(
             <AnimatePresence>
               {isModalOpen && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
+                <div className="fixed inset-0 z-[9999] flex flex-col justify-end md:justify-center p-0 md:p-6">
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -569,13 +619,14 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                   />
                   <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  className="relative w-full max-w-4xl bg-[var(--s1)] border border-[var(--b2)] rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row"
+                  initial={{ opacity: 0, y: 100 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 100 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="relative w-full max-w-4xl bg-[var(--s1)] border border-[var(--b2)] rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh] md:max-h-[85vh]"
                 >
                   {/* Left Side: Selection */}
-                  <div className="flex-1 p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-[var(--b2)] overflow-y-auto max-h-[60vh] lg:max-h-[80vh]">
+                  <div className="flex-1 p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-[var(--b2)] overflow-y-auto">
                     <div className="flex justify-between items-start mb-6">
                       <div className="space-y-1">
                         <h2 className="text-2xl font-display uppercase tracking-tight">{translations[language].calc.incentiveModal.title}</h2>
@@ -592,30 +643,34 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     </div>
 
                     <div className="space-y-3">
-                      {currentCar?.availableIncentives?.map((inc: any) => (
+                      {currentCar?.availableIncentives?.map((inc: any) => {
+                        const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
+                        const isSelected = selectedIncentives.includes(inc.id) || (isFtbIncentive && isFirstTimeBuyer);
+                        const isDefault = inc.isDefault || inc.type === 'dealer' || isFtbIncentive;
+                        
+                        return (
                         <div 
                           key={inc.id}
                           onClick={() => {
-                            const isDefault = inc.isDefault || inc.type === 'dealer';
                             if (isDefault && role !== 'admin') return;
                             toggleIncentive(inc.id);
                           }}
                           className={cn(
                             "group p-4 rounded-2xl border transition-all flex items-center gap-4",
-                            selectedIncentives.includes(inc.id)
+                            isSelected
                               ? "bg-[var(--lime)]/5 border-[var(--lime)]/30"
                               : "bg-[var(--s2)] border-[var(--b2)] hover:border-[var(--b3)]",
-                            (inc.isDefault || inc.type === 'dealer') && role !== 'admin' ? "cursor-default opacity-80" : "cursor-pointer"
+                            isDefault && role !== 'admin' ? "cursor-default opacity-80" : "cursor-pointer"
                           )}
                         >
                           <div className={cn(
                             "w-5 h-5 rounded border flex items-center justify-center transition-all",
-                            selectedIncentives.includes(inc.id)
+                            isSelected
                               ? "bg-[var(--lime)] border-[var(--lime)]"
                               : "border-[var(--b3)] group-hover:border-[var(--mu2)]",
-                            (inc.isDefault || inc.type === 'dealer') && role !== 'admin' && "opacity-50"
+                            isDefault && role !== 'admin' && "opacity-50"
                           )}>
-                            {selectedIncentives.includes(inc.id) && <X size={14} className="text-black" />}
+                            {isSelected && <X size={14} className="text-black" />}
                           </div>
                           
                           <div className="flex-1 space-y-1">
@@ -635,10 +690,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
                             <div className="flex items-center gap-3">
                               <div className="flex items-center gap-1.5">
                                 <CheckCircle2 size={12} className={cn(
-                                  (inc.isDefault || inc.type === 'dealer') ? "text-blue-400" : "text-[var(--lime)]"
+                                  isDefault ? "text-blue-400" : "text-[var(--lime)]"
                                 )} />
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
-                                  {(inc.isDefault || inc.type === 'dealer') ? translations[language].calc.incentiveModal.autoApplied : translations[language].calc.incentiveModal.autoSelected}
+                                  {isDefault ? translations[language].calc.incentiveModal.autoApplied : translations[language].calc.incentiveModal.autoSelected}
                                 </span>
                               </div>
                               {inc.expiresAt && (
@@ -653,7 +708,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                             {fmt(inc.amount)}
                           </div>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </div>
 
@@ -683,21 +738,21 @@ export const Calculator: React.FC<CalculatorProps> = ({
                       <div className="space-y-3 pt-4">
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-[var(--mu2)] uppercase tracking-widest font-bold">{translations[language].calc.incentiveModal.basePayment}</span>
-                          <span className="font-mono font-bold">{fmt(calculatedPayment + (currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0) / term)}</span>
+                          <span className="font-mono font-bold">{quoteStatus === 'NO_PROGRAMS_AVAILABLE' ? 'N/A' : fmt(calculatedPayment + totalIncentives / term)}</span>
                         </div>
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-[var(--mu2)] uppercase tracking-widest font-bold">{translations[language].calc.incentiveModal.withIncentivesPayment}</span>
-                          <span className="font-mono font-bold text-[var(--lime)]">{fmt(calculatedPayment)}</span>
+                          <span className="font-mono font-bold text-[var(--lime)]">{quoteStatus === 'NO_PROGRAMS_AVAILABLE' ? 'N/A' : fmt(calculatedPayment)}</span>
                         </div>
                         <div className="h-px bg-[var(--b2)]" />
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-[var(--mu2)] uppercase tracking-widest font-bold">{translations[language].calc.incentiveModal.savedOnPayment}</span>
-                          <span className="font-mono font-bold text-blue-400">{fmt((currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0) / term)}</span>
+                          <span className="font-mono font-bold text-blue-400">{fmt(totalIncentives / term)}</span>
                         </div>
                         <div className="flex justify-between items-center pt-2">
                           <span className="text-sm font-bold uppercase tracking-widest text-[var(--w)]">{translations[language].calc.incentiveModal.totalSaved}</span>
                           <span className="text-2xl font-display text-[var(--lime)]">
-                            {fmt(currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
+                            {fmt(totalIncentives)}
                           </span>
                         </div>
                       </div>
@@ -726,36 +781,46 @@ export const Calculator: React.FC<CalculatorProps> = ({
           )}
 
         {/* Price Breakdown */}
-          <div className="space-y-3 pt-4 border-t border-[var(--b2)]">
-            {!isStandalone && (
+          {!isStandalone && (
+            <div className="space-y-3 pt-4 border-t border-[var(--b2)]">
               <div className="space-y-2">
-                {/* Hunter Lease Discount */}
+                {/* Dealer Discount */}
                 <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
                   <span className="text-blue-400">{t.hunterLeaseDiscount}</span>
                   <span className="font-mono text-blue-400">
-                    -{fmt(currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && (inc.type === 'dealer' || inc.isDefault)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
+                    -{fmt(quoteData?.calculation?.dealerDiscountCents ? Math.abs(quoteData.calculation.dealerDiscountCents) / 100 : (currentCar?.savings || 0))}
                   </span>
                 </div>
 
-                {/* Other Selected Incentives */}
-                {showIncentives && currentCar?.availableIncentives?.some((inc: any) => selectedIncentives.includes(inc.id) && inc.type !== 'dealer' && !inc.isDefault) && (
+                {/* Rebates & Incentives */}
+                {showIncentives && totalIncentives > 0 && (
                   <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
                     <span className="text-orange-400">{t.selectedIncentives}</span>
                     <span className="font-mono text-orange-400">
-                      -{fmt(currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && inc.type !== 'dealer' && !inc.isDefault).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
+                      -{fmt(totalIncentives)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Trade-In Equity */}
+                {tradeInEquity > 0 && (
+                  <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
+                    <span className="text-[var(--lime)]">{language === 'ru' ? 'Капитал Trade-In' : 'Trade-In Equity'}</span>
+                    <span className="font-mono text-[var(--lime)]">
+                      -{fmt(tradeInEquity)}
                     </span>
                   </div>
                 )}
               </div>
-            )}
 
-            <div className={cn("pt-2 flex justify-between items-center", !isStandalone && "border-t border-[var(--b2)]")}>
-              <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
-              <span className="text-lg font-display text-[var(--lime)]">
-                {fmt((Number(currentCar?.msrp) || 0) - (showIncentives ? (currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0) : 0))}
-              </span>
+              <div className="pt-2 flex justify-between items-center border-t border-[var(--b2)]">
+                <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
+                <span className="text-lg font-display text-[var(--lime)]">
+                  {fmt(quoteData?.calculation?.sellingPriceCents ? quoteData.calculation.sellingPriceCents / 100 : ((Number(currentCar?.msrp) || 0) - (currentCar?.savings || 0) - (showIncentives ? totalIncentives : 0)))}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Standard Options & Specs */}
           {!isStandalone && (currentCar?.features || currentCar?.specs) && (
@@ -797,7 +862,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           )}
 
           {/* Lender Comparison */}
-          {lenderOptions.length > 0 && (
+          {!isStandalone && lenderOptions.length > 0 && (
             <div className="pt-6 border-t border-[var(--b2)] space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest flex items-center gap-2">
@@ -857,44 +922,42 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   <div className="w-8 h-8 rounded bg-[var(--s2)] flex items-center justify-center border border-[var(--b2)]">
                     <ShieldCheck size={16} className="text-[var(--lime)]" />
                   </div>
-                  <div className="text-[10px] font-bold text-[var(--mu2)] uppercase leading-tight">
-                    {currentCar?.make} Motor<br />Finance
-                  </div>
                 </div>
               </div>
 
               <div className="text-right">
-                <div className="flex items-baseline justify-end gap-2">
-                  {isCalculating ? (
-                    <div className="h-12 w-32 bg-[var(--b2)] animate-pulse rounded-lg" />
-                  ) : (
-                    <span className="text-6xl font-display text-[var(--lime)] leading-none">{fmt(calculatedPayment)}</span>
-                  )}
-                  <span className="text-sm text-[var(--mu2)] font-bold uppercase tracking-widest">per month</span>
-                </div>
-                <div className="flex items-center justify-end gap-2 mt-2">
-                  <div className="text-xs text-[var(--mu2)]">
-                    (+{fmt(down)} due at signing)
+                {quoteStatus === 'NO_PROGRAMS_AVAILABLE' ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-2xl font-display text-[var(--mu1)] leading-none">Estimate Unavailable</span>
+                    <span className="text-xs text-[var(--mu2)] max-w-[200px] text-right">No lender programs found for this configuration.</span>
                   </div>
-                  <button 
-                    onClick={() => setIsTransparencyOpen(true)}
-                    className="flex items-center gap-1 text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest hover:underline"
-                  >
-                    <Eye size={12} />
-                    {translations[language].transparency.btnTransparency}
-                  </button>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-end gap-2">
+                      {isCalculating ? (
+                        <div className="h-12 w-32 bg-[var(--b2)] animate-pulse rounded-lg" />
+                      ) : (
+                        <span className="text-6xl font-display text-[var(--lime)] leading-none">{fmt(calculatedPayment)}</span>
+                      )}
+                      <span className="text-sm text-[var(--mu2)] font-bold uppercase tracking-widest">per month</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 mt-2">
+                      <div className="text-xs text-[var(--mu2)]">
+                        (+{fmt(down)} due at signing)
+                      </div>
+                      <button 
+                        onClick={() => setIsTransparencyOpen(true)}
+                        className="flex items-center gap-1 text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest hover:underline"
+                      >
+                        <Eye size={12} />
+                        {translations[language].transparency.btnTransparency}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Trust Badge */}
-        <div className="flex items-start gap-2 bg-[var(--s2)] p-2 rounded-xl border border-[var(--b2)]">
-          <ShieldCheck className="w-3.5 h-3.5 text-[var(--lime)] shrink-0" />
-          <p className="text-[8px] text-[var(--mu2)] leading-relaxed">
-            {t.trustBadge}
-          </p>
         </div>
       </div>
 
@@ -928,7 +991,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           rv: currentCar?.rv || 0.55,
           mf: currentCar?.mf || 0.002,
           apr: currentCar?.apr || 4.9,
-          rebates: (currentCar?.leaseCash || 0) + (currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)
+          rebates: totalIncentives
         } : null}
         mileage={mileage}
         quoteResult={{ 
@@ -937,12 +1000,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
             sellingPriceCents: ((currentCar?.msrp || 0) - (currentCar?.savings || 0)) * 100, 
             residualValueCents: (currentCar?.msrp || 0) * (currentCar?.rv || 0.55) * 100, 
             dealerDiscountCents: -(currentCar?.savings || 0) * 100, 
-            incentivesCents: ((currentCar?.leaseCash || 0) + (currentCar?.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)) * 100, 
+            incentivesCents: totalIncentives * 100, 
             fees: [
               {name: "Acquisition Fee", amountCents: 65000}, 
               {name: "Doc Fee", amountCents: 8500}, 
               {name: "DMV Fee", amountCents: 40000}, 
-              {name: "Broker Fee", amountCents: 59500}
+              {name: "Platform Fee", amountCents: 59500}
             ], 
             monthlyPaymentCents: Math.round(calculatedPayment * 100), 
             totalDueAtSigningCents: down * 100 

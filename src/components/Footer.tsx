@@ -88,6 +88,8 @@ export const Footer = () => {
             <li><Link to="/#faq" className="hover:text-[var(--lime)] transition-colors">{t.footer.faq}</Link></li>
             <li><Link to="/#reviews" className="hover:text-[var(--lime)] transition-colors">{t.footer.clientReviews}</Link></li>
             <li><Link to="/blog" className="hover:text-[var(--lime)] transition-colors">{t.footer.blog}</Link></li>
+            <li><Link to="/about" className="hover:text-[var(--lime)] transition-colors">{t.footer.aboutUs}</Link></li>
+            <li><Link to="/glossary" className="hover:text-[var(--lime)] transition-colors">{t.footer.glossary}</Link></li>
             <li>
               <button 
                 onClick={open}
@@ -164,14 +166,14 @@ export const Footer = () => {
         <div className="flex flex-wrap justify-center md:justify-end gap-8 text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">
           <Link to="/privacy" className="hover:text-[var(--lime)] transition-colors">{t.legal.privacy}</Link>
           <Link to="/terms" className="hover:text-[var(--lime)] transition-colors">{t.legal.terms}</Link>
-          <Link to="/broker-disclosure" className="hover:text-[var(--lime)] transition-colors">{t.legal.broker}</Link>
+          <Link to="/legal-disclosure" className="hover:text-[var(--lime)] transition-colors">{t.legal.broker}</Link>
           <Link to="/accessibility" className="hover:text-[var(--lime)] transition-colors">{t.legal.accessibility}</Link>
           <span className="text-[var(--mu2)]">{t.footer.licensedBroker}</span>
           <span className="text-[var(--mu2)]">{t.footer.license}: #21318</span>
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-6 pt-8 text-center text-[10px] text-[var(--mu2)] leading-relaxed">
-        <p>Hunter Lease is a premier auto leasing and financing broker serving Los Angeles, California, and nationwide. We specialize in securing the best car lease deals, auto financing rates, and zero-down lease specials on all makes and models including Toyota, Honda, BMW, Mercedes-Benz, Audi, Lexus, and more. Our AI-powered platform monitors dealer inventory to guarantee transparent pricing with no hidden markups. Whether you are looking for a luxury SUV lease, an electric vehicle (EV) deal, or an affordable hybrid commuter car, our expert auto brokers negotiate on your behalf to save you time and money. Contact us today for a hassle-free car buying experience delivered straight to your door.</p>
+        <p>Hunter Lease is a premier auto leasing and financing marketplace serving Los Angeles, California, and nationwide. We specialize in securing the best car lease deals, auto financing rates, and zero-down lease specials on all makes and models including Toyota, Honda, BMW, Mercedes-Benz, Audi, Lexus, and more. Our AI-powered platform monitors dealer inventory to guarantee transparent pricing with no hidden markups. Whether you are looking for a luxury SUV lease, an electric vehicle (EV) deal, or an affordable hybrid commuter car, our marketplace connects you directly with pre-negotiated inventory to save you time and money. Contact us today for a hassle-free car buying experience delivered straight to your door.</p>
       </div>
     </footer>
   );

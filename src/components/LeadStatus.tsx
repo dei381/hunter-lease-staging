@@ -41,7 +41,7 @@ export const LeadStatus = ({ lead }: { lead: Lead }) => {
         </div>
         <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-center">
           <div className="font-display text-3xl text-amber-500">$95</div>
-          <div className="text-[9px] text-[var(--mu)] uppercase tracking-widest leading-tight">Deposit<br />Paid</div>
+          <div className="text-[9px] text-[var(--mu)] uppercase tracking-widest leading-tight">Fee<br />Paid</div>
         </div>
       </div>
 
@@ -55,7 +55,7 @@ export const LeadStatus = ({ lead }: { lead: Lead }) => {
 
       <div className="space-y-6 relative before:absolute before:left-4 before:top-0 before:bottom-0 before:w-px before:bg-[var(--b2)] mb-12">
         {[
-          { i: '💳', t: 'Deposit Received', d: 'Request accepted for processing', s: 'done' },
+          { i: '💳', t: 'Platform Fee Received', d: 'Request accepted for processing', s: 'done' },
           { i: '🔍', t: 'LA Market Analysis', d: `Comparing offers from ${lead.dealersSent} dealers`, s: lead.status !== 'pending' ? 'done' : 'active' },
           { i: '🤝', t: 'Negotiating with Dealers', d: 'Getting the best "under the table" terms', s: lead.dealersAccepted > 0 ? 'done' : 'active' },
           { i: '🏢', t: lead.acceptedBy ? `${lead.acceptedBy} confirmed` : 'Best dealer selected', d: lead.acceptedBy ? 'Price and parameters locked' : 'Dealers are reviewing...', s: lead.acceptedBy ? 'done' : 'active' },

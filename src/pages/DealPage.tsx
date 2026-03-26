@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { SEO } from '../components/SEO';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
@@ -14,25 +14,43 @@ import { FAQ } from '../components/FAQ';
 import { CaseStudies } from '../components/CaseStudies';
 import { TrustSection } from '../components/TrustSection';
 import { DealAuditor } from '../components/DealAuditor';
+import { DealerReviews } from '../components/DealerReviews';
+import { ImageGallery } from '../components/ImageGallery';
 import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon } from 'lucide-react';
 import { cn } from '../utils/cn';
+
+import { CompareBar } from '../components/CompareBar';
+import { getCarImage, CarPhoto } from '../utils/carImage';
+import { PriceHistoryChart } from '../components/PriceHistoryChart';
+import { SmartPriceAlertModal } from '../components/SmartPriceAlertModal';
+import { GroupBuyingWidget } from '../components/GroupBuyingWidget';
+import { AINegotiatorModal } from '../components/AINegotiatorModal';
+import { Bell, Bot } from 'lucide-react';
 
 export const DealPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { language } = useLanguageStore();
-  const { toggleDeal, isSaved: checkIsSaved } = useGarageStore();
+  const { toggleDeal, isSaved: checkIsSaved, addToCompare, removeFromCompare, isInCompare } = useGarageStore();
   const t = translations[language];
   const td = t.dealPage;
+
+  const state = location.state as { isFirstTimeBuyer?: boolean; hasCosigner?: boolean } | null;
+  const isFirstTimeBuyer = state?.isFirstTimeBuyer || false;
+  const hasCosigner = state?.hasCosigner || false;
 
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [isNegotiatorOpen, setIsNegotiatorOpen] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<any>(null);
   const [viewCount, setViewCount] = useState(Math.floor(Math.random() * 5) + 2);
   const [activeTab, setActiveTab] = useState<'specs' | 'options'>('specs');
   const [mileage, setMileage] = useState('10k');
+  const [photos, setPhotos] = useState<CarPhoto[]>([]);
 
   const enrichedDeal = deal;
 
@@ -67,12 +85,15 @@ export const DealPage = () => {
   }, [deal, mileage]);
 
   useEffect(() => {
-    fetch('/api/deals')
-      .then(res => {
+    Promise.all([
+      fetch('/api/deals').then(res => {
         if (!res.ok) throw new Error('Failed to fetch deals');
         return res.json();
-      })
-      .then(data => {
+      }),
+      fetch('/api/car-photos').then(res => res.json())
+    ])
+      .then(([data, photosData]) => {
+        setPhotos(photosData || []);
         if (!Array.isArray(data)) {
           console.error('Expected array of deals, got:', data);
           setLoading(false);
@@ -83,7 +104,7 @@ export const DealPage = () => {
         setLoading(false);
       })
       .catch(err => {
-        console.error('Failed to fetch deals:', err);
+        console.error('Failed to fetch data:', err);
         setLoading(false);
       });
   }, [id]);
@@ -157,37 +178,34 @@ export const DealPage = () => {
     );
   }
 
+  const productSchema = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`,
+    "image": deal.image || getCarImage(photos, deal.make, deal.model, deal.year),
+    "description": `Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}.`,
+    "brand": {
+      "@type": "Brand",
+      "name": deal.make
+    },
+    "offers": {
+      "@type": "Offer",
+      "url": window.location.href,
+      "priceCurrency": "USD",
+      "price": deal.payment,
+      "priceValidUntil": new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      "availability": "https://schema.org/InStock"
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pb-32 lg:pb-20 selection:bg-[var(--lime)] selection:text-black">
-      <Helmet>
-        <title>{`${deal.year} ${deal.make} ${deal.model} | Hunter Lease`}</title>
-        <meta name="description" content={`Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}. Save $${deal.savings?.toLocaleString() || 0}.`} />
-        <meta property="og:title" content={`${deal.year} ${deal.make} ${deal.model} | Hunter Lease`} />
-        <meta property="og:description" content={`Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}. Save $${deal.savings?.toLocaleString() || 0}.`} />
-        <meta property="og:image" content={deal.image} />
-        <meta property="og:type" content="product" />
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org/",
-            "@type": "Product",
-            "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`,
-            "image": deal.image,
-            "description": `Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}.`,
-            "brand": {
-              "@type": "Brand",
-              "name": deal.make
-            },
-            "offers": {
-              "@type": "Offer",
-              "url": window.location.href,
-              "priceCurrency": "USD",
-              "price": deal.payment,
-              "priceValidUntil": new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              "availability": "https://schema.org/InStock"
-            }
-          })}
-        </script>
-      </Helmet>
+      <SEO 
+        title={`${deal.year} ${deal.make} ${deal.model} | Hunter Lease`}
+        description={`Exclusive lease deal for ${deal.year} ${deal.make} ${deal.model}. Save $${deal.savings?.toLocaleString() || 0}.`}
+        ogImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)}
+        schema={productSchema}
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
         <div className="flex flex-col gap-2">
@@ -210,6 +228,34 @@ export const DealPage = () => {
                   <span className="font-mono text-[10px] tracking-widest">{td.passedAudit}</span>
                 </div>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAlertOpen(true)}
+                className="px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
+              >
+                <Bell size={12} className="text-[var(--lime)]" />
+                {language === 'ru' ? 'Следить за ценой' : 'Price Alert'}
+              </button>
+              <button
+                onClick={() => {
+                  if (isInCompare(deal.id.toString())) {
+                    removeFromCompare(deal.id.toString());
+                  } else {
+                    addToCompare(deal);
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border ${
+                  isInCompare(deal.id.toString()) 
+                    ? 'bg-[var(--s2)] text-[var(--w)] border-[var(--lime)]' 
+                    : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
+                }`}
+              >
+                <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-colors ${isInCompare(deal.id.toString()) ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--mu2)]'}`}>
+                  {isInCompare(deal.id.toString()) && <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2 h-2 text-black"><path d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </div>
+                {isInCompare(deal.id.toString()) ? 'Added to Compare' : 'Compare'}
+              </button>
             </div>
           </div>
 
@@ -243,7 +289,7 @@ export const DealPage = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
               >
-                <div className="w-full aspect-[16/9] bg-[var(--s2)] rounded-3xl overflow-hidden border border-[var(--b2)] relative"><img src={deal.image} alt={`${deal.make} ${deal.model}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" /></div>
+                <ImageGallery mainImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} images={deal.images} viewCount={viewCount.toString()} dealId={deal.id.toString()} />
               </motion.div>
 
               {/* Technical Trust Grid */}
@@ -574,11 +620,41 @@ export const DealPage = () => {
                   </AnimatePresence>
                 </div>
               </div>
+
+              {/* Price History Chart */}
+              <div className="mt-8">
+                <PriceHistoryChart make={deal.make} model={deal.model} />
+              </div>
+
+              {/* AI Negotiator Banner */}
+              <div className="mt-8 bg-[var(--s2)] border border-[var(--b2)] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center shrink-0 border border-[var(--lime)]/20">
+                    <Bot size={24} className="text-[var(--lime)]" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-widest mb-1">
+                      {language === 'ru' ? 'Нашли эту машину у дилера?' : 'Found this car at a local dealer?'}
+                    </h3>
+                    <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest leading-relaxed">
+                      {language === 'ru' 
+                        ? 'Позвольте нашему AI написать идеальный контр-оффер, чтобы сбить цену.' 
+                        : 'Let our AI write the perfect counter-offer script to negotiate the best price.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsNegotiatorOpen(true)}
+                  className="w-full sm:w-auto px-6 py-3 bg-[var(--b1)] border border-[var(--b2)] hover:border-[var(--lime)] text-[var(--w)] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors shrink-0 whitespace-nowrap"
+                >
+                  {language === 'ru' ? 'Запустить AI' : 'Launch AI Negotiator'}
+                </button>
+              </div>
             </div>
 
             {/* Right Column: Calculator */}
             <div id="calculator" className="lg:col-span-5 relative scroll-mt-24">
-              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30">
+              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -591,7 +667,17 @@ export const DealPage = () => {
                     onProceed={handleProceed}
                     onMileageChange={(m) => setMileage(m)}
                     mode="offer"
+                    initialIsFirstTimeBuyer={isFirstTimeBuyer}
+                    initialHasCosigner={hasCosigner}
                   />
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: 0.3 }}
+                >
+                  <GroupBuyingWidget make={deal.make} model={deal.model} />
                 </motion.div>
               </div>
             </div>
@@ -725,7 +811,12 @@ export const DealPage = () => {
           <ProcessTimeline />
         </section>
 
-        {/* 5. Success Stories & FAQ removed to avoid duplication */}
+        {/* 5. Dealer Reviews */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+          <DealerReviews />
+        </section>
+
+        {/* 6. Success Stories & FAQ removed to avoid duplication */}
 
         {/* Final CTA */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
@@ -760,6 +851,18 @@ export const DealPage = () => {
         deal={selectedConfig || deal}
       />
 
+      <SmartPriceAlertModal
+        isOpen={isAlertOpen}
+        onClose={() => setIsAlertOpen(false)}
+        make={deal.make}
+        model={deal.model}
+      />
+
+      <AINegotiatorModal
+        isOpen={isNegotiatorOpen}
+        onClose={() => setIsNegotiatorOpen(false)}
+      />
+
       {/* Mobile Sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/90 backdrop-blur-md border-t border-[var(--b2)] z-50">
         <button 
@@ -770,6 +873,7 @@ export const DealPage = () => {
           <ArrowRight size={20} />
         </button>
       </div>
+      <CompareBar />
     </div>
   );
 };

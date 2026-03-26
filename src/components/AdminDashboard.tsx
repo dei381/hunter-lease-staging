@@ -7,7 +7,12 @@ import { DragDropUploader } from './DragDropUploader';
 import { CarsAdmin } from '../pages/CarsAdmin';
 import { ReviewsAdmin } from './ReviewsAdmin';
 import { FeedbackAdmin } from './FeedbackAdmin';
-import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare } from 'lucide-react';
+import { AuditLogsAdmin } from './admin/AuditLogsAdmin';
+import { BlogAdmin } from './BlogAdmin';
+import { IncentivesAdmin } from './IncentivesAdmin';
+import { BulkEditAdmin } from './BulkEditAdmin';
+import { OfferBuilderModal } from './admin/OfferBuilderModal';
+import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers } from 'lucide-react';
 import { doc, getDoc, setDoc, collection, getDocs, orderBy, query, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -37,13 +42,13 @@ interface Deal {
 }
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit'>('overview');
   const [deals, setDeals] = useState<Deal[]>([]);
   const [lenders, setLenders] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({
-    brokerFee: 595,
+    platformFee: 95,
     taxRateDefault: 8.875,
     supportEmail: 'support@dealengine.ai',
     maintenanceMode: false,
@@ -68,6 +73,7 @@ export function AdminDashboard() {
     recentActivity: []
   });
   const [showLogin, setShowLogin] = useState(!localStorage.getItem('admin_token'));
+  const [showOfferBuilder, setShowOfferBuilder] = useState(false);
   const [adminSecret, setAdminSecret] = useState('');
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
@@ -408,39 +414,8 @@ export function AdminDashboard() {
     }
   };
 
-  const handleCreateManualDeal = async () => {
-    try {
-      const response = await fetch('/api/admin/deals', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
-        },
-        body: JSON.stringify({
-          financialData: {
-            make: 'New',
-            model: 'Vehicle',
-            trim: 'Base',
-            msrp: { value: 0, provenance_status: 'manual' },
-            monthlyPayment: { value: 0, provenance_status: 'manual' },
-            term: { value: 36, provenance_status: 'manual' }
-          },
-          reviewStatus: 'NEEDS_REVIEW',
-          publishStatus: 'DRAFT'
-        })
-      });
-      if (response.ok) {
-        alert('Manual deal created successfully!');
-        fetchDeals();
-        fetchStats();
-      } else {
-        const err = await response.text();
-        alert(`Failed to create manual deal: ${err}`);
-      }
-    } catch (error) {
-      console.error('Failed to create manual deal:', error);
-      alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  const handleCreateManualDeal = () => {
+    setShowOfferBuilder(true);
   };
 
   const handleSyncDeals = async () => {
@@ -788,7 +763,7 @@ export function AdminDashboard() {
 
         {/* Tabs */}
         <div className="border-b border-slate-200">
-          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+          <nav className="-mb-px flex space-x-8 overflow-x-auto scrollbar-hide" aria-label="Tabs">
             <button
               onClick={() => setActiveTab('overview')}
               className={`${
@@ -864,7 +839,7 @@ export function AdminDashboard() {
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
             >
               <ImageIcon className="w-4 h-4" />
-              <span>{translations[language].admin.mediaLibrary || 'Media Library'}</span>
+              <span>{t.mediaLibrary}</span>
             </button>
             <button
               onClick={() => setActiveTab('banks')}
@@ -876,6 +851,28 @@ export function AdminDashboard() {
             >
               <Database className="w-4 h-4" />
               <span>{t.banks}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('incentives')}
+              className={`${
+                activeTab === 'incentives'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            >
+              <Tag className="w-4 h-4" />
+              <span>OEM Incentives</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('bulk-edit')}
+              className={`${
+                activeTab === 'bulk-edit'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Bulk Edit</span>
             </button>
             <button
               onClick={() => setActiveTab('analytics')}
@@ -909,6 +906,28 @@ export function AdminDashboard() {
             >
               <MessageSquare className="w-4 h-4" />
               <span>{t.feedback}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`${
+                activeTab === 'audit'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            >
+              <List className="w-4 h-4" />
+              <span>{t.auditLogs}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('blog')}
+              className={`${
+                activeTab === 'blog'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            >
+              <PenTool className="w-4 h-4" />
+              <span>Blog</span>
             </button>
           </nav>
         </div>
@@ -1748,20 +1767,20 @@ export function AdminDashboard() {
         {activeTab === 'settings' && (
           <section className="max-w-2xl">
             <div className="mb-6">
-              <h2 className="text-lg font-semibold text-slate-900">{t.siteConfiguration}</h2>
+              <h2 className="text-lg font-semibold text-slate-900">{t.siteConfiguration || 'Site Configuration'}</h2>
               <p className="text-sm text-slate-500">
-                Настройте глобальные параметры, которые влияют на расчеты калькулятора и поведение сайта.
+                {t.siteConfigDesc || 'Configure global settings that affect calculator calculations and site behavior.'}
               </p>
             </div>
             <div className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl p-6 space-y-6">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">{t.brokerFee}</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Комиссия брокера, добавляемая к стоимости сделки.</p>
+                  <label className="block text-sm font-medium text-slate-700">{t.platformFee}</label>
+                  <p className="text-[10px] text-slate-500 mb-1">Комиссия платформы (Platform Fee).</p>
                   <input
                     type="number"
-                    value={settings.brokerFee}
-                    onChange={(e) => setSettings({...settings, brokerFee: parseInt(e.target.value)})}
+                    value={settings.platformFee}
+                    onChange={(e) => setSettings({...settings, platformFee: parseInt(e.target.value)})}
                     className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
                   />
                 </div>
@@ -1779,8 +1798,8 @@ export function AdminDashboard() {
                 
                 {/* New Fees */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">DMV Fee</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Сбор за регистрацию ТС по умолчанию.</p>
+                  <label className="block text-sm font-medium text-slate-700">{t.dmvFee || 'DMV Fee'}</label>
+                  <p className="text-[10px] text-slate-500 mb-1">{t.dmvFeeDesc || 'Default vehicle registration fee.'}</p>
                   <input
                     type="number"
                     value={settings.dmvFee || 400}
@@ -1789,8 +1808,8 @@ export function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Doc Fee</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Дилерский сбор за оформление документов.</p>
+                  <label className="block text-sm font-medium text-slate-700">{t.docFee || 'Doc Fee'}</label>
+                  <p className="text-[10px] text-slate-500 mb-1">{t.docFeeDesc || 'Dealer document processing fee.'}</p>
                   <input
                     type="number"
                     value={settings.docFee || 85}
@@ -1799,8 +1818,8 @@ export function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Acquisition Fee</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Банковский сбор за открытие лизинга.</p>
+                  <label className="block text-sm font-medium text-slate-700">{t.acquisitionFee || 'Acquisition Fee'}</label>
+                  <p className="text-[10px] text-slate-500 mb-1">{t.acquisitionFeeDesc || 'Bank fee for opening a lease.'}</p>
                   <input
                     type="number"
                     value={settings.acquisitionFee || 650}
@@ -1809,8 +1828,8 @@ export function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Disposition Fee</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Сбор за возврат авто в конце лизинга.</p>
+                  <label className="block text-sm font-medium text-slate-700">{t.dispositionFee || 'Disposition Fee'}</label>
+                  <p className="text-[10px] text-slate-500 mb-1">{t.dispositionFeeDesc || 'Fee for returning the car at the end of the lease.'}</p>
                   <input
                     type="number"
                     value={settings.dispositionFee || 395}
@@ -1821,7 +1840,7 @@ export function AdminDashboard() {
 
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700">{t.supportEmail}</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Email для уведомлений о новых лидах и поддержки.</p>
+                  <p className="text-[10px] text-slate-500 mb-1">{t.supportEmailDesc || 'Email for new lead notifications and support.'}</p>
                   <input
                     type="email"
                     value={settings.supportEmail}
@@ -1830,13 +1849,13 @@ export function AdminDashboard() {
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700">Gemini API Key</label>
-                  <p className="text-[10px] text-slate-500 mb-1">Ключ для автоматического извлечения данных из предложений (Gemini AI).</p>
+                  <label className="block text-sm font-medium text-slate-700">{t.geminiApiKey || 'Gemini API Key'}</label>
+                  <p className="text-[10px] text-slate-500 mb-1">{t.geminiApiKeyDesc || 'Key for automatic data extraction from quotes (Gemini AI).'}</p>
                   <input
                     type="password"
                     value={settings.geminiApiKey || ''}
                     onChange={(e) => setSettings({...settings, geminiApiKey: e.target.value})}
-                    placeholder="Введите ваш API ключ"
+                    placeholder={t.enterApiKey || 'Enter your API key'}
                     className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
                   />
                 </div>
@@ -1869,24 +1888,24 @@ export function AdminDashboard() {
             <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-slate-900">System Status</h3>
+                  <h3 className="text-lg font-bold text-slate-900">{t.systemStatus || 'System Status'}</h3>
                   <ShieldCheck className="w-5 h-5 text-emerald-500" />
                 </div>
                 
                 <div className="space-y-4">
                   <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-slate-700">Domain Authorization</span>
+                      <span className="text-sm font-bold text-slate-700">{t.domainAuthorization || 'Domain Authorization'}</span>
                       {window.location.hostname === 'hunter.lease' ? (
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Verified</span>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">{t.verified || 'Verified'}</span>
                       ) : (
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded uppercase">Action Required</span>
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded uppercase">{t.actionRequired || 'Action Required'}</span>
                       )}
                     </div>
                     <p className="text-xs text-slate-500 mb-3">
                       {window.location.hostname === 'hunter.lease' 
-                        ? 'Your domain is correctly configured and authorized for Firebase Authentication.'
-                        : 'If authentication fails on hunter.lease, ensure it\'s added to "Authorized Domains" in Firebase Console.'}
+                        ? (t.domainVerifiedDesc || 'Your domain is correctly configured and authorized for Firebase Authentication.')
+                        : (t.domainActionRequiredDesc || 'If authentication fails on hunter.lease, ensure it\'s added to "Authorized Domains" in Firebase Console.')}
                     </p>
                     <a 
                       href="https://console.firebase.google.com/project/_/authentication/settings" 
@@ -1894,36 +1913,36 @@ export function AdminDashboard() {
                       rel="noopener noreferrer"
                       className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
                     >
-                      Open Firebase Console <ExternalLink className="w-3 h-3" />
+                      {t.goToFirebaseConsole || 'Open Firebase Console'} <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>
 
                   <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-slate-700">Site Preview</span>
-                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Active</span>
+                      <span className="text-sm font-bold text-slate-700">{t.sitePreview || 'Site Preview'}</span>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">{t.active || 'Active'}</span>
                     </div>
                     <p className="text-xs text-slate-500 mb-3">
-                      If the preview doesn't load in the dashboard, try opening it in a new tab.
+                      {t.sitePreviewDesc || 'If the preview doesn\'t load in the dashboard, try opening it in a new tab.'}
                     </p>
                     <button 
                       onClick={() => window.open('/', '_blank')}
                       className="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
                     >
-                      <ExternalLink className="w-3 h-3" /> Open Live Site
+                      <ExternalLink className="w-3 h-3" /> {t.openLiveSite || 'Open Live Site'}
                     </button>
                   </div>
                 </div>
               </div>
 
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Danger Zone</h3>
-                <p className="text-sm text-slate-500 mb-6">Irreversible actions for your application data.</p>
+                <h3 className="text-lg font-bold text-slate-900 mb-4">{t.dangerZone || 'Danger Zone'}</h3>
+                <p className="text-sm text-slate-500 mb-6">{t.dangerZoneDesc || 'Irreversible actions for your application data.'}</p>
                 <div className="space-y-4">
                   <button className="w-full flex items-center justify-between p-4 border border-red-100 rounded-lg text-red-600 hover:bg-red-50 transition-colors">
                     <div className="text-left">
-                      <p className="text-sm font-bold">Maintenance Mode</p>
-                      <p className="text-xs opacity-70">Disable public access to the calculator</p>
+                      <p className="text-sm font-bold">{t.maintenanceMode || 'Maintenance Mode'}</p>
+                      <p className="text-xs opacity-70">{t.maintenanceDesc || 'Disable public access to the calculator'}</p>
                     </div>
                     <div className="w-10 h-5 bg-slate-200 rounded-full relative">
                       <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${settings.maintenanceMode ? 'right-0.5' : 'left-0.5'}`} />
@@ -1957,6 +1976,16 @@ export function AdminDashboard() {
         {activeTab === 'feedback' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
             <FeedbackAdmin />
+          </section>
+        )}
+        {activeTab === 'audit' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <AuditLogsAdmin />
+          </section>
+        )}
+        {activeTab === 'blog' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <BlogAdmin />
           </section>
         )}
         {activeTab === 'leads' && (
@@ -2109,6 +2138,13 @@ export function AdminDashboard() {
                                   Cosigner
                                 </span>
                               )}
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                lead.depositStatus === 'paid' 
+                                  ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
+                                  : 'bg-amber-100 text-amber-700 border-amber-200'
+                              }`}>
+                                Deposit: {lead.depositStatus || 'pending'}
+                              </span>
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                 lead.status === 'closed' ? 'bg-emerald-100 text-emerald-800' :
                                 lead.status === 'contacted' ? 'bg-blue-100 text-blue-800' :
@@ -2159,6 +2195,8 @@ export function AdminDashboard() {
                                 <p><span className="font-medium">{t.phone}:</span> {lead.phone}</p>
                                 <p><span className="font-medium">{t.paymentMethod}:</span> {lead.payMethod === 'z' ? 'Zelle' : lead.payMethod === 'v' ? 'Venmo' : 'Credit Card'}</p>
                                 {lead.paymentName && <p><span className="font-medium">{t.paymentName}:</span> {lead.paymentName}</p>}
+                                <p><span className="font-medium">Deposit Status:</span> <span className={`font-bold ${lead.depositStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>{lead.depositStatus || 'pending'}</span></p>
+                                {lead.depositAmount && <p><span className="font-medium">Deposit Amount:</span> ${(lead.depositAmount / 100).toFixed(2)}</p>}
                                 <p><span className="font-medium">{t.tcpaConsent}:</span> {lead.legalConsent?.tcpa ? t.yes : t.no}</p>
                                 <p><span className="font-medium">{t.termsConsent}:</span> {lead.legalConsent?.terms ? t.yes : t.no}</p>
                                 <p><span className="font-medium">{t.ftb}:</span> {lead.isFirstTimeBuyer ? t.yes : t.no}</p>
@@ -2225,6 +2263,18 @@ export function AdminDashboard() {
             </div>
           </section>
         )}
+        
+        {activeTab === 'incentives' && (
+          <section className="animate-fade-in">
+            <IncentivesAdmin />
+          </section>
+        )}
+        
+        {activeTab === 'bulk-edit' && (
+          <section className="animate-fade-in">
+            <BulkEditAdmin />
+          </section>
+        )}
       </main>
       <ConfirmationModal 
         isOpen={confirmModal.isOpen}
@@ -2234,6 +2284,14 @@ export function AdminDashboard() {
         message={confirmModal.message}
         confirmText={confirmModal.confirmText}
         confirmColor={confirmModal.confirmColor}
+      />
+      <OfferBuilderModal
+        isOpen={showOfferBuilder}
+        onClose={() => setShowOfferBuilder(false)}
+        onSave={() => {
+          fetchDeals();
+          fetchStats();
+        }}
       />
     </div>
   );

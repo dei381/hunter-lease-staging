@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Helmet } from 'react-helmet-async';
+import { SEO } from '../components/SEO';
 import { Filter, Search, Info, ShieldCheck, Zap, ChevronRight, SlidersHorizontal, Eye, Heart, X, ChevronDown, Fuel, Gauge, Users, Settings2, Star } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { getCarImage, CarPhoto } from '../utils/carImage';
-import { calculateLease, calculateFinance, getVal } from '../utils/finance';
+import { getVal } from '../utils/finance';
 
 const fmt = (n: any) => {
   const num = Number(n);
@@ -16,13 +16,14 @@ const fmt = (n: any) => {
   return '$' + Math.round(num).toLocaleString('en-US');
 };
 
+import { CompareBar } from '../components/CompareBar';
 import { logEvent } from '../components/VisitTracker';
 
 export const DealsPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { language } = useLanguageStore();
-  const { toggleDeal, isSaved } = useGarageStore();
+  const { toggleDeal, isSaved, addToCompare, removeFromCompare, isInCompare } = useGarageStore();
   const { settings } = useSettingsStore();
   const t = translations[language].deals;
   const tc = translations[language].calc;
@@ -57,10 +58,22 @@ export const DealsPage = () => {
   const [downPayment, setDownPayment] = useState(3000);
   const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value'>('payment');
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setIsLoading(true);
+    const params = new URLSearchParams({
+      zipCode: zipCode || '90210',
+      isFirstTimeBuyer: isFirstTimeBuyer.toString(),
+      tier: tier,
+      term: selectedTerm.toString(),
+      down: downPayment.toString(),
+      mileage: selectedMileage,
+      displayMode: displayMode
+    });
+
     Promise.all([
-      fetch('/api/deals').then(res => res.json()),
+      fetch(`/api/deals?${params.toString()}`).then(res => res.json()),
       fetch('/api/car-photos').then(res => res.json()),
       fetch(`/api/v2/quotes?zipCode=${zipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`).then(res => res.json())
     ])
@@ -113,9 +126,13 @@ export const DealsPage = () => {
           };
         });
         setDeals(recalculated);
+        setIsLoading(false);
       })
-      .catch(err => console.error('Failed to fetch data:', err));
-  }, [zipCode, isFirstTimeBuyer, tier]);
+      .catch(err => {
+        console.error('Failed to fetch data:', err);
+        setIsLoading(false);
+      });
+  }, [zipCode, isFirstTimeBuyer, tier, selectedTerm, downPayment, selectedMileage, displayMode]);
 
   const makes = useMemo(() => ['All', ...Array.from(new Set(deals.map(d => d.make)))].sort(), [deals]);
   const availableModels = useMemo(() => {
@@ -134,61 +151,8 @@ export const DealsPage = () => {
   const processedDeals = useMemo(() => {
     return deals.map(deal => {
       const msrp = getVal(deal.msrp);
-      const savings = getVal(deal.savings);
-      const leaseCash = getVal(deal.leaseCash);
-      const rebates = getVal(deal.rebates);
-      const discount = getVal(deal.discount);
-      
-      const taxRate = 0.095;
-      const acqFee = 650;
-      const docFee = 85;
-      const dmvFee = 400;
-      const brokerFee = getVal(settings.brokerFee, 595);
-      
-      let currentPayment = 0;
-      let currentMarketAvg = 0;
-
-      if (displayMode === 'lease') {
-        let rv = getVal(deal.rv, 0.5);
-        
-        // Mileage adjustments
-        if (selectedMileage === '12k') rv -= 0.01;
-        else if (selectedMileage === '15k') rv -= 0.03;
-        else if (selectedMileage === '20k') rv -= 0.05;
-        else if (selectedMileage === '7.5k') rv += 0.01;
-        
-        let mf = getVal(deal.mf, 0.002);
-        if (tier === 't2') mf *= 1.1;
-        else if (tier === 't3') mf *= 1.2;
-        else if (tier === 't4') mf *= 1.35;
-        else if (tier === 't5') mf *= 1.5;
-        else if (tier === 't6') mf *= 1.7;
-        
-        const lease = calculateLease({
-          msrp, savings, leaseCash, rebates, discount,
-          term: selectedTerm, down: downPayment, rv, mf, taxRate,
-          acqFee, docFee, dmvFee, brokerFee
-        });
-        
-        currentPayment = lease.monthlyPayment;
-        currentMarketAvg = Math.round(currentPayment * 1.267);
-      } else {
-        let apr = getVal(deal.apr, 4.9);
-        if (tier === 't2') apr += 1.0;
-        else if (tier === 't3') apr += 2.5;
-        else if (tier === 't4') apr += 4.5;
-        else if (tier === 't5') apr += 7.0;
-        else if (tier === 't6') apr += 10.0;
-        
-        const finance = calculateFinance({
-          msrp, savings, leaseCash, rebates, discount,
-          term: selectedTerm, down: downPayment, apr, taxRate,
-          rv: 0, mf: 0, acqFee: 0, docFee, dmvFee, brokerFee
-        });
-        
-        currentPayment = finance.monthlyPayment;
-        currentMarketAvg = Math.round(currentPayment * 1.15);
-      }
+      let currentPayment = displayMode === 'lease' ? deal.payment : deal.financePayment || deal.payment;
+      let currentMarketAvg = displayMode === 'lease' ? Math.round(currentPayment * 1.267) : Math.round(currentPayment * 1.15);
 
       const totalCost = currentPayment * selectedTerm;
       const valueScore = totalCost > 0 ? (msrp / totalCost).toFixed(2) : '0';
@@ -203,9 +167,7 @@ export const DealsPage = () => {
         valueScore: parseFloat(valueScore)
       };
     });
-  }, [deals, displayMode, tier, downPayment, selectedTerm, selectedMileage, settings.brokerFee]);
-
-  const effectiveFTB = isFirstTimeBuyer && !hasCosigner;
+  }, [deals, displayMode, selectedTerm]);
 
   const filteredDeals = useMemo(() => {
     let result = processedDeals.filter(deal => {
@@ -217,7 +179,15 @@ export const DealsPage = () => {
       const matchesModel = selectedModel === 'All' || deal.model === selectedModel;
       const matchesTrim = selectedTrim === 'All' || deal.trim === selectedTrim;
       const matchesClass = selectedClass === 'All' || deal.class === selectedClass;
-      const matchesFTB = !effectiveFTB || deal.isFirstTimeBuyerEligible !== false;
+      
+      let matchesFTB = true;
+      if (isFirstTimeBuyer) {
+        if (hasCosigner) {
+          matchesFTB = deal.allowWithCoSigner !== false;
+        } else {
+          matchesFTB = deal.isFirstTimeBuyerEligible !== false;
+        }
+      }
       
       // Advanced Filters
       const matchesBody = selectedBodyStyle === 'All' || deal.bodyStyle === selectedBodyStyle;
@@ -245,34 +215,31 @@ export const DealsPage = () => {
       if (sortBy === 'value') return b.valueScore - a.valueScore;
       return 0;
     });
-  }, [processedDeals, searchQuery, maxPayment, selectedMake, selectedModel, selectedTrim, selectedClass, effectiveFTB, selectedQuickFilter, selectedBodyStyle, selectedFuelType, selectedDriveType, selectedSeats, sortBy, settings.brokerFee]);
+  }, [processedDeals, searchQuery, maxPayment, selectedMake, selectedModel, selectedTrim, selectedClass, isFirstTimeBuyer, hasCosigner, selectedQuickFilter, selectedBodyStyle, selectedFuelType, selectedDriveType, selectedSeats, sortBy]);
 
   const handleCardClick = (deal: any) => {
     logEvent('select_item', { item_list_name: 'deals_catalog', items: [{ item_id: deal.id, item_name: `${deal.make} ${deal.model}` }] });
-    navigate(`/deal/${deal.id}`);
+    navigate(`/deal/${deal.id}`, { state: { isFirstTimeBuyer, hasCosigner } });
+  };
+
+  const itemListSchema = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": filteredDeals.slice(0, 10).map((deal, index) => ({
+      "@type": "ListItem",
+      "position": index + 1,
+      "url": `${window.location.origin}/deal/${deal.id}`,
+      "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`
+    }))
   };
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pt-4 pb-32 font-sans">
-      <Helmet>
-        <title>{`${selectedMake !== 'All' ? selectedMake + ' ' : ''}${selectedModel !== 'All' ? selectedModel + ' ' : ''}Lease Deals in Los Angeles | Hunter Lease`}</title>
-        <meta name="description" content={`Browse the best ${selectedMake !== 'All' ? selectedMake + ' ' : ''}car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup.`} />
-        <meta property="og:title" content={`${selectedMake !== 'All' ? selectedMake + ' ' : ''}${selectedModel !== 'All' ? selectedModel + ' ' : ''}Lease Deals in Los Angeles | Hunter Lease`} />
-        <meta property="og:description" content={`Browse the best ${selectedMake !== 'All' ? selectedMake + ' ' : ''}car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup.`} />
-        <meta property="og:type" content="website" />
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "ItemList",
-            "itemListElement": filteredDeals.slice(0, 10).map((deal, index) => ({
-              "@type": "ListItem",
-              "position": index + 1,
-              "url": `${window.location.origin}/deal/${deal.id}`,
-              "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`
-            }))
-          })}
-        </script>
-      </Helmet>
+      <SEO 
+        title={`${selectedMake !== 'All' ? selectedMake + ' ' : ''}${selectedModel !== 'All' ? selectedModel + ' ' : ''}Lease Deals in Los Angeles | Hunter Lease`}
+        description={`Browse the best ${selectedMake !== 'All' ? selectedMake + ' ' : ''}car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup.`}
+        schema={itemListSchema}
+      />
 
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
         {/* Header Section */}
@@ -396,6 +363,37 @@ export const DealsPage = () => {
                     onChange={(e) => setZipCode(e.target.value)}
                     className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-2.5 px-3 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all"
                   />
+                </div>
+
+                {/* Buyer Status */}
+                <div className="space-y-3 pt-4 border-t border-[var(--b2)]">
+                  <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.buyerStatus}</h4>
+                  <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => {
+                        setIsFirstTimeBuyer(!isFirstTimeBuyer);
+                        if (isFirstTimeBuyer) setHasCosigner(false);
+                      }}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border text-left ${
+                        isFirstTimeBuyer 
+                          ? 'bg-[var(--lime)] text-black border-[var(--lime)]' 
+                          : 'bg-[var(--s2)] text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
+                      }`}
+                    >
+                      {isFirstTimeBuyer ? t.firstTimeBuyer : t.experiencedBuyer}
+                    </button>
+                    {isFirstTimeBuyer && (
+                      <label className="flex items-center gap-2 text-xs text-[var(--mu2)] cursor-pointer hover:text-[var(--w)] transition-colors p-2 bg-[var(--s2)] rounded-xl border border-[var(--b2)]">
+                        <input 
+                          type="checkbox" 
+                          checked={hasCosigner} 
+                          onChange={(e) => setHasCosigner(e.target.checked)}
+                          className="accent-[var(--lime)] w-4 h-4 rounded border-[var(--b2)] bg-[var(--s2)]"
+                        />
+                        {t.hasCosigner}
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -638,7 +636,36 @@ export const DealsPage = () => {
             {/* Grid */}
             <div className="grid md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               <AnimatePresence mode="popLayout">
-                {filteredDeals.length > 0 ? filteredDeals.map(deal => (
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <motion.div
+                      key={`skeleton-${i}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="bg-[var(--s1)] border border-[var(--b2)] rounded-2xl overflow-hidden flex flex-col h-full shadow-sm"
+                    >
+                      <div className="w-full aspect-[16/10] bg-[var(--s2)] animate-pulse" />
+                      <div className="p-5 flex flex-col flex-1 gap-4">
+                        <div className="space-y-2">
+                          <div className="h-4 bg-[var(--s2)] rounded w-1/3 animate-pulse" />
+                          <div className="h-6 bg-[var(--s2)] rounded w-2/3 animate-pulse" />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="h-6 bg-[var(--s2)] rounded-full w-16 animate-pulse" />
+                          <div className="h-6 bg-[var(--s2)] rounded-full w-16 animate-pulse" />
+                        </div>
+                        <div className="mt-auto pt-4 border-t border-[var(--b2)] space-y-3">
+                          <div className="flex justify-between">
+                            <div className="h-4 bg-[var(--s2)] rounded w-1/4 animate-pulse" />
+                            <div className="h-6 bg-[var(--s2)] rounded w-1/3 animate-pulse" />
+                          </div>
+                          <div className="h-10 bg-[var(--s2)] rounded-xl w-full animate-pulse" />
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))
+                ) : filteredDeals.length > 0 ? filteredDeals.map(deal => (
                   <motion.div 
                     key={deal.id}
                     layout
@@ -689,7 +716,7 @@ export const DealsPage = () => {
                           </span>
                           <div className="flex items-baseline gap-1">
                             <span className="font-display text-3xl text-[var(--lime)] leading-none">
-                              {fmt(deal.displayPayment + ((Number(settings.brokerFee) || 595) / deal.displayTerm))}
+                              {fmt(deal.displayPayment)}
                             </span>
                             <span className="text-xs text-[var(--mu2)] font-bold">/mo</span>
                           </div>
@@ -709,12 +736,6 @@ export const DealsPage = () => {
                         <div className="flex flex-col">
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] text-[var(--mu)] uppercase tracking-widest font-bold">{t.msrp}</span>
-                            <div className="group relative">
-                              <Info size={10} className="text-[var(--mu)] cursor-help" />
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 text-[10px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center normal-case">
-                                {language === 'ru' ? 'MSRP включает стоимость доставки до дилера' : 'MSRP includes destination and delivery fees'}
-                              </div>
-                            </div>
                           </div>
                           <span className="font-mono text-[var(--w)]">{fmt(deal.msrp)}</span>
                         </div>
@@ -727,7 +748,27 @@ export const DealsPage = () => {
                       </div>
 
                       {/* 5. CTA */}
-                      <div className="mt-auto">
+                      <div className="mt-auto flex flex-col gap-2">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isInCompare(deal.id.toString())) {
+                              removeFromCompare(deal.id.toString());
+                            } else {
+                              addToCompare(deal);
+                            }
+                          }}
+                          className={`w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border ${
+                            isInCompare(deal.id.toString()) 
+                              ? 'bg-[var(--s2)] text-[var(--w)] border-[var(--lime)]' 
+                              : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
+                          }`}
+                        >
+                          <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-colors ${isInCompare(deal.id.toString()) ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--mu2)]'}`}>
+                            {isInCompare(deal.id.toString()) && <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2 h-2 text-black"><path d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </div>
+                          {isInCompare(deal.id.toString()) ? 'Added to Compare' : 'Compare'}
+                        </button>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -790,6 +831,7 @@ export const DealsPage = () => {
            </button>
         </div>
       </div>
+      <CompareBar />
     </div>
   );
 };

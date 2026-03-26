@@ -12,13 +12,13 @@ export const TermsConditions = () => {
       
       <div className="space-y-6">
         <h2 className="text-xl font-bold text-[var(--w)]">1. Service Description</h2>
-        <p>Hunter.Lease (operated by Cargwin LLC) acts as an independent auto broker (CA License #21318). We are not a dealership. We negotiate vehicle pricing and lease/finance terms on your behalf with our network of authorized dealers.</p>
+        <p>Hunter.Lease (operated by Cargwin LLC) acts as an independent vehicle leasing platform (CA License #21318). We are not a dealership. We facilitate vehicle pricing and lease/finance terms on your behalf with our network of participating dealers.</p>
         
         <h2 className="text-xl font-bold text-[var(--w)]">2. Deposit & Refund Policy</h2>
-        <p>To initiate the negotiation and vehicle sourcing process, a deposit of $95 is required. This deposit is fully refundable if we are unable to secure the deal at the agreed terms. Once the deal is locked and accepted by the dealer, the deposit becomes non-refundable as it covers our service fee.</p>
+        <p>To submit your request to the dealership, a platform deposit of $95 is required. This deposit is fully refundable if the dealer cannot fulfill your request at the estimated terms. Once the request is accepted by the dealer, the deposit becomes non-refundable.</p>
         
-        <h2 className="text-xl font-bold text-[var(--w)]">3. Broker Fees</h2>
-        <p>Our compensation is typically paid by the dealership. Any direct broker fees charged to the client will be explicitly disclosed and agreed upon prior to finalizing the transaction.</p>
+        <h2 className="text-xl font-bold text-[var(--w)]">3. Platform Fees</h2>
+        <p>Our compensation is typically paid by the dealership. Any direct platform fees charged to the client will be explicitly disclosed and agreed upon prior to finalizing the transaction.</p>
         
         <h2 className="text-xl font-bold text-[var(--w)]">4. Vehicle Availability & Pricing</h2>
         <p>All quotes and estimates provided on our platform are subject to vehicle availability, credit approval, and final dealer confirmation. Prices, money factors, and residual values are subject to change by the manufacturer or financial institution without prior notice.</p>
@@ -35,7 +35,7 @@ export const TermsConditions = () => {
           <li>Email: hello@hunter.lease</li>
           <li>Head Office: 2855 Michelle Dr, Office 180, Irvine, CA</li>
           <li>License Address: 4555 Auburn Blvd, Ste E, Sacramento, CA</li>
-          <li>CA Broker License: #21318</li>
+          <li>CA License: #21318</li>
         </ul>
       </div>
     </div>

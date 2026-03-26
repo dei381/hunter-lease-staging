@@ -18,11 +18,14 @@ export const getCarImage = (
 ): string => {
   if (!photos || photos.length === 0) return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800';
 
+  const normalizedMakeId = makeId.toLowerCase().replace(/\s+/g, '-');
+  const normalizedModelId = modelId.toLowerCase().replace(/\s+/g, '-');
+
   // 1. Try exact match (Make, Model, Year, Color)
   if (year && colorId) {
     const exactMatch = photos.find(p => 
-      p.makeId === makeId && 
-      p.modelId === modelId && 
+      p.makeId === normalizedMakeId && 
+      p.modelId === normalizedModelId && 
       p.year === year && 
       p.colorId.toLowerCase() === colorId.toLowerCase()
     );
@@ -32,8 +35,8 @@ export const getCarImage = (
   // 2. Try match (Make, Model, Year) with isDefault
   if (year) {
     const defaultForYear = photos.find(p => 
-      p.makeId === makeId && 
-      p.modelId === modelId && 
+      p.makeId === normalizedMakeId && 
+      p.modelId === normalizedModelId && 
       p.year === year && 
       p.isDefault
     );
@@ -41,8 +44,8 @@ export const getCarImage = (
 
     // 3. Try any match for Year
     const anyForYear = photos.find(p => 
-      p.makeId === makeId && 
-      p.modelId === modelId && 
+      p.makeId === normalizedMakeId && 
+      p.modelId === normalizedModelId && 
       p.year === year
     );
     if (anyForYear) return anyForYear.imageUrl;
@@ -50,16 +53,16 @@ export const getCarImage = (
 
   // 4. Try default for Model (any year)
   const defaultForModel = photos.find(p => 
-    p.makeId === makeId && 
-    p.modelId === modelId && 
+    p.makeId === normalizedMakeId && 
+    p.modelId === normalizedModelId && 
     p.isDefault
   );
   if (defaultForModel) return defaultForModel.imageUrl;
 
   // 5. Try any match for Model
   const anyForModel = photos.find(p => 
-    p.makeId === makeId && 
-    p.modelId === modelId
+    p.makeId === normalizedMakeId && 
+    p.modelId === normalizedModelId
   );
   if (anyForModel) return anyForModel.imageUrl;
 

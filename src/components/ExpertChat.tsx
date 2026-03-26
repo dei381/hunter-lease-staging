@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageCircle, X, Send, User, Bot, Sparkles } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { useLanguageStore } from '../store/languageStore';
 
 export const ExpertChat = () => {
@@ -29,22 +28,19 @@ export const ExpertChat = () => {
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [...messages, { role: 'user', text: userMsg }].map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text }]
-        })),
-        config: {
-          systemInstruction: `You are Hunter, a premium auto lease expert for Hunter Lease. 
-          Your goal is to help users understand lease calculations, find hidden markups, and explain why Hunter Lease is the best choice (zero hidden fees, 11-key lock technology).
-          Be professional, concise, and helpful. Use the user's language (${language}).
-          If they ask about specific deals, refer them to the calculator on the site.`,
-        }
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, { role: 'user', text: userMsg }],
+          language
+        })
       });
+      
+      if (!res.ok) throw new Error('Chat failed');
+      const data = await res.json();
 
-      setMessages(prev => [...prev, { role: 'bot', text: response.text || 'I\'m sorry, I couldn\'t process that.' }]);
+      setMessages(prev => [...prev, { role: 'bot', text: data.text || 'I\'m sorry, I couldn\'t process that.' }]);
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, { role: 'bot', text: 'Sorry, I\'m having trouble connecting right now.' }]);

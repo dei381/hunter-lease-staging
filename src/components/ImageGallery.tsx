@@ -16,16 +16,17 @@ const CAR_IMAGES = [
 
 interface ImageGalleryProps {
   mainImage?: string;
+  images?: string[];
   viewCount?: string;
   dealId?: string;
 }
 
-export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, viewCount, dealId }) => {
+export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId }) => {
   const { language } = useLanguageStore();
   const t = translations[language];
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const images = mainImage ? [mainImage] : CAR_IMAGES;
+  const images = propImages && propImages.length > 0 ? propImages : (mainImage ? [mainImage] : CAR_IMAGES);
   const hasMultipleImages = images.length > 1;
 
   return (

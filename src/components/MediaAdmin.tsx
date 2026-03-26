@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Trash2, Check, Image as ImageIcon, Plus, X } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
-import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export const MediaAdmin = () => {
   const { language } = useLanguageStore();
@@ -74,49 +72,54 @@ export const MediaAdmin = () => {
 
     setIsUploading(true);
     try {
-      // 1. Upload to Firebase Storage
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(selectedFile);
       
-      const fileExtension = selectedFile.name.split('.').pop();
-      const fileName = `cars/${uploadData.makeId}_${uploadData.modelId}_${uploadData.year}_${Date.now()}.${fileExtension}`;
-      const storageRef = ref(storage, fileName);
-      
-      await uploadBytes(storageRef, selectedFile);
-      const imageUrl = await getDownloadURL(storageRef);
-
-      // 2. Save metadata to backend
-      const res = await fetch('/api/admin/car-photos/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || 'default_dev_secret'}`
-        },
-        body: JSON.stringify({
-          makeId: uploadData.makeId,
-          modelId: uploadData.modelId,
-          year: uploadData.year,
-          colorId: uploadData.colorId || 'default',
-          isDefault: uploadData.isDefault,
-          imageUrl
-        })
-      });
-
-      if (res.ok) {
-        setSelectedFile(null);
-        setUploadData(prev => ({ ...prev, colorId: '' }));
-        setIsCustomColor(false);
-        // Reset file input
-        const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
-        if (fileInput) fileInput.value = '';
+      reader.onload = async () => {
+        const imageUrl = reader.result as string;
         
-        fetchData();
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Upload failed');
-      }
+        // Save metadata and image to backend
+        const res = await fetch('/api/admin/car-photos/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token') || 'default_dev_secret'}`
+          },
+          body: JSON.stringify({
+            makeId: uploadData.makeId,
+            modelId: uploadData.modelId,
+            year: uploadData.year,
+            colorId: uploadData.colorId || 'default',
+            isDefault: uploadData.isDefault,
+            imageUrl
+          })
+        });
+
+        if (res.ok) {
+          setSelectedFile(null);
+          setUploadData(prev => ({ ...prev, colorId: '' }));
+          setIsCustomColor(false);
+          // Reset file input
+          const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
+          if (fileInput) fileInput.value = '';
+          
+          fetchData();
+        } else {
+          const error = await res.json();
+          alert(error.error || 'Upload failed');
+        }
+        setIsUploading(false);
+      };
+      
+      reader.onerror = () => {
+        console.error('Failed to read file');
+        alert('Failed to read file');
+        setIsUploading(false);
+      };
     } catch (err) {
       console.error('Upload error', err);
       alert('Upload failed');
-    } finally {
       setIsUploading(false);
     }
   };

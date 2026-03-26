@@ -132,9 +132,10 @@ async function main() {
   console.log('Seeding LenderEligibilityRule...');
   await prisma.lenderEligibilityRule.upsert({
     where: {
-      lenderId_make_dealApplicability: {
+      lenderId_make_model_dealApplicability: {
         lenderId: lender.id,
         make: 'Toyota',
+        model: 'ALL',
         dealApplicability: DealApplicability.BOTH,
       },
     },
@@ -142,6 +143,7 @@ async function main() {
     create: {
       lenderId: lender.id,
       make: 'Toyota',
+      model: 'ALL',
       dealApplicability: DealApplicability.BOTH,
       allowFirstTimeBuyer: true,
       allowWithCoSigner: true,

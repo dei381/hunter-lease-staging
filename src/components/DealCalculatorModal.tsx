@@ -12,6 +12,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
 
 const fmt = (n: any) => {
+  if (n === null || n === undefined) return 'N/A';
   const num = Number(n);
   if (isNaN(num)) return '$0';
   return '$' + Math.round(num).toLocaleString('en-US');
@@ -112,7 +113,12 @@ export const DealCalculatorModal = ({
               selectedIncentiveIds: selectedIncentives,
               make: deal?.make,
               model: deal?.model,
-              trim: deal?.trim
+              trim: deal?.trim,
+              rv: deal?.rv,
+              mf: deal?.mf,
+              apr: deal?.apr,
+              msrp: deal?.msrp,
+              savings: deal?.savings
             }
           })
         });
@@ -135,6 +141,7 @@ export const DealCalculatorModal = ({
 
   const calculatedPayment = useMemo(() => {
     if (quoteResult) {
+      if (quoteResult.status === 'NO_PROGRAMS_AVAILABLE') return null;
       return Math.round(quoteResult.monthlyPayment);
     }
     return Number(deal?.displayPayment) || Number(deal?.payment) || 0;
@@ -184,10 +191,11 @@ export const DealCalculatorModal = ({
           />
           
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-[var(--bg)] border border-[var(--b2)] rounded-3xl w-full max-w-4xl relative z-10 overflow-hidden shadow-2xl flex flex-col my-auto"
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="bg-[var(--bg)] border border-[var(--b2)] rounded-t-3xl md:rounded-3xl w-full max-w-4xl relative z-10 overflow-hidden shadow-2xl flex flex-col mt-auto md:my-auto max-h-[90vh] md:max-h-[95vh] overflow-y-auto"
           >
             <button onClick={onClose} className="absolute top-6 right-6 text-[var(--mu)] hover:text-[var(--w)] z-50 bg-[var(--s2)] hover:bg-[var(--b2)] rounded-full p-2 transition-colors"><X size={20} /></button>
             
@@ -410,25 +418,44 @@ export const DealCalculatorModal = ({
                   <div className="relative z-10 flex-1">
                     <div className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider mb-2">{t.estimatedPayment}</div>
                     <div className="flex items-baseline gap-1 mb-8">
-                      <span className="font-display text-6xl text-[var(--lime)] leading-none">{fmt(calculatedPayment)}</span>
-                      <span className="text-sm text-[var(--mu2)] font-medium">/mo</span>
+                      {isCalculating ? (
+                        <div className="h-16 w-48 bg-[var(--s2)] rounded-xl animate-pulse" />
+                      ) : calculatedPayment === null ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="font-display text-3xl text-[var(--mu1)] leading-none">Estimate Unavailable</span>
+                          <span className="text-xs text-[var(--mu2)]">No lender programs found for this configuration.</span>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="font-display text-6xl text-[var(--lime)] leading-none">{fmt(calculatedPayment)}</span>
+                          <span className="text-sm text-[var(--mu2)] font-medium">/mo</span>
+                        </>
+                      )}
                     </div>
 
                     {/* Market Comparison Block */}
-                    <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-2xl p-4 space-y-3 mb-6">
-                      <div className="flex justify-between items-center text-[10px]">
-                        <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{t.opportunityCost}</span>
-                        <span className="text-[var(--mu2)] line-through font-mono">{fmt(calculatedPayment * marketAvgRatio)}</span>
+                    {isCalculating ? (
+                      <div className="bg-[var(--s2)]/30 border border-[var(--b2)] rounded-2xl p-4 space-y-3 mb-6 animate-pulse">
+                        <div className="h-4 bg-[var(--s2)] rounded w-full" />
+                        <div className="h-8 bg-[var(--s2)] rounded w-full" />
+                        <div className="h-6 bg-[var(--s2)] rounded w-full" />
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] text-[var(--w)] uppercase font-bold tracking-widest">{t.hunterPrice}</span>
-                        <span className="text-2xl font-display text-[var(--w)]">{fmt(calculatedPayment)}</span>
+                    ) : calculatedPayment !== null && (
+                      <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-2xl p-4 space-y-3 mb-6">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{t.opportunityCost}</span>
+                          <span className="text-[var(--mu2)] line-through font-mono">{fmt(calculatedPayment * marketAvgRatio)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] text-[var(--w)] uppercase font-bold tracking-widest">{t.hunterPrice}</span>
+                          <span className="text-2xl font-display text-[var(--w)]">{fmt(calculatedPayment)}</span>
+                        </div>
+                        <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
+                          <span className="text-[10px] text-[var(--lime)] uppercase font-bold tracking-widest">{t.avoidableMarkup}</span>
+                          <span className="text-lg font-display text-[var(--lime)]">{fmt((calculatedPayment * (marketAvgRatio - 1)) * term)}</span>
+                        </div>
                       </div>
-                      <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
-                        <span className="text-[10px] text-[var(--lime)] uppercase font-bold tracking-widest">{t.avoidableMarkup}</span>
-                        <span className="text-lg font-display text-[var(--lime)]">{fmt((calculatedPayment * (marketAvgRatio - 1)) * term)}</span>
-                      </div>
-                    </div>
+                    )}
 
                     {/* TCO Breakdown Block */}
                     {tcoData && (

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 interface SiteSettings {
-  brokerFee: number;
+  platformFee: number;
   taxRateDefault: number;
   supportEmail: string;
   maintenanceMode: boolean;
@@ -16,7 +16,7 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   settings: {
-    brokerFee: 595,
+    platformFee: 95,
     taxRateDefault: 8.875,
     supportEmail: 'cargwin4555@gmail.com',
     maintenanceMode: false

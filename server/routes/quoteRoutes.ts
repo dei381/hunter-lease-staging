@@ -1,5 +1,8 @@
 import express from 'express';
 import db from '../lib/db';
+import { LeaseCalculationEngine, FinanceCalculationEngine } from '../services/CalculationEngine';
+import { IncentiveResolver } from '../services/IncentiveResolver';
+import { ProgramResolver } from '../services/ProgramResolver';
 
 const router = express.Router();
 
@@ -23,9 +26,12 @@ router.post('/quote', async (req, res) => {
 
     // We need to get the vehicle details from the DB using vehicleId
     // For MVP, assume we can fetch it from vehicleCache
-    let vehicle = await db.vehicleCache.findUnique({
-      where: { id: vehicleId }
-    });
+    let vehicle = null;
+    if (vehicleId) {
+      vehicle = await db.vehicleCache.findUnique({
+        where: { id: vehicleId }
+      });
+    }
 
     // Try to get from carDb if not found
     let carDbVehicle = null;
@@ -68,25 +74,37 @@ router.post('/quote', async (req, res) => {
 
     if (!vehicle) {
       // Fallback to mock vehicle if not found in DB
-      vehicle = {
-        id: vehicleId,
-        make: carDbMake?.name || body.make || 'Toyota',
-        model: carDbVehicle?.name || body.model || 'Camry',
-        trim: carDbTrim?.name || body.trim || 'LE',
-        year: 2025,
-        msrpCents: (carDbTrim?.msrp || body.msrp || 30000) * 100,
-        bodyStyle: 'Sedan',
-        features: '[]',
-        isActive: true,
-        updatedAt: new Date(),
-        vin: null
-      };
+      const mockId = vehicleId || `mock-${Date.now()}`;
+      vehicle = await db.vehicleCache.upsert({
+        where: { id: mockId },
+        update: {},
+        create: {
+          id: mockId,
+          make: carDbMake?.name || body.make || 'Toyota',
+          model: carDbVehicle?.name || body.model || 'Camry',
+          trim: carDbTrim?.name || body.trim || 'LE',
+          year: 2026,
+          msrpCents: (carDbTrim?.msrp || body.msrp || 30000) * 100,
+          bodyStyle: 'Sedan',
+          features: '[]',
+          isActive: true
+        }
+      });
     }
 
     // 1. Find ACTIVE batch
     const activeBatch = await db.programBatch.findFirst({
       where: { status: 'ACTIVE' }
     });
+
+    // Resolve incentives
+    const availableIncentives = carDbTrim?.availableIncentives || [];
+    const selectedIncentives = body.selectedIncentives || [];
+    const isFirstTimeBuyer = body.isFirstTimeBuyer || false;
+    const hasCosigner = body.hasCosigner || false;
+    // For MVP, assume role is customer unless specified
+    const resolvedIncentives = IncentiveResolver.resolve(availableIncentives, selectedIncentives, 'customer', isFirstTimeBuyer);
+    const totalRebatesCents = resolvedIncentives.totalRebateCents;
 
     // 2. Find BankPrograms (Multiple)
     let bankPrograms: any[] = [];
@@ -102,30 +120,93 @@ router.post('/quote', async (req, res) => {
           ...(quoteType === 'LEASE' ? { mileage: mileage } : {})
         },
         include: {
-          lender: true
+          lender: {
+            include: {
+              eligibilityRules: true
+            }
+          }
         }
+      });
+      
+      // Filter programs based on lender eligibility rules
+      bankPrograms = bankPrograms.filter(program => {
+        if (!program.lender || !program.lender.eligibilityRules || program.lender.eligibilityRules.length === 0) {
+          return true; // No rules, allow by default
+        }
+        
+        const rules = program.lender.eligibilityRules;
+        const make = vehicle.make || '';
+        const model = vehicle.model || '';
+        const dealType = quoteType; // LEASE or FINANCE
+        
+        // Find the most specific rule
+        let matchedRule = rules.find((r: any) => 
+          r.make.toLowerCase() === make.toLowerCase() && 
+          r.model.toLowerCase() === model.toLowerCase() && 
+          r.dealApplicability === dealType
+        );
+        
+        if (!matchedRule) {
+          matchedRule = rules.find((r: any) => 
+            r.make.toLowerCase() === make.toLowerCase() && 
+            r.model === 'ALL' && 
+            r.dealApplicability === dealType
+          );
+        }
+        
+        if (!matchedRule) {
+          matchedRule = rules.find((r: any) => 
+            r.make.toLowerCase() === make.toLowerCase() && 
+            r.model.toLowerCase() === model.toLowerCase() && 
+            r.dealApplicability === 'ALL'
+          );
+        }
+        
+        if (!matchedRule) {
+          matchedRule = rules.find((r: any) => 
+            r.make.toLowerCase() === make.toLowerCase() && 
+            r.model === 'ALL' && 
+            r.dealApplicability === 'ALL'
+          );
+        }
+        
+        if (matchedRule) {
+          if (isFirstTimeBuyer) {
+            if (!matchedRule.allowFirstTimeBuyer) {
+              return false; // Reject if FTB is not allowed at all
+            }
+            if (hasCosigner && !matchedRule.allowWithCoSigner) {
+              return false; // Reject if FTB has cosigner but it's not allowed
+            }
+          }
+          // Add other checks here if needed (e.g., requiresEstablishedCredit)
+        }
+        
+        return true;
       });
     }
 
     if (bankPrograms.length === 0) {
-      // Fallback to mock bank program or carDb data
-      bankPrograms = [{
-        id: 'mock-program',
-        batchId: 'mock-batch',
-        lenderId: 'mock-lender',
-        lender: { name: 'MVP Bank', lenderType: 'NATIONAL_BANK' },
-        programType: quoteType,
-        make: vehicle.make,
-        model: vehicle.model,
-        trim: vehicle.trim,
-        year: vehicle.year,
-        term: term,
-        mileage: mileage,
-        rv: carDbTrim?.rv36 || body.rv || 55, // 55% residual
-        mf: carDbTrim?.mf || body.mf || 0.002, // Money factor
-        apr: carDbTrim?.baseAPR || body.apr || 4.9, // APR
-        rebates: (carDbTrim?.leaseCash || body.rebates || 1000) * 100 // $1000 rebate
-      }];
+      if (body.rv || body.mf || body.apr) {
+        // Use deal's own data from the request
+        bankPrograms.push({
+          id: 'deal-specific',
+          lender: { name: 'Deal Specific Lender' },
+          programType: quoteType,
+          term: term,
+          mileage: mileage,
+          rv: body.rv || 0.55,
+          mf: body.mf || 0.002,
+          apr: body.apr || 4.9,
+          rebates: 0
+        });
+      } else {
+        return res.json({
+          status: 'NO_PROGRAMS_AVAILABLE',
+          message: 'No active lease/finance programs found for this vehicle.',
+          quote: null
+        });
+      }
     }
 
     // 3. Find active DealerAdjustment
@@ -144,7 +225,7 @@ router.post('/quote', async (req, res) => {
       orderBy: { startsAt: 'desc' }
     });
 
-    const adjustmentAmountCents = dealerAdjustment ? dealerAdjustment.amount : 0;
+    const adjustmentAmountCents = body.savings !== undefined ? -(body.savings * 100) : (dealerAdjustment ? dealerAdjustment.amount : 0);
 
     // 4. Fetch Settings for Fees
     const settingsRecord = await db.siteSettings.findUnique({ where: { id: 'global' } });
@@ -161,35 +242,67 @@ router.post('/quote', async (req, res) => {
     const dmvFeeCents = (settings.dmvFee || 400) * 100;
     const brokerFeeCents = (settings.brokerFee || 595) * 100;
     const taxRate = (settings.taxRateDefault || 8.875) / 100;
+    
+    const queryTier = body.tier || req.query.tier;
+    const zipCode = body.zipCode || req.query.zipCode;
+    const isDefaultTaxUsed = true; // We are using default tax rate from settings
 
     // 5. Calculate Math for all programs
+    const msrpCents = body.msrp ? body.msrp * 100 : vehicle.msrpCents;
     const results = bankPrograms.map(bankProgram => {
-      const sellingPriceCents = vehicle.msrpCents + adjustmentAmountCents - bankProgram.rebates;
+      const bankRebatesCents = (bankProgram.rebates || 0) * 100;
+      const combinedRebatesCents = bankRebatesCents + totalRebatesCents;
+      const sellingPriceCents = msrpCents + adjustmentAmountCents - combinedRebatesCents;
       let finalPaymentCents = 0;
       let residualValueCents = 0;
       let totalFeesCents = acqFeeCents + docFeeCents + dmvFeeCents + brokerFeeCents;
 
+      let mf = bankProgram.mf || 0;
+      let apr = bankProgram.apr || 0;
+
+      if (queryTier) {
+        if (queryTier === 't2') { mf *= 1.1; apr += 1.0; }
+        else if (queryTier === 't3') { mf *= 1.2; apr += 2.5; }
+        else if (queryTier === 't4') { mf *= 1.35; apr += 4.5; }
+        else if (queryTier === 't5') { mf *= 1.5; apr += 7.0; }
+        else if (queryTier === 't6') { mf *= 1.7; apr += 10.0; }
+      }
+
       if (quoteType === 'LEASE') {
         const rvPercent = (bankProgram.rv || 0) > 1 ? (bankProgram.rv || 0) / 100 : (bankProgram.rv || 0);
-        residualValueCents = Math.round(vehicle.msrpCents * rvPercent);
+        const leaseResult = LeaseCalculationEngine.calculate({
+          msrpCents: msrpCents,
+          sellingPriceCents,
+          residualValuePercent: rvPercent,
+          moneyFactor: mf,
+          term,
+          dueAtSigningCents,
+          acqFeeCents,
+          docFeeCents,
+          dmvFeeCents,
+          brokerFeeCents,
+          taxRate
+        });
         
-        const depreciationCents = (sellingPriceCents + totalFeesCents - dueAtSigningCents) - residualValueCents;
-        const basePaymentCents = depreciationCents / term;
-        const rentChargeCents = (sellingPriceCents + totalFeesCents + residualValueCents) * (bankProgram.mf || 0);
-        const monthlyPaymentPreTaxCents = basePaymentCents + rentChargeCents;
-        finalPaymentCents = Math.round(monthlyPaymentPreTaxCents * (1 + taxRate));
+        finalPaymentCents = leaseResult.finalPaymentCents;
+        residualValueCents = leaseResult.residualValueCents;
+        totalFeesCents = leaseResult.totalFeesCents;
       } else {
         // FINANCE
-        const principalCents = sellingPriceCents + totalFeesCents - downPaymentCents;
-        const monthlyRate = (bankProgram.apr || 0) / 100 / 12;
-        if (monthlyRate === 0) {
-          finalPaymentCents = Math.round(principalCents / term);
-        } else {
-          finalPaymentCents = Math.round(
-            (principalCents * monthlyRate * Math.pow(1 + monthlyRate, term)) /
-            (Math.pow(1 + monthlyRate, term) - 1)
-          );
-        }
+        const financeResult = FinanceCalculationEngine.calculate({
+          msrpCents: msrpCents,
+          sellingPriceCents,
+          apr: apr,
+          term,
+          downPaymentCents,
+          docFeeCents,
+          dmvFeeCents,
+          brokerFeeCents,
+          taxRate
+        });
+        
+        finalPaymentCents = financeResult.finalPaymentCents;
+        totalFeesCents = financeResult.totalFeesCents;
       }
 
       return {
@@ -197,7 +310,8 @@ router.post('/quote', async (req, res) => {
         finalPaymentCents,
         sellingPriceCents,
         residualValueCents,
-        totalFeesCents
+        totalFeesCents,
+        combinedRebatesCents
       };
     });
 
@@ -214,28 +328,56 @@ router.post('/quote', async (req, res) => {
     const bestResult = results.sort((a, b) => a.finalPaymentCents - b.finalPaymentCents)[0];
 
     // 6. Save Quote Snapshot for the best one
-    const quote = await db.quote.create({
+    const quoteSnapshot = await db.quoteSnapshot.create({
       data: {
-        programBatchId: activeBatch?.id || null,
-        programType: quoteType,
-        make: vehicle.make,
-        model: vehicle.model,
-        trim: vehicle.trim || '',
-        year: vehicle.year,
-        term: term,
-        mileage: quoteType === 'LEASE' ? mileage : null,
-        msrp: vehicle.msrpCents,
-        sellingPrice: bestResult.sellingPriceCents,
-        downPayment: quoteType === 'LEASE' ? dueAtSigningCents : downPaymentCents,
-        mf: bestResult.bankProgram.mf,
-        apr: bestResult.bankProgram.apr,
-        residual: bestResult.bankProgram.rv,
-        rebates: bestResult.bankProgram.rebates,
-        dealerAdjustment: adjustmentAmountCents,
-        finalPayment: bestResult.finalPaymentCents,
-        lenderId: bestResult.bankProgram.lenderId
+        vehicleId: vehicle.id,
+        surface: 'VDP',
+        quoteType,
+        quoteStatus: 'CALCULATED',
+        confidenceLevel: 'HIGH',
+        usedFallbackFlags: JSON.stringify([]),
+        manualReviewFlags: JSON.stringify([]),
+        isDefaultCatalogScenario: false,
+        monthlyPaymentCents: bestResult.finalPaymentCents,
+        effectiveDasOrDownCents: quoteType === 'LEASE' ? dueAtSigningCents : downPaymentCents,
+        totalSavingsCents: adjustmentAmountCents + bestResult.combinedRebatesCents,
+        lenderId: bestResult.bankProgram.lenderId === 'mock-lender' ? null : bestResult.bankProgram.lenderId,
+        auditPayload: JSON.stringify({
+          programBatchId: activeBatch?.id || null,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim || '',
+          year: vehicle.year,
+          term: term,
+          mileage: quoteType === 'LEASE' ? mileage : null,
+          msrp: vehicle.msrpCents,
+          sellingPrice: bestResult.sellingPriceCents,
+          mf: bestResult.bankProgram.mf,
+          apr: bestResult.bankProgram.apr,
+          residual: bestResult.bankProgram.rv,
+          rebatesCents: bestResult.combinedRebatesCents,
+          dealerAdjustment: adjustmentAmountCents,
+          fees: {
+            acqFeeCents,
+            docFeeCents,
+            dmvFeeCents,
+            brokerFeeCents
+          },
+          taxRate
+        })
       }
     });
+
+    // Calculate TCO
+    const insurancePerMonthCents = 15000;
+    const maintenancePerMonthCents = 5000;
+    const registrationPerYearCents = 40000;
+    const totalLeasePaymentsCents = bestResult.finalPaymentCents * term;
+    const totalInsuranceCents = insurancePerMonthCents * term;
+    const totalMaintenanceCents = maintenancePerMonthCents * term;
+    const totalRegistrationCents = (registrationPerYearCents / 12) * term;
+    const dueAtSigningCentsTco = quoteType === 'LEASE' ? dueAtSigningCents : downPaymentCents;
+    const totalCostCents = totalLeasePaymentsCents + dueAtSigningCentsTco + totalInsuranceCents + totalMaintenanceCents + totalRegistrationCents;
 
     // 7. Return result in the format expected by the frontend
     res.json({
@@ -263,7 +405,7 @@ router.post('/quote', async (req, res) => {
         sellingPriceCents: bestResult.sellingPriceCents,
         residualValueCents: bestResult.residualValueCents,
         dealerDiscountCents: -adjustmentAmountCents,
-        incentivesCents: bestResult.bankProgram.rebates,
+        incentivesCents: bestResult.combinedRebatesCents,
         fees: [
           { name: 'Acquisition Fee', amountCents: acqFeeCents },
           { name: 'Doc Fee', amountCents: docFeeCents },
@@ -271,12 +413,23 @@ router.post('/quote', async (req, res) => {
           { name: 'Broker Fee', amountCents: brokerFeeCents }
         ],
         taxRate,
-        quoteId: quote.id
+        quoteId: quoteSnapshot.id
+      },
+      tco: {
+        totalCostCents,
+        monthlyAverageCents: Math.round(totalCostCents / term),
+        breakdownCents: {
+          lease: totalLeasePaymentsCents + dueAtSigningCentsTco,
+          insurance: totalInsuranceCents,
+          maintenance: totalMaintenanceCents,
+          registration: totalRegistrationCents
+        }
       },
       metadata: {
-        zipCode: body.zipCode || '90210',
+        zipCode: zipCode || '90210',
+        isDefaultTaxUsed,
         salesTaxRate: taxRate,
-        tier: 'TIER_1_PLUS',
+        tier: queryTier || 'TIER_1_PLUS',
         debug: {
           make: body.make,
           model: body.model,
