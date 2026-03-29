@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Bot, Link as LinkIcon, Copy, Check, Sparkles, ChevronRight, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
+import { GoogleGenAI } from '@google/genai';
+import { toast } from 'react-hot-toast';
 
 interface AINegotiatorModalProps {
   isOpen: boolean;
@@ -15,6 +17,7 @@ export const AINegotiatorModal = ({ isOpen, onClose }: AINegotiatorModalProps) =
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'success'>('idle');
   const [step, setStep] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [script, setScript] = useState('');
 
   const t = {
     en: {
@@ -31,7 +34,7 @@ export const AINegotiatorModal = ({ isOpen, onClose }: AINegotiatorModalProps) =
       resultTitle: 'Your Negotiation Script',
       copyBtn: 'Copy Script',
       copiedBtn: 'Copied!',
-      script: `Hi [Dealer Name],\n\nI'm looking at your [Make] [Model] (VIN: [Extracted VIN]). I know the current buy rate MF is 0.00125 and RV is 62% for 36/10k. \n\nIf you can do 10% off MSRP before incentives at base MF with 0 markups, I will come sign today. Let me know if we have a deal.\n\nThanks,\n[Your Name]`
+      error: 'Failed to generate script. Please try again.'
     },
     ru: {
       title: 'AI-Переговорщик',
@@ -47,7 +50,7 @@ export const AINegotiatorModal = ({ isOpen, onClose }: AINegotiatorModalProps) =
       resultTitle: 'Ваш скрипт для переговоров',
       copyBtn: 'Скопировать текст',
       copiedBtn: 'Скопировано!',
-      script: `Hi [Dealer Name],\n\nI'm looking at your [Make] [Model] (VIN: [Extracted VIN]). I know the current buy rate MF is 0.00125 and RV is 62% for 36/10k. \n\nIf you can do 10% off MSRP before incentives at base MF with 0 markups, I will come sign today. Let me know if we have a deal.\n\nThanks,\n[Your Name]`
+      error: 'Не удалось сгенерировать скрипт. Пожалуйста, попробуйте еще раз.'
     }
   }[language] || {
     title: 'AI Negotiation Proxy',
@@ -63,32 +66,56 @@ export const AINegotiatorModal = ({ isOpen, onClose }: AINegotiatorModalProps) =
     resultTitle: 'Your Negotiation Script',
     copyBtn: 'Copy Script',
     copiedBtn: 'Copied!',
-    script: `Hi [Dealer Name],\n\nI'm looking at your [Make] [Model] (VIN: [Extracted VIN]). I know the current buy rate MF is 0.00125 and RV is 62% for 36/10k. \n\nIf you can do 10% off MSRP before incentives at base MF with 0 markups, I will come sign today. Let me know if we have a deal.\n\nThanks,\n[Your Name]`
+    error: 'Failed to generate script. Please try again.'
   };
 
-  useEffect(() => {
-    if (status === 'analyzing') {
-      let currentStep = 0;
-      const interval = setInterval(() => {
-        currentStep++;
-        setStep(currentStep);
-        if (currentStep >= t.steps.length) {
-          clearInterval(interval);
-          setStatus('success');
-        }
-      }, 1200);
-      return () => clearInterval(interval);
-    }
-  }, [status, t.steps.length]);
-
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!url) return;
     setStatus('analyzing');
     setStep(0);
+    setScript('');
+
+    try {
+      // Simulate steps progressing while API call is happening
+      const stepInterval = setInterval(() => {
+        setStep(s => Math.min(s + 1, t.steps.length - 1));
+      }, 1500);
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY });
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: `You are an expert car negotiator. The user is looking at a car listing at this URL: ${url}
+        
+Please write a highly aggressive, professional, and effective email script to send to the dealer's internet sales manager.
+The goal is to get 10% off MSRP before incentives, buy rate money factor, and 0 markups.
+If you can deduce the make/model from the URL, use it. Otherwise, use placeholders like [Make] [Model].
+Keep it concise and punchy. Do not include any pleasantries beyond a simple "Hi".
+The language of the script should be English.`,
+        config: {
+          systemInstruction: "You are a master car negotiator who knows all the dealer tricks."
+        }
+      });
+
+      clearInterval(stepInterval);
+      setStep(t.steps.length);
+      
+      const text = response.text;
+      if (text) {
+        setScript(text.trim());
+        setStatus('success');
+      } else {
+        throw new Error("No text returned");
+      }
+    } catch (error) {
+      console.error("AI Negotiation error:", error);
+      toast.error(t.error);
+      setStatus('idle');
+    }
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(t.script);
+    navigator.clipboard.writeText(script);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -214,7 +241,7 @@ export const AINegotiatorModal = ({ isOpen, onClose }: AINegotiatorModalProps) =
                   <div className="absolute inset-0 bg-gradient-to-br from-[var(--lime)]/10 to-transparent rounded-xl pointer-events-none" />
                   <textarea
                     readOnly
-                    value={t.script}
+                    value={script}
                     className="w-full h-48 bg-[var(--b1)] border border-[var(--b2)] rounded-xl p-4 text-sm font-mono text-[var(--mu)] resize-none focus:outline-none"
                   />
                   <button

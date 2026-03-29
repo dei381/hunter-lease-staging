@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -18,6 +18,7 @@ import { HappyClients } from './components/HappyClients';
 import { SpecialBenefits } from './components/SpecialBenefits';
 import { BlogSection } from './components/BlogSection';
 import { CaseStudies } from './components/CaseStudies';
+import { SpecificReviews } from './components/SpecificReviews';
 import { FAQ } from './components/FAQ';
 import { CarQuiz } from './components/CarQuiz';
 import { PricingSection } from './components/PricingSection';
@@ -26,23 +27,6 @@ import { DealAuditor } from './components/DealAuditor';
 import { ExtensionPromo } from './components/ExtensionPromo';
 import { Footer } from './components/Footer';
 import { FeedbackWidget } from './components/FeedbackWidget';
-import { AdminDashboard } from './components/AdminDashboard';
-import { DealsPage } from './pages/DealsPage';
-import { ComparePage } from './pages/ComparePage';
-import { DealPage } from './pages/DealPage';
-import { BlogPage } from './pages/BlogPage';
-import { BlogPost } from './pages/BlogPost';
-import { GlossaryPage } from './pages/GlossaryPage';
-import { AboutPage } from './pages/AboutPage';
-import { PrivacyPolicy } from './pages/PrivacyPolicy';
-import { TermsConditions } from './pages/TermsConditions';
-import { LegalDisclosure } from './pages/LegalDisclosure';
-import { AccessibilityStatement } from './pages/AccessibilityStatement';
-import { FinishSignUp } from './pages/FinishSignUp';
-import { Dashboard } from './pages/Dashboard';
-import { DealerPortal } from './pages/DealerPortal';
-import { LeaseTransfersPage } from './pages/LeaseTransfersPage';
-import { SavedDealsPage } from './pages/SavedDealsPage';
 import { AuthModal } from './components/AuthModal';
 import { ExpertChat } from './components/ExpertChat';
 import { TrackingModal } from './components/TrackingModal';
@@ -51,7 +35,7 @@ import { VisitTracker } from './components/VisitTracker';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageWelcomeModal } from './components/LanguageWelcomeModal';
 import { Lead } from './types';
-import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2, Lock, FileCheck } from 'lucide-react';
 import { useLanguageStore } from './store/languageStore';
 import { useAuthStore } from './store/authStore';
 import { useFeedbackStore } from './store/feedbackStore';
@@ -60,6 +44,36 @@ import { translations } from './translations';
 import { doc, getDocFromCache, getDocFromServer, addDoc, setDoc, onSnapshot, collection, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './utils/firestoreErrorHandler';
 import { cn } from './utils/cn';
+import { Toaster, toast } from 'react-hot-toast';
+import ReactGA from 'react-ga4';
+
+// Lazy loaded pages
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(module => ({ default: module.AdminDashboard })));
+const DealsPage = lazy(() => import('./pages/DealsPage').then(module => ({ default: module.DealsPage })));
+const ComparePage = lazy(() => import('./pages/ComparePage').then(module => ({ default: module.ComparePage })));
+const DealPage = lazy(() => import('./pages/DealPage').then(module => ({ default: module.DealPage })));
+const BlogPage = lazy(() => import('./pages/BlogPage').then(module => ({ default: module.BlogPage })));
+const BlogPost = lazy(() => import('./pages/BlogPost').then(module => ({ default: module.BlogPost })));
+const GlossaryPage = lazy(() => import('./pages/GlossaryPage').then(module => ({ default: module.GlossaryPage })));
+const AboutPage = lazy(() => import('./pages/AboutPage').then(module => ({ default: module.AboutPage })));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(module => ({ default: module.PrivacyPolicy })));
+const TermsConditions = lazy(() => import('./pages/TermsConditions').then(module => ({ default: module.TermsConditions })));
+const LegalDisclosure = lazy(() => import('./pages/LegalDisclosure').then(module => ({ default: module.LegalDisclosure })));
+const AccessibilityStatement = lazy(() => import('./pages/AccessibilityStatement').then(module => ({ default: module.AccessibilityStatement })));
+const FinishSignUp = lazy(() => import('./pages/FinishSignUp').then(module => ({ default: module.FinishSignUp })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
+const DealerPortal = lazy(() => import('./pages/DealerPortal').then(module => ({ default: module.DealerPortal })));
+const LeaseTransfersPage = lazy(() => import('./pages/LeaseTransfersPage').then(module => ({ default: module.LeaseTransfersPage })));
+const SavedDealsPage = lazy(() => import('./pages/SavedDealsPage').then(module => ({ default: module.SavedDealsPage })));
+
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-12 h-12 border-4 border-[var(--lime)]/20 border-t-[var(--lime)] rounded-full animate-spin" />
+      <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)] animate-pulse">Loading...</div>
+    </div>
+  </div>
+);
 
 function MainApp() {
   const { language } = useLanguageStore();
@@ -188,7 +202,7 @@ function MainApp() {
       return true; // Indicate success
     } catch (e) {
       console.error('Error submitting lead:', e);
-      alert(e instanceof Error ? e.message : "Failed to submit application. Please try again.");
+      toast.error(e instanceof Error ? e.message : "Failed to submit application. Please try again.");
       return false;
     } finally {
       setIsSubmitting(false);
@@ -302,7 +316,7 @@ function MainApp() {
             </div>
 
             <div className="flex flex-wrap gap-4">
-              <button onClick={() => navigate('/deals')} className="group bg-[var(--lime)] text-white font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
+              <button onClick={() => navigate('/deals')} className="group bg-[var(--lime)] text-black font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
                 <div className="flex items-center gap-2">
                   <span>{t.hero.btnCalc}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -370,6 +384,25 @@ function MainApp() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Urgency Banner */}
+        <div className="mb-16 bg-[var(--s1)] border border-[var(--lime)]/30 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--lime)]/5 to-transparent pointer-events-none" />
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-[var(--lime)]/10 flex items-center justify-center shrink-0">
+              <div className="w-2 h-2 rounded-full bg-[var(--lime)] animate-pulse" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Банковские программы обновляются' : 'Bank Programs Updating'}</div>
+              <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest mt-0.5">
+                {language === 'ru' ? 'Текущие ставки действуют до конца месяца и могут быть отозваны банком в любой момент. Зафиксируйте условия сегодня.' : 'Current rates are valid until end of month and subject to change. Lock your terms today.'}
+              </div>
+            </div>
+          </div>
+          <button onClick={() => scrollToSection('calc')} className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors">
+            {language === 'ru' ? 'Зафиксировать ставку' : 'Lock Rate Now'}
+          </button>
         </div>
 
         {/* Trust Strip */}
@@ -518,14 +551,23 @@ function MainApp() {
             <div className="relative">
               <div className="absolute -inset-4 bg-[var(--lime)]/10 rounded-full blur-3xl" />
               <div className="relative bg-[var(--s2)] border border-[var(--b2)] rounded-2xl p-6 shadow-2xl">
-                <div className="flex items-center gap-3 mb-4 border-b border-[var(--b1)] pb-4">
-                  <div className="w-3 h-3 rounded-full bg-[var(--lime)]" />
-                  <div className="text-[10px] font-bold uppercase tracking-widest">{t.security.verified}</div>
+                <div className="flex items-center gap-3 mb-6 border-b border-[var(--b1)] pb-4">
+                  <ShieldCheck className="w-6 h-6 text-[var(--lime)]" />
+                  <div className="text-sm font-bold uppercase tracking-widest">{t.security.verified}</div>
                 </div>
-                <div className="space-y-3">
-                  <div className="h-2 bg-[var(--b2)] rounded-full w-3/4" />
-                  <div className="h-2 bg-[var(--b2)] rounded-full w-1/2" />
-                  <div className="h-2 bg-[var(--b2)] rounded-full w-5/6" />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Lock className="w-4 h-4 text-[var(--mu2)]" />
+                    <div className="text-xs text-[var(--w)] font-mono">256-BIT SSL ENCRYPTION</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <FileCheck className="w-4 h-4 text-[var(--mu2)]" />
+                    <div className="text-xs text-[var(--w)] font-mono">11-KEY LOCK PRICE GUARANTEE</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck className="w-4 h-4 text-[var(--mu2)]" />
+                    <div className="text-xs text-[var(--w)] font-mono">ZERO THIRD-PARTY SHARING</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -537,6 +579,7 @@ function MainApp() {
         <DealAuditor />
         <ExtensionPromo />
         <CaseStudies />
+        <SpecificReviews />
         <div id="reviews">
           <HappyClients />
         </div>
@@ -548,7 +591,7 @@ function MainApp() {
 
         <div className="mt-32 text-center space-y-8">
           <h2 className="font-display text-5xl md:text-6xl tracking-tight">{t.cta.title}</h2>
-          <button onClick={() => navigate('/deals')} className="bg-[var(--lime)] text-white font-display text-2xl tracking-widest px-12 py-6 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-2xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center mx-auto">
+          <button onClick={() => navigate('/deals')} className="bg-[var(--lime)] text-black font-display text-2xl tracking-widest px-12 py-6 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-2xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center mx-auto">
             <span>{t.hero.btnCalc}</span>
             <span className="text-xs font-sans font-bold uppercase opacity-70 mt-2">{t.hero.btnCalcSub}</span>
           </button>
@@ -693,6 +736,11 @@ const BetaBanner = () => {
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  
+  useEffect(() => {
+    ReactGA.send({ hitType: "pageview", page: location.pathname + location.search });
+  }, [location]);
+
   const isHome = location.pathname === '/';
   const { language, setLanguage } = useLanguageStore();
   const { user, role, isAuthModalOpen, setIsAuthModalOpen } = useAuthStore();
@@ -860,28 +908,31 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 export default function App() {
   return (
     <ErrorBoundary>
+      <Toaster position="top-right" />
       <VisitTracker />
       <LanguageWelcomeModal />
-      <Routes>
-        <Route path="/" element={<Layout><MainApp /></Layout>} />
-        <Route path="/deals" element={<Layout><DealsPage /></Layout>} />
-        <Route path="/lease-transfers" element={<Layout><LeaseTransfersPage /></Layout>} />
-        <Route path="/compare" element={<Layout><ComparePage /></Layout>} />
-        <Route path="/deal/:id" element={<Layout><DealPage /></Layout>} />
-        <Route path="/saved" element={<Layout><SavedDealsPage /></Layout>} />
-        <Route path="/blog" element={<Layout><BlogPage /></Layout>} />
-        <Route path="/blog/:id" element={<Layout><BlogPost /></Layout>} />
-        <Route path="/glossary" element={<Layout><GlossaryPage /></Layout>} />
-        <Route path="/about" element={<Layout><AboutPage /></Layout>} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/privacy" element={<Layout><PrivacyPolicy /></Layout>} />
-        <Route path="/terms" element={<Layout><TermsConditions /></Layout>} />
-        <Route path="/legal-disclosure" element={<Layout><LegalDisclosure /></Layout>} />
-        <Route path="/accessibility" element={<Layout><AccessibilityStatement /></Layout>} />
-        <Route path="/finish-sign-up" element={<Layout><FinishSignUp /></Layout>} />
-        <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
-        <Route path="/dealer" element={<Layout><DealerPortal /></Layout>} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Layout><MainApp /></Layout>} />
+          <Route path="/deals" element={<Layout><DealsPage /></Layout>} />
+          <Route path="/lease-transfers" element={<Layout><LeaseTransfersPage /></Layout>} />
+          <Route path="/compare" element={<Layout><ComparePage /></Layout>} />
+          <Route path="/deal/:id" element={<Layout><DealPage /></Layout>} />
+          <Route path="/saved" element={<Layout><SavedDealsPage /></Layout>} />
+          <Route path="/blog" element={<Layout><BlogPage /></Layout>} />
+          <Route path="/blog/:id" element={<Layout><BlogPost /></Layout>} />
+          <Route path="/glossary" element={<Layout><GlossaryPage /></Layout>} />
+          <Route path="/about" element={<Layout><AboutPage /></Layout>} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/privacy" element={<Layout><PrivacyPolicy /></Layout>} />
+          <Route path="/terms" element={<Layout><TermsConditions /></Layout>} />
+          <Route path="/legal-disclosure" element={<Layout><LegalDisclosure /></Layout>} />
+          <Route path="/accessibility" element={<Layout><AccessibilityStatement /></Layout>} />
+          <Route path="/finish-sign-up" element={<Layout><FinishSignUp /></Layout>} />
+          <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+          <Route path="/dealer" element={<Layout><DealerPortal /></Layout>} />
+        </Routes>
+      </Suspense>
     </ErrorBoundary>
   );
 }

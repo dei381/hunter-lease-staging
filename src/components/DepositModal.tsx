@@ -5,6 +5,9 @@ import { X, CheckCircle2, ChevronRight, ShieldCheck, Car, FileText, CreditCard, 
 import { useLanguageStore } from '../store/languageStore';
 import { useAuthStore } from '../store/authStore';
 import { translations } from '../translations';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { toast } from 'react-hot-toast';
 
 export const DepositModal = ({ 
   isOpen, 
@@ -140,18 +143,25 @@ export const DepositModal = ({
 
       if (response.ok) {
         setIsCreditAppSuccess(true);
+        if (leadId) {
+          try {
+            await updateDoc(doc(db, 'leads', leadId), { hasCreditApp: true });
+          } catch (fsError) {
+            console.warn("Failed to update Firestore with hasCreditApp:", fsError);
+          }
+        }
       } else {
         const errorData = await response.json();
         if (errorData.details && Array.isArray(errorData.details)) {
           const messages = errorData.details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n');
-          alert(`Validation failed:\n${messages}`);
+          toast.error(`Validation failed:\n${messages}`);
         } else {
-          alert(`${translations[language].creditApp.validation.error}${errorData.error || 'Unknown error'}`);
+          toast.error(`${translations[language].creditApp.validation.error}${errorData.error || 'Unknown error'}`);
         }
       }
     } catch (error) {
       console.error('Error submitting credit app:', error);
-      alert('Network error while submitting application. Please try again.');
+      toast.error('Network error while submitting application. Please try again.');
     } finally {
       setIsCreditAppSubmitting(false);
     }
@@ -531,22 +541,22 @@ export const DepositModal = ({
                     // Manual validation for each step
                     if (creditAppStep === 1) {
                       if (!creditAppData.firstName || !creditAppData.lastName || !creditAppData.email || !creditAppData.phone || !creditAppData.dob) {
-                        alert(translations[language].creditApp.validation.personal);
+                        toast.error(translations[language].creditApp.validation.personal);
                         return;
                       }
                     } else if (creditAppStep === 2) {
                       if (!creditAppData.employer || !creditAppData.position || !creditAppData.monthlyIncome || !creditAppData.workExperience || !creditAppData.employerPhone) {
-                        alert(translations[language].creditApp.validation.employment);
+                        toast.error(translations[language].creditApp.validation.employment);
                         return;
                       }
                     } else if (creditAppStep === 3) {
                       if (!creditAppData.residencyStatus || !creditAppData.address) {
-                        alert(translations[language].creditApp.validation.residency);
+                        toast.error(translations[language].creditApp.validation.residency);
                         return;
                       }
                     } else if (creditAppStep === 5) {
                       if (!creditAppData.signature || !creditAppData.ssn) {
-                        alert(translations[language].creditApp.validation.signature);
+                        toast.error(translations[language].creditApp.validation.signature);
                         return;
                       }
                     }

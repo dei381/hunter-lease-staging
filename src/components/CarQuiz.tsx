@@ -24,7 +24,7 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/api/deals')
+    fetch('/api/deals?limit=100')
       .then(res => res.json())
       .then(data => {
         // Deduplicate deals by make + model + trim

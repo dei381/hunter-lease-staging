@@ -9,6 +9,8 @@ import { doc, getDoc, collection, query, orderBy, limit, getDocs } from 'firebas
 import { db } from '../firebase';
 import { BlogPost as BlogPostType } from '../data/blogPosts';
 
+import { toast } from 'react-hot-toast';
+
 export const BlogPost = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -74,7 +76,7 @@ export const BlogPost = () => {
       window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`, '_blank');
     } else if (platform === 'copy') {
       navigator.clipboard.writeText(url);
-      alert(language === 'ru' ? 'Ссылка скопирована!' : 'Link copied!');
+      toast.success(language === 'ru' ? 'Ссылка скопирована!' : 'Link copied!');
     }
   };
 

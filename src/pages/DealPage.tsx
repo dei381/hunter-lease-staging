@@ -86,7 +86,7 @@ export const DealPage = () => {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/deals').then(res => {
+      fetch(`/api/deals?id=${id}`).then(res => {
         if (!res.ok) throw new Error('Failed to fetch deals');
         return res.json();
       }),
@@ -99,8 +99,13 @@ export const DealPage = () => {
           setLoading(false);
           return;
         }
-        const found = data.find((d: any) => String(d.id) === id);
+        const found = data.length > 0 ? data[0] : null;
         setDeal(found);
+        if (found) {
+          setViewCount(found.viewCount || Math.floor(Math.random() * 5) + 2);
+          // Increment view count on server
+          fetch(`/api/deals/${found.id}/view`, { method: 'POST' }).catch(console.error);
+        }
         setLoading(false);
       })
       .catch(err => {
@@ -838,6 +843,12 @@ export const DealPage = () => {
                 <span>{td.lockInDeal}</span>
                 <ArrowRight size={24} />
               </button>
+              <button 
+                onClick={() => window.open('https://hunterlease.com/credit-application', '_blank')}
+                className="bg-transparent border-2 border-[var(--mu2)] text-[var(--w)] px-12 py-6 rounded-xl font-display text-2xl tracking-widest hover:border-[var(--lime)] hover:text-[var(--lime)] transition-colors flex items-center gap-4 uppercase"
+              >
+                <span>{td.seeIfIQualify}</span>
+              </button>
             </div>
           </div>
         </section>
@@ -864,13 +875,21 @@ export const DealPage = () => {
       />
 
       {/* Mobile Sticky CTA */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/90 backdrop-blur-md border-t border-[var(--b2)] z-50">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="flex flex-col">
+          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">{t.calc.leasePayment}</div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-display text-2xl text-[var(--w)] leading-none">${deal.leasePay}</span>
+            <span className="text-[10px] text-[var(--mu2)]">/mo</span>
+          </div>
+          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${deal.dueAtSigning} due</div>
+        </div>
         <button 
           onClick={() => handleProceed(deal)}
-          className="w-full bg-[var(--lime)] text-black py-4 rounded-xl font-display text-xl tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-3 uppercase"
+          className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
         >
           <span>{td.lockInDeal}</span>
-          <ArrowRight size={20} />
+          <ArrowRight size={18} />
         </button>
       </div>
       <CompareBar />

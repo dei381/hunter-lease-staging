@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Save, Search, Filter, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { getAuthToken } from '../utils/auth';
 
 export const BulkEditAdmin = () => {
   const [activeTab, setActiveTab] = useState<'lease' | 'finance' | 'incentives' | 'discounts'>('lease');
@@ -25,7 +26,7 @@ export const BulkEditAdmin = () => {
                        'dealer-discounts';
       
       const response = await fetch(`/api/admin/${activeTab === 'incentives' ? 'incentives' : `bulk/${endpoint}`}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       
       if (response.ok) {
@@ -56,7 +57,7 @@ export const BulkEditAdmin = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify({ updates })
       });

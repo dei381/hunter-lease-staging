@@ -23,6 +23,7 @@ interface Review {
   imageUrl: string;
   videoUrl: string | null;
   rating: number;
+  quote?: string;
 }
 
 export const HappyClients = () => {
@@ -50,7 +51,8 @@ export const HappyClients = () => {
     savings: client.save,
     imageUrl: IMAGES[i] || IMAGES[0],
     videoUrl: null,
-    rating: 5
+    rating: 5,
+    quote: client.quote
   }));
 
   return (
@@ -90,6 +92,9 @@ export const HappyClients = () => {
                   <div className="text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest mb-1">📍 {client.location}</div>
                   <div className="font-display text-xl text-[var(--w)] mb-1 uppercase tracking-tight">{client.clientName}</div>
                   <div className="text-[10px] text-[var(--lime)] font-mono uppercase tracking-widest mb-3">{client.carName}</div>
+                  {client.quote && (
+                    <p className="text-[10px] text-[var(--mu2)] leading-relaxed italic mb-3 line-clamp-4">"{client.quote}"</p>
+                  )}
                   <div className="inline-block bg-[var(--lime)] text-black text-[10px] font-bold px-3 py-1 rounded uppercase tracking-widest shadow-lg">
                     {client.savings}
                   </div>

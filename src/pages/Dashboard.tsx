@@ -32,20 +32,31 @@ export const Dashboard = () => {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [leadsRes, notifsRes, dealsRes] = await Promise.all([
+      const [leadsRes, notifsRes] = await Promise.all([
         fetch('/api/leads/my', { headers: { 'x-user-uid': user.uid } }),
-        fetch('/api/notifications/my', { headers: { 'x-user-uid': user.uid } }),
-        fetch('/api/deals')
+        fetch('/api/notifications/my', { headers: { 'x-user-uid': user.uid } })
       ]);
       
+      let fetchedLeads: any[] = [];
       if (leadsRes.ok) {
-        setLeads(await leadsRes.json());
+        fetchedLeads = await leadsRes.json();
+        setLeads(fetchedLeads);
       }
       if (notifsRes.ok) {
         setNotifications(await notifsRes.json());
       }
-      if (dealsRes.ok) {
-        setDeals(await dealsRes.json());
+
+      // Fetch deals that are either saved or associated with leads
+      const leadDealIds = fetchedLeads.map(l => l.dealId).filter(Boolean);
+      const allDealIdsToFetch = Array.from(new Set([...savedDealIds, ...leadDealIds]));
+      
+      if (allDealIdsToFetch.length > 0) {
+        const dealsRes = await fetch(`/api/deals?ids=${allDealIdsToFetch.join(',')}`);
+        if (dealsRes.ok) {
+          setDeals(await dealsRes.json());
+        }
+      } else {
+        setDeals([]);
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -56,7 +67,7 @@ export const Dashboard = () => {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user, savedDealIds]);
 
   const markNotificationsRead = async () => {
     if (!user) return;

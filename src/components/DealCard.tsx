@@ -59,14 +59,29 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, 
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--s1)]/80 to-transparent opacity-60" />
         
         <div className="absolute top-4 left-4 flex flex-col items-start gap-1.5">
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5 max-w-[80%]">
+            {deal.isSoldOut && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-red-600 text-white shadow-sm">
+                Sold Out
+              </span>
+            )}
             <span className={cn(
               "text-[8px] font-bold px-2 py-0.5 rounded-md uppercase",
               deal.displayType === 'lease' ? 'bg-blue-500 text-white' : 'bg-[var(--grn)] text-white'
             )}>
               {deal.displayType === 'lease' ? t.lease : t.finance}
             </span>
-            {deal.hot && <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black">🔥 {t.hot}</span>}
+            {deal.hot && <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black">{tcalc.hotDeal}</span>}
+            {deal.savings && deal.msrp && (deal.savings / deal.msrp > 0.1) && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 backdrop-blur-md">
+                {tcalc.greatValue}
+              </span>
+            )}
+            {deal.rv && (parseFloat(String(deal.rv).replace('%', '')) > 60 || parseFloat(String(deal.rv).replace('%', '')) > 0.6) && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-orange-500/20 text-orange-300 border border-orange-500/30 backdrop-blur-md">
+                {tcalc.fastSelling}
+              </span>
+            )}
           </div>
           {(deal.class?.toLowerCase() === 'ev' || deal.fuelType?.toLowerCase() === 'electric') && (
             <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30 backdrop-blur-md">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, CheckCircle, Play, AlertTriangle, FileJson, Clock, Check, X } from 'lucide-react';
+import { getAuthToken } from '../../utils/auth';
 
 export const ProgramBatchesAdmin = () => {
   const [batches, setBatches] = useState<any[]>([]);
@@ -16,7 +17,7 @@ export const ProgramBatchesAdmin = () => {
   const fetchBatches = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('admin_token') || '';
+      const token = await getAuthToken();
       const res = await fetch('/api/admin/calculator/batches', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -33,7 +34,7 @@ export const ProgramBatchesAdmin = () => {
     setImporting(true);
     setError(null);
     try {
-      const token = localStorage.getItem('admin_token') || '';
+      const token = await getAuthToken();
       
       // Generate some mock data for the MVP test
       const mockPrograms = [
@@ -91,7 +92,7 @@ export const ProgramBatchesAdmin = () => {
     setValidating(id);
     setError(null);
     try {
-      const token = localStorage.getItem('admin_token') || '';
+      const token = await getAuthToken();
       const res = await fetch(`/api/admin/calculator/batches/${id}/validate`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -116,7 +117,7 @@ export const ProgramBatchesAdmin = () => {
     setPublishing(id);
     setError(null);
     try {
-      const token = localStorage.getItem('admin_token') || '';
+      const token = await getAuthToken();
       const res = await fetch(`/api/admin/calculator/batches/${id}/publish`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }

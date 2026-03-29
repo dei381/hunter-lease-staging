@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Edit2, Trash2, Save, X, ChevronDown, ChevronRight, RefreshCw, Terminal, Database } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, ChevronDown, ChevronRight, RefreshCw, Terminal, Database, Copy } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { getAuthToken } from '../utils/auth';
+import { VinDecoderModal } from '../components/admin/VinDecoderModal';
+import { SyncPreviewModal } from '../components/admin/SyncPreviewModal';
+import { toast } from 'react-hot-toast';
 
 export const CarsAdmin = () => {
   const { language } = useLanguageStore();
@@ -12,11 +16,42 @@ export const CarsAdmin = () => {
   const [expandedModel, setExpandedModel] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<any[] | null>(null);
+  const [isApplyingSync, setIsApplyingSync] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [debugData, setDebugData] = useState<string | null>(null);
   const [selectedMakes, setSelectedMakes] = useState<string[]>([]);
   const [syncReport, setSyncReport] = useState<any[] | null>(null);
+  const [isVinModalOpen, setIsVinModalOpen] = useState(false);
+  const [syncOptions, setSyncOptions] = useState<{msrp: boolean, mf: boolean, rv: boolean, apr: boolean, rebates: boolean}>(() => {
+    const saved = localStorage.getItem('car_sync_options');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // ignore
+      }
+    }
+    return {
+      msrp: true,
+      mf: true,
+      rv: true,
+      apr: true,
+      rebates: true
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('car_sync_options', JSON.stringify(syncOptions));
+  }, [syncOptions]);
+
+  const availableYears = (Array.from(new Set(
+    carDb?.makes?.flatMap((m: any) => 
+      m.models.flatMap((mod: any) => Array.isArray(mod.years) ? mod.years : [parseInt(mod.years) || new Date().getFullYear()])
+    ) || []
+  )).filter(y => y && typeof y === 'number' && !isNaN(y)) as number[]).sort((a: any, b: any) => b - a);
 
   const toggleMakeSelection = (makeName: string, isSelected: boolean) => {
     if (isSelected) {
@@ -89,48 +124,68 @@ export const CarsAdmin = () => {
       targetMsg = `for ${makeName.length} selected brands`;
     }
 
-    showConfirm('Sync with API', `Are you sure you want to sync with the external API? This will update financial data ${targetMsg}.`, async () => {
+    showConfirm('Preview API Updates', `Are you sure you want to preview updates from the external API ${targetMsg}? No changes will be saved until you approve them.`, async () => {
       setIsSyncing(true);
       try {
-        const payload: any = { model: modelName };
+        const payload: any = {};
         if (Array.isArray(makeName)) {
           payload.makes = makeName;
         } else if (typeof makeName === 'string') {
-          payload.make = makeName;
+          payload.makes = [makeName];
+        }
+        if (modelName) {
+          payload.models = [modelName];
         }
 
-        const res = await fetch('/api/admin/sync-external', {
+        const res = await fetch('/api/admin/sync-external/preview', {
           method: 'POST',
           headers: { 
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
+            'Authorization': `Bearer ${await getAuthToken()}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (res.ok) {
-          const { stats } = data;
-          if (stats.report && stats.report.length > 0) {
-            setSyncReport(stats.report);
-          } else {
-            let msg = `Sync completed!\n\nModels updated: ${stats.updatedModelsCount}\nTrims updated: ${stats.updatedTrimsCount}\nAPI Requests: ${stats.requestCount}`;
-            if (stats.errors && stats.errors.length > 0) {
-              msg += `\n\nWarnings:\n${stats.errors.join('\n')}`;
-            }
-            showAlert('Sync Success', msg);
-          }
-          fetchCars(); // Refresh local state
-          setSelectedMakes([]); // Clear selection after sync
+          setSyncPreview(data.diff || []);
         } else {
-          showAlert('Sync Failed', `${data.error}${data.details ? '\n\n' + data.details : ''}`);
+          toast.error(`${data.error}${data.details ? '\n\n' + data.details : ''}`);
         }
       } catch (err) {
-        console.error('Failed to sync external data', err);
-        showAlert('Error', 'Failed to sync external data. Check console for details.');
+        console.error('Failed to preview external data', err);
+        toast.error('Failed to preview external data. Check console for details.');
       } finally {
         setIsSyncing(false);
       }
     });
+  };
+
+  const applySync = async (diff: any[]) => {
+    setIsApplyingSync(true);
+    try {
+      const res = await fetch('/api/admin/sync-external/apply', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ diff })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Successfully applied ${data.appliedCount} updates!`);
+        setSyncPreview(null);
+        fetchCars();
+        setSelectedMakes([]);
+      } else {
+        toast.error(`${data.error}${data.details ? '\n\n' + data.details : ''}`);
+      }
+    } catch (err) {
+      console.error('Failed to apply sync', err);
+      toast.error('Failed to apply sync. Check console for details.');
+    } finally {
+      setIsApplyingSync(false);
+    }
   };
 
   const testApi = async () => {
@@ -138,19 +193,19 @@ export const CarsAdmin = () => {
     try {
       const res = await fetch('/api/admin/test-marketcheck?make=Toyota&model=Camry', {
         headers: { 
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       });
       const data = await res.json();
       
       if (res.status === 401 && data.error === "Invalid Marketcheck API Key") {
-        showAlert("Marketcheck API Key Error", "The API key is invalid or unauthorized (401). Please check your MARKETCHECK_API_KEY in the AI Studio Secrets panel.");
+        toast.error("The API key is invalid or unauthorized (401). Please check your MARKETCHECK_API_KEY in the AI Studio Secrets panel.");
       }
       
       setDebugData(JSON.stringify(data, null, 2));
     } catch (err) {
       console.error('Failed to test API', err);
-      showAlert('Error', 'Failed to test API');
+      toast.error('Failed to test API');
     } finally {
       setIsTestingApi(false);
     }
@@ -162,18 +217,18 @@ export const CarsAdmin = () => {
         const res = await fetch('/api/admin/snapshot-calculator', {
           method: 'POST',
           headers: { 
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+            'Authorization': `Bearer ${await getAuthToken()}`
           }
         });
         const data = await res.json();
         if (res.ok) {
-          showAlert('Snapshot Success', 'The Calculation Engine has been updated with the current data.');
+          toast.success('The Calculation Engine has been updated with the current data.');
         } else {
-          showAlert('Snapshot Failed', data.error);
+          toast.error(data.error);
         }
       } catch (err) {
         console.error('Failed to create snapshot', err);
-        showAlert('Error', 'Failed to create snapshot');
+        toast.error('Failed to create snapshot');
       }
     });
   };
@@ -184,19 +239,19 @@ export const CarsAdmin = () => {
         const res = await fetch('/api/admin/cars/sync-from-deals', {
           method: 'POST',
           headers: { 
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+            'Authorization': `Bearer ${await getAuthToken()}`
           }
         });
         const data = await res.json();
         if (res.ok) {
-          showAlert('Sync Success', data.message);
+          toast.success(data.message);
           fetchCars();
         } else {
-          showAlert('Sync Failed', data.error);
+          toast.error(data.error);
         }
       } catch (err) {
         console.error('Failed to sync from deals', err);
-        showAlert('Error', 'Failed to sync from deals');
+        toast.error('Failed to sync from deals');
       }
     });
   };
@@ -213,18 +268,97 @@ export const CarsAdmin = () => {
 
   const saveCars = async (newDb: any) => {
     try {
-      await fetch('/api/cars', {
+      const res = await fetch('/api/cars', {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify(newDb),
       });
+      if (!res.ok) throw new Error('Failed to save');
       setCarDb(newDb);
+      toast.success('Car database updated successfully');
     } catch (err) {
       console.error('Failed to save cars', err);
+      toast.error('Failed to update car database');
     }
+  };
+
+  const handleVinSave = (data: any) => {
+    const newDb = { ...carDb, makes: [...carDb.makes] };
+    
+    // Find or create make
+    let makeId = data.make?.toLowerCase().replace(/\s+/g, '-');
+    let makeIndex = newDb.makes.findIndex((m: any) => m.id === makeId || m.name?.toLowerCase() === data.make?.toLowerCase());
+    let make;
+    
+    if (makeIndex === -1) {
+      const defaultTiers = [
+        { id: "t1", label: "Tier 1", score: "740+", aprAdd: 0, mfAdd: 0, cls: "r1" },
+        { id: "t2", label: "Tier 2", score: "700–739", aprAdd: 1.5, mfAdd: 0.00040, cls: "r2" },
+        { id: "t3", label: "Tier 3", score: "660–699", aprAdd: 4.5, mfAdd: 0.00120, cls: "r3" },
+        { id: "t4", label: "Tier 4", score: "620–659", aprAdd: 9.0, mfAdd: 0.00240, cls: "r4" }
+      ];
+      make = { id: makeId, name: data.make, models: [], tiers: defaultTiers, baseMF: 0.002, baseAPR: 6.9 };
+      newDb.makes.push(make);
+    } else {
+      // Deep copy the make to avoid mutating state
+      make = JSON.parse(JSON.stringify(newDb.makes[makeIndex]));
+      newDb.makes[makeIndex] = make;
+      makeId = make.id;
+    }
+
+    // Find or create model
+    let modelId = data.model?.toLowerCase().replace(/\s+/g, '-');
+    let model = make.models.find((m: any) => m.id === modelId || m.name?.toLowerCase() === data.model?.toLowerCase());
+    
+    if (!model) {
+      model = {
+        id: modelId, 
+        name: data.model, 
+        class: data.bodyClass || 'Sedan', 
+        msrpRange: '', 
+        years: [data.year],
+        mf: 0.00150, 
+        rv36: 0.60, 
+        baseAPR: 4.9, 
+        leaseCash: 0,
+        trims: []
+      };
+      make.models.push(model);
+    } else {
+      modelId = model.id;
+      // Add year if not present
+      const years = Array.isArray(model.years) ? model.years : [parseInt(model.years) || new Date().getFullYear()];
+      if (!years.includes(data.year)) {
+        model.years = [...years, data.year].sort((a: number, b: number) => b - a);
+      }
+    }
+
+    // Find or create trim
+    let trim = model.trims.find((t: any) => t.name?.toLowerCase() === data.trim?.toLowerCase());
+    if (!trim) {
+      trim = { 
+        name: data.trim, 
+        msrp: data.msrp || 0,
+        specs: {
+          engine: data.engine || '',
+          transmission: data.transmission || ''
+        }
+      };
+      model.trims.push(trim);
+    } else {
+      if (!trim.specs) trim.specs = {};
+      if (data.engine) trim.specs.engine = data.engine;
+      if (data.transmission) trim.specs.transmission = data.transmission;
+      if (data.msrp && data.msrp > 0) trim.msrp = data.msrp;
+    }
+
+    saveCars(newDb);
+    setExpandedMake(makeId);
+    setExpandedModel(modelId);
+    toast.success(`Vehicle ${data.year} ${data.make} ${data.model} ${data.trim} added to catalog.`);
   };
 
   const addMake = () => {
@@ -249,7 +383,7 @@ export const CarsAdmin = () => {
       const newDb = { ...carDb };
       const make = newDb.makes.find((m: any) => m.id === makeId);
       make.models.push({
-        id, name, class: 'Sedan', msrpRange: '$30k - $40k', years: '2025-2026',
+        id, name, class: 'Sedan', msrpRange: '$30k - $40k', years: selectedYear === 'all' ? [new Date().getFullYear()] : [selectedYear],
         mf: 0.00150, rv36: 0.60, baseAPR: 4.9, leaseCash: 0,
         trims: []
       });
@@ -269,7 +403,7 @@ export const CarsAdmin = () => {
   };
 
   const duplicateTrim = (makeId: string, modelId: string, trim: any) => {
-    showPrompt(t.newTrimNamePrompt, '', `${trim.name} (Copy)`, (newName) => {
+    showPrompt(t.trimNamePrompt || 'New Trim Name', '', `${trim.name} (Copy)`, (newName) => {
       if (!newName) return;
       const newDb = { ...carDb };
       const make = newDb.makes.find((m: any) => m.id === makeId);
@@ -337,7 +471,7 @@ export const CarsAdmin = () => {
         aprAdd: t.aprAdd || 0
       };
     }
-    model.tiersData[tierId][field] = isNaN(value) ? 0 : value;
+    model.tiersData[tierId][field] = value === '' ? '' : (isNaN(Number(value)) ? 0 : value);
     saveCars(newDb);
   };
 
@@ -351,13 +485,13 @@ export const CarsAdmin = () => {
       const makeTier = (make.tiers || []).find((x: any) => x.id === tierId) || { mfAdd: 0, aprAdd: 0 };
       const modelTier = model.tiersData?.[tierId] || makeTier;
       trim.tiersData[tierId] = {
-        mf: (trim.mf || 0) + (modelTier.mfAdd || 0),
+        mfAdd: modelTier.mfAdd || 0,
         rv36: trim.rv36 || 0,
-        baseAPR: (trim.baseAPR || 0) + (modelTier.aprAdd || 0),
+        aprAdd: modelTier.aprAdd || 0,
         leaseCash: trim.leaseCash || 0
       };
     }
-    trim.tiersData[tierId][field] = isNaN(value) ? 0 : value;
+    trim.tiersData[tierId][field] = value === '' ? '' : (isNaN(Number(value)) ? 0 : value);
     saveCars(newDb);
   };
 
@@ -376,7 +510,7 @@ export const CarsAdmin = () => {
     if (make && make.tiers) {
       const tier = make.tiers.find((t: any) => t.id === tierId);
       if (tier) {
-        tier[field] = isNaN(value) ? 0 : value;
+        tier[field] = value === '' ? '' : (isNaN(Number(value)) ? 0 : value);
         saveCars(newDb);
       }
     }
@@ -400,9 +534,14 @@ export const CarsAdmin = () => {
 
   return (
     <div className="space-y-6">
+      <VinDecoderModal 
+        isOpen={isVinModalOpen} 
+        onClose={() => setIsVinModalOpen(false)} 
+        onSave={handleVinSave} 
+      />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-8">
         <h2 className="text-2xl font-display tracking-widest text-[var(--lime)]">{t.carDatabaseCalc}</h2>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <button 
             onClick={testApi}
             disabled={isTestingApi}
@@ -448,19 +587,46 @@ export const CarsAdmin = () => {
             <RefreshCw className="w-3 h-3" />
             {t.syncDeals}
           </button>
-          <div className="relative flex-1 md:w-64">
-            <input 
-              type="text" 
-              placeholder={t.searchMakeModel} 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-lg px-4 py-2 text-sm outline-none focus:border-[var(--lime)]"
-            />
+          <div className="flex gap-2 flex-1 md:w-auto">
+            <select
+              value={selectedYear}
+              onChange={e => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+              className="bg-[var(--s1)] border border-[var(--b2)] rounded-lg px-4 py-2 text-sm outline-none focus:border-[var(--lime)]"
+            >
+              <option value="all">All Years</option>
+              {availableYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <div className="relative flex-1">
+              <input 
+                type="text" 
+                placeholder={t.searchMakeModel} 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-lg px-4 py-2 text-sm outline-none focus:border-[var(--lime)]"
+              />
+            </div>
           </div>
           <button onClick={addMake} className="bg-[var(--lime)] text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-[var(--lime)]/90 whitespace-nowrap">
             {t.addManufacturer}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 p-4 bg-[var(--s1)] border border-[var(--b2)] rounded-xl">
+        <span className="text-xs font-bold uppercase tracking-widest text-[var(--mu2)]">Fields to Sync:</span>
+        {Object.entries(syncOptions).map(([key, value]) => (
+          <label key={key} className="flex items-center gap-2 cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={value} 
+              onChange={(e) => setSyncOptions(prev => ({ ...prev, [key]: e.target.checked }))}
+              className="accent-[var(--lime)] w-4 h-4"
+            />
+            <span className="text-sm text-[var(--w)] uppercase">{key}</span>
+          </label>
+        ))}
       </div>
 
       <div className="space-y-4">
@@ -476,13 +642,26 @@ export const CarsAdmin = () => {
         
         {carDb.makes
           .filter((make: any) => {
-            if (!searchTerm) return true;
             const term = searchTerm.toLowerCase();
-            return make.name.toLowerCase().includes(term) || 
+            const matchesSearch = !searchTerm || make.name.toLowerCase().includes(term) || 
                    make.models.some((m: any) => m.name.toLowerCase().includes(term));
+            
+            const matchesYear = selectedYear === 'all' || make.models.some((m: any) => {
+              const years = Array.isArray(m.years) ? m.years : [parseInt(m.years) || new Date().getFullYear()];
+              return years.includes(selectedYear);
+            });
+            
+            return matchesSearch && matchesYear;
           })
-          .map((make: any) => (
-          <div key={make.id} className="bg-[var(--s1)] border border-[var(--b2)] rounded-xl overflow-hidden">
+          .map((make: any, idx: number) => {
+            const filteredModels = make.models.filter((m: any) => {
+              if (selectedYear === 'all') return true;
+              const years = Array.isArray(m.years) ? m.years : [parseInt(m.years) || new Date().getFullYear()];
+              return years.includes(selectedYear);
+            });
+            
+            return (
+          <div key={`${make.id}-${idx}`} className="bg-[var(--s1)] border border-[var(--b2)] rounded-xl overflow-hidden">
             <div 
               className="p-4 flex items-center justify-between cursor-pointer hover:bg-[var(--s2)] transition-colors"
               onClick={() => setExpandedMake(expandedMake === make.id ? null : make.id)}
@@ -555,7 +734,9 @@ export const CarsAdmin = () => {
                             <th className="pb-2 font-normal">{t.tier}</th>
                             <th className="pb-2 font-normal">{t.score}</th>
                             <th className="pb-2 font-normal">{t.mfAdd}</th>
+                            <th className="pb-2 font-normal">{t.finalMf}</th>
                             <th className="pb-2 font-normal">{t.aprAdd}</th>
+                            <th className="pb-2 font-normal">{t.finalApr}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -572,7 +753,10 @@ export const CarsAdmin = () => {
                                   className="w-full max-w-[120px] bg-[var(--bg)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" 
                                 />
                               </td>
-                              <td className="py-2">
+                              <td className="py-2 pr-2 text-xs text-[var(--mu2)]">
+                                {((Number(make.baseMF) || 0) + (Number(t_item.mfAdd) || 0)).toFixed(5)}
+                              </td>
+                              <td className="py-2 pr-2">
                                 <input 
                                   type="number" 
                                   step="0.1" 
@@ -580,6 +764,9 @@ export const CarsAdmin = () => {
                                   onChange={e => updateMakeTier(make.id, t_item.id, 'aprAdd', e.target.value)} 
                                   className="w-full max-w-[120px] bg-[var(--bg)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" 
                                 />
+                              </td>
+                              <td className="py-2 text-xs text-[var(--mu2)]">
+                                {((Number(make.baseAPR) || 0) + (Number(t_item.aprAdd) || 0)).toFixed(2)}%
                               </td>
                             </tr>
                           ))}
@@ -609,8 +796,8 @@ export const CarsAdmin = () => {
                 </div>
 
                 <div className="space-y-4">
-                  {make.models.map((model: any) => (
-                    <div key={model.id} className="bg-[var(--s2)] border border-[var(--b1)] rounded-lg overflow-hidden">
+                  {filteredModels.map((model: any, idx: number) => (
+                    <div key={`${model.id}-${idx}`} className="bg-[var(--s2)] border border-[var(--b1)] rounded-lg overflow-hidden">
                       <div 
                         className="p-3 flex items-center justify-between cursor-pointer hover:bg-[var(--s1)] transition-colors"
                         onClick={() => setExpandedModel(expandedModel === model.id ? null : model.id)}
@@ -652,6 +839,19 @@ export const CarsAdmin = () => {
                                 <input type="text" value={model.class || ''} onChange={e => updateModel(make.id, model.id, 'class', e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
                               <label className="space-y-1">
+                                <span className="text-[10px] uppercase tracking-widest text-[var(--mu2)]">Years (comma separated)</span>
+                                <input 
+                                  type="text" 
+                                  value={Array.isArray(model.years) ? model.years.join(', ') : (model.years || '')} 
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const parsed = val.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y));
+                                    updateModel(make.id, model.id, 'years', parsed.length > 0 ? parsed : val);
+                                  }} 
+                                  className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" 
+                                />
+                              </label>
+                              <label className="space-y-1">
                                 <span className="text-[10px] uppercase tracking-widest text-[var(--mu2)]">Image URL</span>
                                 <input type="text" value={model.imageUrl || ''} onChange={e => updateModel(make.id, model.id, 'imageUrl', e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]" />
                               </label>
@@ -676,13 +876,15 @@ export const CarsAdmin = () => {
                                       <tr className="text-[10px] uppercase tracking-widest text-[var(--mu2)] border-b border-[var(--b2)]">
                                         <th className="pb-2 font-normal">{t.tier}</th>
                                         <th className="pb-2 font-normal">{t.mfAdd}</th>
+                                        <th className="pb-2 font-normal">{t.finalMf}</th>
                                         <th className="pb-2 font-normal">{t.aprAdd}</th>
+                                        <th className="pb-2 font-normal">{t.finalApr}</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {(!make.tiers || make.tiers.length === 0) ? (
                                         <tr>
-                                          <td colSpan={3} className="py-4 text-center">
+                                          <td colSpan={5} className="py-4 text-center">
                                             <button 
                                               onClick={() => initializeTiers(make.id)}
                                               className="bg-[var(--lime)] text-[var(--ink)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-opacity-80 transition-all"
@@ -703,8 +905,14 @@ export const CarsAdmin = () => {
                                               <td className="py-2 pr-2">
                                                 <input type="number" step="0.00001" value={tData.mfAdd} onChange={e => updateModelTier(make.id, model.id, t_item.id, 'mfAdd', e.target.value)} className="w-full max-w-[120px] bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
                                               </td>
+                                              <td className="py-2 pr-2 text-xs text-[var(--mu2)]">
+                                                {((Number(model.mf) || Number(make.baseMF) || 0) + (Number(tData.mfAdd) || 0)).toFixed(5)}
+                                              </td>
                                               <td className="py-2 pr-2">
                                                 <input type="number" step="0.1" value={tData.aprAdd} onChange={e => updateModelTier(make.id, model.id, t_item.id, 'aprAdd', e.target.value)} className="w-full max-w-[120px] bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                              </td>
+                                              <td className="py-2 text-xs text-[var(--mu2)]">
+                                                {((Number(model.baseAPR) || Number(make.baseAPR) || 0) + (Number(tData.aprAdd) || 0)).toFixed(2)}%
                                               </td>
                                             </tr>
                                           );
@@ -718,8 +926,8 @@ export const CarsAdmin = () => {
 
                             <div className="space-y-6">
                               <h4 className="text-[10px] uppercase tracking-widest text-[var(--mu2)]">{t.trims}</h4>
-                              {model.trims.map((trim: any) => (
-                                <div key={trim.name} className="bg-[var(--bg)] border border-[var(--b2)] rounded-lg p-4 space-y-4">
+                              {model.trims.map((trim: any, idx: number) => (
+                                <div key={`${trim.name}-${idx}`} className="bg-[var(--bg)] border border-[var(--b2)] rounded-lg p-4 space-y-4">
                                   <div className="flex justify-between items-center">
                                     <div className="flex flex-col">
                                       <h5 className="font-bold text-[var(--w)]">{trim.name}</h5>
@@ -761,16 +969,18 @@ export const CarsAdmin = () => {
                                       <thead>
                                         <tr className="text-[10px] uppercase tracking-widest text-[var(--mu2)] border-b border-[var(--b2)]">
                                           <th className="pb-2 font-normal">{t.tier}</th>
-                                          <th className="pb-2 font-normal">{t.mf}</th>
+                                          <th className="pb-2 font-normal">{t.mfAdd}</th>
+                                          <th className="pb-2 font-normal">{t.finalMf}</th>
                                           <th className="pb-2 font-normal">{t.rv}</th>
-                                          <th className="pb-2 font-normal">{t.aprPercent}</th>
+                                          <th className="pb-2 font-normal">{t.aprAdd}</th>
+                                          <th className="pb-2 font-normal">{t.finalApr}</th>
                                           <th className="pb-2 font-normal">{t.leaseCashDollar}</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {(!make.tiers || make.tiers.length === 0) ? (
                                           <tr>
-                                            <td colSpan={5} className="py-4 text-center">
+                                            <td colSpan={7} className="py-4 text-center">
                                               <button 
                                                 onClick={() => initializeTiers(make.id)}
                                                 className="bg-[var(--lime)] text-[var(--ink)] px-4 py-2 rounded-lg font-bold uppercase tracking-widest text-[10px] hover:bg-opacity-80 transition-all"
@@ -783,25 +993,39 @@ export const CarsAdmin = () => {
                                           make.tiers.map((t_item: any) => {
                                             const modelTier = model.tiersData?.[t_item.id] || t_item;
                                             const tData = trim.tiersData?.[t_item.id] || {
-                                              mf: (trim.mf || 0) + (modelTier.mfAdd || 0),
+                                              mfAdd: modelTier.mfAdd || 0,
                                               rv36: trim.rv36 || 0,
-                                              baseAPR: (trim.baseAPR || 0) + (modelTier.aprAdd || 0),
+                                              aprAdd: modelTier.aprAdd || 0,
                                               leaseCash: trim.leaseCash || 0
                                             };
+                                            
+                                            // Backwards compatibility for UI
+                                            const baseMfForTrim = Number(trim.mf) || Number(model.mf) || Number(make.baseMF) || 0;
+                                            const baseAprForTrim = Number(trim.baseAPR) || Number(trim.apr) || Number(model.baseAPR) || Number(make.baseAPR) || 0;
+                                            
+                                            const displayMfAdd = tData.mfAdd !== undefined ? tData.mfAdd : (tData.mf !== undefined ? Number(tData.mf) - baseMfForTrim : (modelTier.mfAdd || 0));
+                                            const displayAprAdd = tData.aprAdd !== undefined ? tData.aprAdd : (tData.baseAPR !== undefined ? Number(tData.baseAPR) - baseAprForTrim : (modelTier.aprAdd || 0));
+
                                             return (
                                               <tr key={t_item.id} className="border-b border-[var(--b2)]/50">
                                                 <td className="py-2 font-bold text-[var(--w)]">{t_item.label}</td>
                                                 <td className="py-2 pr-2">
-                                                  <input type="number" step="0.00001" value={tData.mf} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'mf', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                  <input type="number" step="0.00001" value={displayMfAdd} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'mfAdd', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                </td>
+                                                <td className="py-2 pr-2 text-xs text-[var(--mu2)]">
+                                                  {(baseMfForTrim + (Number(displayMfAdd) || 0)).toFixed(5)}
                                                 </td>
                                                 <td className="py-2 pr-2">
-                                                  <input type="number" step="0.01" value={tData.rv36} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'rv36', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                  <input type="number" step="0.01" value={tData.rv36 !== undefined ? tData.rv36 : (trim.rv36 || 0)} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'rv36', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
                                                 </td>
                                                 <td className="py-2 pr-2">
-                                                  <input type="number" step="0.1" value={tData.baseAPR} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'baseAPR', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                  <input type="number" step="0.1" value={displayAprAdd} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'aprAdd', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                </td>
+                                                <td className="py-2 pr-2 text-xs text-[var(--mu2)]">
+                                                  {(baseAprForTrim + (Number(displayAprAdd) || 0)).toFixed(2)}%
                                                 </td>
                                                 <td className="py-2">
-                                                  <input type="number" value={tData.leaseCash} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'leaseCash', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
+                                                  <input type="number" value={tData.leaseCash !== undefined ? tData.leaseCash : (trim.leaseCash || 0)} onChange={e => updateTrimTier(make.id, model.id, trim.name, t_item.id, 'leaseCash', e.target.value)} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--lime)]" />
                                                 </td>
                                               </tr>
                                             );
@@ -850,13 +1074,45 @@ export const CarsAdmin = () => {
                                       className="w-24 bg-transparent outline-none text-sm text-right" 
                                     />
                                   </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-[var(--mu2)]">Engine</span>
+                                    <input 
+                                      type="text" 
+                                      value={trim.specs?.engine || ''} 
+                                      onChange={e => {
+                                        const newDb = {...carDb};
+                                        const t = newDb.makes.find((m:any)=>m.id===make.id).models.find((m:any)=>m.id===model.id).trims[idx];
+                                        if (!t.specs) t.specs = {};
+                                        t.specs.engine = e.target.value;
+                                        saveCars(newDb);
+                                      }}
+                                      className="w-24 bg-transparent outline-none text-sm text-right" 
+                                      placeholder="Engine"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-[var(--mu2)]">Trans</span>
+                                    <input 
+                                      type="text" 
+                                      value={trim.specs?.transmission || ''} 
+                                      onChange={e => {
+                                        const newDb = {...carDb};
+                                        const t = newDb.makes.find((m:any)=>m.id===make.id).models.find((m:any)=>m.id===model.id).trims[idx];
+                                        if (!t.specs) t.specs = {};
+                                        t.specs.transmission = e.target.value;
+                                        saveCars(newDb);
+                                      }}
+                                      className="w-24 bg-transparent outline-none text-sm text-right" 
+                                      placeholder="Transmission"
+                                    />
+                                  </div>
                                   <div className="flex items-center gap-1">
                                     <button 
                                       onClick={() => duplicateTrim(make.id, model.id, trim)} 
                                       className="text-[var(--mu2)] hover:text-[var(--lime)] p-1"
-                                      title={t.duplicateTrim}
+                                      title={t.duplicateTrim || 'Duplicate Trim'}
                                     >
-                                      <Plus className="w-3 h-3" />
+                                      <Copy className="w-3 h-3" />
                                     </button>
                                     <button onClick={() => deleteTrim(make.id, model.id, trim.name)} className="text-[var(--mu2)] hover:text-red-400 p-1">
                                       <Trash2 className="w-3 h-3" />
@@ -874,7 +1130,8 @@ export const CarsAdmin = () => {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
       {debugData && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -926,7 +1183,7 @@ export const CarsAdmin = () => {
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(debugData);
-                  showAlert('Success', 'Copied to clipboard!');
+                  toast.success('Copied to clipboard!');
                 }}
                 className="px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-xs bg-[var(--lime)] text-[var(--bg)] hover:scale-105 transition-all"
               >
@@ -970,27 +1227,33 @@ export const CarsAdmin = () => {
                       <span className="text-[10px] uppercase text-[var(--mu2)]">MF</span>
                       <div className="flex items-center gap-2">
                         {item.changes.mf.old !== item.changes.mf.new && (
-                          <span className="line-through text-[var(--mu2)]">{item.changes.mf.old}</span>
+                          <span className="line-through text-[var(--mu2)]">{item.changes.mf.old ?? '-'}</span>
                         )}
-                        <span className={item.changes.mf.old !== item.changes.mf.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>{item.changes.mf.new}</span>
+                        <span className={item.changes.mf.old !== item.changes.mf.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>
+                          {item.changes.mf.new ?? '-'}
+                        </span>
                       </div>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[10px] uppercase text-[var(--mu2)]">RV</span>
                       <div className="flex items-center gap-2">
                         {item.changes.rv.old !== item.changes.rv.new && (
-                          <span className="line-through text-[var(--mu2)]">{item.changes.rv.old}</span>
+                          <span className="line-through text-[var(--mu2)]">{item.changes.rv.old ?? '-'}</span>
                         )}
-                        <span className={item.changes.rv.old !== item.changes.rv.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>{item.changes.rv.new}</span>
+                        <span className={item.changes.rv.old !== item.changes.rv.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>
+                          {item.changes.rv.new ?? '-'}
+                        </span>
                       </div>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[10px] uppercase text-[var(--mu2)]">APR</span>
                       <div className="flex items-center gap-2">
                         {item.changes.apr.old !== item.changes.apr.new && (
-                          <span className="line-through text-[var(--mu2)]">{item.changes.apr.old}%</span>
+                          <span className="line-through text-[var(--mu2)]">{item.changes.apr.old != null ? `${item.changes.apr.old}%` : '-'}</span>
                         )}
-                        <span className={item.changes.apr.old !== item.changes.apr.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>{item.changes.apr.new}%</span>
+                        <span className={item.changes.apr.old !== item.changes.apr.new ? "text-[var(--lime)] font-bold" : "text-[var(--w)]"}>
+                          {item.changes.apr.new != null ? `${item.changes.apr.new}%` : '-'}
+                        </span>
                       </div>
                     </div>
                     <div className="flex flex-col">
@@ -1014,6 +1277,16 @@ export const CarsAdmin = () => {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {syncPreview !== null && (
+        <SyncPreviewModal
+          isOpen={true}
+          onClose={() => setSyncPreview(null)}
+          onApply={applySync}
+          diff={syncPreview}
+          isApplying={isApplyingSync}
+        />
       )}
 
       {/* Custom Modal System */}

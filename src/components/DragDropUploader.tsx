@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, File, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { getAuthToken } from '../utils/auth';
 
 interface DragDropUploaderProps {
   onUploadSuccess: (dealId: string) => void;
@@ -49,7 +50,7 @@ export function DragDropUploader({ onUploadSuccess }: DragDropUploaderProps) {
       const response = await fetch('/api/ingest', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: formData,
       });

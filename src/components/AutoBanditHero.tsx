@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight, Clock, Info, Share2, Heart, MessageCircle } from 'lucide-react';
+import { useDebounce } from '../hooks/useDebounce';
 
 export const AutoBanditHero = () => {
   const [activeTab, setActiveTab] = useState<'lease' | 'finance'>('lease');
@@ -13,6 +14,12 @@ export const AutoBanditHero = () => {
   
   const [quoteResult, setQuoteResult] = useState<any>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+
+  const debouncedDas = useDebounce(das, 500);
+  const debouncedTerm = useDebounce(term, 500);
+  const debouncedMileage = useDebounce(mileage, 500);
+  const debouncedZipCode = useDebounce(zipCode, 500);
+  const debouncedCreditTier = useDebounce(creditTier, 500);
 
   const vehicleInfo = {
     make: 'Hyundai',
@@ -29,17 +36,15 @@ export const AutoBanditHero = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            vehicle: vehicleInfo,
-            zipCode,
+            ...vehicleInfo,
+            zipCode: debouncedZipCode,
             quoteType: activeTab.toUpperCase(),
-            term,
-            mileage,
-            uxTier: creditTier === 'Super Elite' ? 'TIER_1_PLUS' : 'TIER_1',
+            term: debouncedTerm,
+            mileage: parseInt(debouncedMileage) * 1000,
+            creditTier: debouncedCreditTier === 'Super Elite' ? 't1' : 't2',
             isFirstTimeBuyer: false,
-            downPayment: activeTab === 'finance' ? das : 0,
-            dueAtSigning: activeTab === 'lease' ? das : 0,
-            tradeInValue: 0,
-            tradeInPayoff: 0
+            downPaymentCents: debouncedDas * 100,
+            tradeInEquityCents: 0
           })
         });
         if (response.ok) {
@@ -54,7 +59,7 @@ export const AutoBanditHero = () => {
     };
 
     fetchQuote();
-  }, [activeTab, zipCode, creditTier, term, mileage, das]);
+  }, [activeTab, debouncedZipCode, debouncedCreditTier, debouncedTerm, debouncedMileage, debouncedDas]);
 
   const displayPayment = useMemo(() => {
     if (isCalculating) return '...';

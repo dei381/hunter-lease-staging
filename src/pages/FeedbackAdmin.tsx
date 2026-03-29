@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Calendar, User, Trash2, CheckCircle2, Clock } from 'lucide-react';
 import { format } from 'date-fns';
+import { getAuthToken } from '../utils/auth';
 
 export const FeedbackAdmin = () => {
   const [feedback, setFeedback] = useState<any[]>([]);
@@ -13,7 +14,7 @@ export const FeedbackAdmin = () => {
   const fetchFeedback = async () => {
     try {
       const res = await fetch('/api/admin/feedback', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       const data = await res.json();
       setFeedback(data);
@@ -29,7 +30,7 @@ export const FeedbackAdmin = () => {
     try {
       await fetch(`/api/admin/feedback/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       fetchFeedback();
     } catch (err) {
@@ -43,7 +44,7 @@ export const FeedbackAdmin = () => {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify({ status })
       });

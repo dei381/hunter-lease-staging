@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Trash2, Check, Image as ImageIcon, Plus, X } from 'lucide-react';
+import { Upload, Trash2, Check, Image as ImageIcon, Plus, X, Edit2 } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { getAuthToken } from '../utils/auth';
+import { toast } from 'react-hot-toast';
 
 export const MediaAdmin = () => {
   const { language } = useLanguageStore();
@@ -33,6 +35,8 @@ export const MediaAdmin = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCustomColor, setIsCustomColor] = useState(false);
+  const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
+  const [editPhotoData, setEditPhotoData] = useState<any>(null);
 
   const commonColors = ['White', 'Black', 'Silver', 'Gray', 'Red', 'Blue', 'Green', 'Yellow', 'Brown'];
 
@@ -84,7 +88,7 @@ export const MediaAdmin = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || 'default_dev_secret'}`
+            'Authorization': `Bearer ${await getAuthToken()}`
           },
           body: JSON.stringify({
             makeId: uploadData.makeId,
@@ -107,20 +111,47 @@ export const MediaAdmin = () => {
           fetchData();
         } else {
           const error = await res.json();
-          alert(error.error || 'Upload failed');
+          toast.error(error.error || 'Upload failed');
         }
         setIsUploading(false);
       };
       
       reader.onerror = () => {
         console.error('Failed to read file');
-        alert('Failed to read file');
+        toast.error('Failed to read file');
         setIsUploading(false);
       };
     } catch (err) {
       console.error('Upload error', err);
-      alert('Upload failed');
+      toast.error('Upload failed');
       setIsUploading(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPhotoId || !editPhotoData) return;
+    
+    try {
+      const res = await fetch(`/api/admin/car-photos/${editingPhotoId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
+        body: JSON.stringify(editPhotoData)
+      });
+
+      if (res.ok) {
+        setEditingPhotoId(null);
+        setEditPhotoData(null);
+        fetchData();
+      } else {
+        const error = await res.json();
+        toast.error(error.error || 'Update failed');
+      }
+    } catch (err) {
+      console.error('Update error', err);
+      toast.error('Update failed');
     }
   };
 
@@ -131,7 +162,7 @@ export const MediaAdmin = () => {
       const res = await fetch(`/api/admin/car-photos/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || 'default_dev_secret'}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       });
 
@@ -148,7 +179,7 @@ export const MediaAdmin = () => {
       const res = await fetch(`/api/admin/car-photos/${id}/default`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || 'default_dev_secret'}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       });
 
@@ -189,8 +220,8 @@ export const MediaAdmin = () => {
                 }}
                 className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-4 py-2 text-sm outline-none focus:border-[var(--lime)]"
               >
-                {carDb?.makes.map((m: any) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
+                {carDb?.makes.map((m: any, idx: number) => (
+                  <option key={`${m.id}-${idx}`} value={m.id}>{m.name}</option>
                 ))}
               </select>
             </label>
@@ -202,8 +233,8 @@ export const MediaAdmin = () => {
                 onChange={(e) => setUploadData({ ...uploadData, modelId: e.target.value })}
                 className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-4 py-2 text-sm outline-none focus:border-[var(--lime)]"
               >
-                {selectedMake?.models.map((m: any) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
+                {selectedMake?.models.map((m: any, idx: number) => (
+                  <option key={`${m.id}-${idx}`} value={m.id}>{m.name}</option>
                 ))}
               </select>
             </label>
@@ -313,54 +344,120 @@ export const MediaAdmin = () => {
             
             return (
               <div key={photo.id} className="group relative bg-[var(--s1)] border border-[var(--b2)] rounded-2xl overflow-hidden hover:border-[var(--lime)]/30 transition-all">
-                <div className="aspect-video relative overflow-hidden">
-                  <img 
-                    src={photo.imageUrl} 
-                    alt={`${photo.makeId} ${photo.modelId}`}
-                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                  />
-                  {photo.isDefault && (
-                    <div className="absolute top-2 left-2 bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-lg">
-                      Default
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                    {!photo.isDefault && (
+                {editingPhotoId === photo.id ? (
+                  <div className="p-4 flex flex-col gap-3">
+                    <h4 className="font-bold text-sm">Edit Photo</h4>
+                    <select
+                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm"
+                      value={editPhotoData.makeId}
+                      onChange={(e) => setEditPhotoData({ ...editPhotoData, makeId: e.target.value, modelId: '' })}
+                    >
+                      {carDb?.makes.map((m: any) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm"
+                      value={editPhotoData.modelId}
+                      onChange={(e) => setEditPhotoData({ ...editPhotoData, modelId: e.target.value })}
+                    >
+                      {carDb?.makes.find((m: any) => m.id === editPhotoData.makeId)?.models.map((m: any) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm"
+                      value={editPhotoData.year}
+                      onChange={(e) => setEditPhotoData({ ...editPhotoData, year: parseInt(e.target.value) })}
+                    />
+                    <select
+                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm"
+                      value={editPhotoData.colorId}
+                      onChange={(e) => setEditPhotoData({ ...editPhotoData, colorId: e.target.value })}
+                    >
+                      <option value="">Default Color</option>
+                      {commonColors.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2 mt-2">
                       <button 
-                        onClick={() => handleSetDefault(photo.id)}
-                        className="p-2 bg-white/10 hover:bg-[var(--lime)] hover:text-black rounded-full transition-all"
-                        title="Set as Default"
+                        onClick={handleSaveEdit}
+                        className="flex-1 bg-[var(--lime)] text-black font-bold py-2 rounded-lg text-sm"
                       >
-                        <Check className="w-5 h-5" />
+                        Save
                       </button>
-                    )}
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(photo.imageUrl);
-                        alert('URL copied to clipboard!');
-                      }}
-                      className="p-2 bg-white/10 hover:bg-indigo-500 rounded-full transition-all"
-                      title="Copy URL"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(photo.id)}
-                      className="p-2 bg-white/10 hover:bg-red-500 rounded-full transition-all"
-                      title="Delete Photo"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                      <button 
+                        onClick={() => { setEditingPhotoId(null); setEditPhotoData(null); }}
+                        className="flex-1 bg-[var(--s2)] text-white font-bold py-2 rounded-lg text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="p-4">
-                  <div className="font-bold text-sm truncate">{make?.name} {model?.name}</div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{photo.year}</span>
-                    <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{photo.colorId}</span>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="aspect-video relative overflow-hidden">
+                      <img 
+                        src={photo.imageUrl} 
+                        alt={`${photo.makeId} ${photo.modelId}`}
+                        className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      {photo.isDefault && (
+                        <div className="absolute top-2 left-2 bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-lg">
+                          Default
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                        {!photo.isDefault && (
+                          <button 
+                            onClick={() => handleSetDefault(photo.id)}
+                            className="p-2 bg-white/10 hover:bg-[var(--lime)] hover:text-black rounded-full transition-all"
+                            title="Set as Default"
+                          >
+                            <Check className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => {
+                            setEditingPhotoId(photo.id);
+                            setEditPhotoData({ ...photo });
+                          }}
+                          className="p-2 bg-white/10 hover:bg-blue-500 rounded-full transition-all"
+                          title="Edit Photo"
+                        >
+                          <Edit2 className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(photo.imageUrl);
+                            toast.success('URL copied to clipboard!');
+                          }}
+                          className="p-2 bg-white/10 hover:bg-indigo-500 rounded-full transition-all"
+                          title="Copy URL"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(photo.id)}
+                          className="p-2 bg-white/10 hover:bg-red-500 rounded-full transition-all"
+                          title="Delete Photo"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <div className="font-bold text-sm truncate">{make?.name} {model?.name}</div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{photo.year}</span>
+                        <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{photo.colorId}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })

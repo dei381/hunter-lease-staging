@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getAuthToken } from '../utils/auth';
 
 interface SiteSettings {
   platformFee: number;
@@ -49,7 +50,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify(newSettings)
       });

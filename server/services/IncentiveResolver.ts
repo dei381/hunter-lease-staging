@@ -29,7 +29,9 @@ export class IncentiveResolver {
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
       
       if (inc.isDefault || isSelected || (isFtbIncentive && isFirstTimeBuyer)) {
-        const amountCents = (inc.amount || 0) * 100;
+        let amount = Number(inc.amount) || 0;
+        if (isNaN(amount)) amount = 0;
+        const amountCents = amount * 100;
         appliedIncentives.push({
           id: inc.id,
           name: inc.name || 'Discount',

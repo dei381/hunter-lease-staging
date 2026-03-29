@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, AlertTriangle, CheckCircle } from 'lucide-react';
+import { getAuthToken } from '../../utils/auth';
 
 export const BulkUpdatesAdmin = () => {
   const [makes, setMakes] = useState<string[]>([]);
@@ -54,7 +55,7 @@ export const BulkUpdatesAdmin = () => {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('admin_token');
+      const token = await getAuthToken();
       const res = await fetch('/api/admin/calculator/bulk-update', {
         method: 'POST',
         headers: {
@@ -131,7 +132,7 @@ export const BulkUpdatesAdmin = () => {
                 className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]"
               >
                 <option value="">All Makes</option>
-                {makes.map(m => <option key={m} value={m}>{m}</option>)}
+                {makes.map((m, idx) => <option key={`${m}-${idx}`} value={m}>{m}</option>)}
               </select>
             </label>
             <label className="space-y-1">
@@ -143,7 +144,7 @@ export const BulkUpdatesAdmin = () => {
                 className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)] disabled:opacity-50"
               >
                 <option value="">All Models</option>
-                {models.map(m => <option key={m} value={m}>{m}</option>)}
+                {models.map((m, idx) => <option key={`${m}-${idx}`} value={m}>{m}</option>)}
               </select>
             </label>
             <label className="space-y-1">

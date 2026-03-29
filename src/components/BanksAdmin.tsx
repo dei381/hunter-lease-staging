@@ -4,6 +4,8 @@ import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { LenderProgramsAdmin } from './LenderProgramsAdmin';
 import { LenderEligibilityModal } from './admin/LenderEligibilityModal';
+import { getAuthToken } from '../utils/auth';
+import { toast } from 'react-hot-toast';
 
 export const BanksAdmin = () => {
   const { language } = useLanguageStore();
@@ -15,6 +17,7 @@ export const BanksAdmin = () => {
     bankName: adminTranslations.bankName || 'Bank Name',
     isCaptive: adminTranslations.isCaptive || 'Captive Bank',
     isCaptiveDesc: adminTranslations.isCaptiveDesc || 'A bank owned by the car manufacturer (e.g., Toyota Financial Services).',
+    lenderType: adminTranslations.lenderType || 'Lender Type',
     ftbFriendly: adminTranslations.ftbFriendly || 'First-Time Buyer Friendly',
     ftbFriendlyDesc: adminTranslations.ftbFriendlyDesc || 'Bank that is more likely to approve applicants without prior auto loan history.',
     actions: adminTranslations.actions || 'Actions',
@@ -46,7 +49,7 @@ export const BanksAdmin = () => {
   const fetchLenders = async () => {
     try {
       const response = await fetch('/api/admin/lenders', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -68,7 +71,7 @@ export const BanksAdmin = () => {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify(editData)
       });
@@ -79,11 +82,11 @@ export const BanksAdmin = () => {
         fetchLenders();
       } else {
         const data = await response.json();
-        alert(`${t.saveBankFailed}: ${data.error || 'Unknown error'}`);
+        toast.error(`${t.saveBankFailed}: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to save lender:', error);
-      alert(t.saveBankNetworkError);
+      toast.error(t.saveBankNetworkError);
     }
   };
 
@@ -93,7 +96,7 @@ export const BanksAdmin = () => {
     try {
       const response = await fetch(`/api/admin/lenders/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
 
       if (response.ok) {
@@ -108,7 +111,7 @@ export const BanksAdmin = () => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-      <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+      <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
             <Building2 className="w-5 h-5" />
@@ -118,9 +121,9 @@ export const BanksAdmin = () => {
         <button
           onClick={() => {
             setIsAdding(true);
-            setEditData({ name: '', isCaptive: false, isFirstTimeBuyerFriendly: false });
+            setEditData({ name: '', isCaptive: false, isFirstTimeBuyerFriendly: false, lenderType: 'NATIONAL_BANK' });
           }}
-          className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+          className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium w-full sm:w-auto justify-center"
         >
           <Plus className="w-4 h-4" />
           <span>{t.addBank || 'Add Bank'}</span>
@@ -132,6 +135,7 @@ export const BanksAdmin = () => {
           <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
             <tr>
               <th className="px-6 py-4 font-medium">{t.name || 'Name'}</th>
+              <th className="px-6 py-4 font-medium">{t.lenderType || 'Lender Type'}</th>
               <th className="px-6 py-4 font-medium">
                 <div className="flex items-center gap-1">
                   {t.isCaptive || 'Captive Bank'}
@@ -168,6 +172,18 @@ export const BanksAdmin = () => {
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder={t.bankName || "Bank Name"}
                   />
+                </td>
+                <td className="px-6 py-4">
+                  <select
+                    value={editData.lenderType || 'NATIONAL_BANK'}
+                    onChange={e => setEditData({ ...editData, lenderType: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="NATIONAL_BANK">National Bank</option>
+                    <option value="CREDIT_UNION">Credit Union</option>
+                    <option value="CAPTIVE">Captive (Manufacturer)</option>
+                    <option value="REGIONAL_BANK">Regional Bank</option>
+                  </select>
                 </td>
                 <td className="px-6 py-4">
                   <input
@@ -208,6 +224,26 @@ export const BanksAdmin = () => {
                     />
                   ) : (
                     <span className="font-medium text-slate-900">{lender.name}</span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  {editingId === lender.id ? (
+                    <select
+                      value={editData.lenderType || 'NATIONAL_BANK'}
+                      onChange={e => setEditData({ ...editData, lenderType: e.target.value })}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="NATIONAL_BANK">National Bank</option>
+                      <option value="CREDIT_UNION">Credit Union</option>
+                      <option value="CAPTIVE">Captive (Manufacturer)</option>
+                      <option value="REGIONAL_BANK">Regional Bank</option>
+                    </select>
+                  ) : (
+                    <span className="text-slate-600">
+                      {lender.lenderType === 'CREDIT_UNION' ? 'Credit Union' : 
+                       lender.lenderType === 'CAPTIVE' ? 'Captive' : 
+                       lender.lenderType === 'REGIONAL_BANK' ? 'Regional Bank' : 'National Bank'}
+                    </span>
                   )}
                 </td>
                 <td className="px-6 py-4">

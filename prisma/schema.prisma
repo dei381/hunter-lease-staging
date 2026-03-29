@@ -56,8 +56,6 @@ model CatalogDefaultScenario {
   updatedAt            DateTime @updatedAt
 }
 
-
-
 model Lender {
   id                       String                      @id @default(uuid())
   name                     String                      @unique
@@ -67,16 +65,16 @@ model Lender {
   priority                 Int                         @default(0)
   isActive                 Boolean                     @default(true)
   createdAt                DateTime                    @default(now())
-  financePrograms       FinanceProgram[]
-  leasePrograms         LeaseProgram[]
-  bankPrograms          BankProgram[]
-  eligibilityRules      LenderEligibilityRule[]
-  feePolicies           LenderFeePolicy[]
-  programAvailabilities LenderProgramAvailability[]
-  tierMappings          LenderTierMapping[]
-  quoteSnapshots        QuoteSnapshot[]
-  dealRecords           DealRecord[]
-  quotes                Quote[]
+  bankPrograms             BankProgram[]
+  dealRecords              DealRecord[]
+  financePrograms          FinanceProgram[]
+  leasePrograms            LeaseProgram[]
+  eligibilityRules         LenderEligibilityRule[]
+  feePolicies              LenderFeePolicy[]
+  programAvailabilities    LenderProgramAvailability[]
+  tierMappings             LenderTierMapping[]
+  quotes                   Quote[]
+  quoteSnapshots           QuoteSnapshot[]
 
   @@index([isActive, priority])
 }
@@ -246,10 +244,11 @@ model User {
   role      String   @default("user")
   status    String   @default("active")
   createdAt DateTime @default(now())
+  leads     Lead[]   @relation("AssignedLeads")
 }
 
 model Lead {
-  id               String   @id @default(uuid())
+  id               String      @id @default(uuid())
   email            String?
   phone            String?
   name             String?
@@ -257,9 +256,9 @@ model Lead {
   clientPhone      String?
   clientEmail      String?
   source           String?
-  status           String   @default("new")
-  dealersSent      Int      @default(0)
-  dealersAccepted  Int      @default(0)
+  status           String      @default("new")
+  dealersSent      Int         @default(0)
+  dealersAccepted  Int         @default(0)
   acceptedBy       String?
   carMake          String?
   carModel         String?
@@ -272,46 +271,52 @@ model Lead {
   calcTier         String?
   payMethod        String?
   paymentName      String?
-  isFirstTimeBuyer Boolean  @default(false)
-  hasTradeIn       Boolean  @default(false)
+  isFirstTimeBuyer Boolean     @default(false)
+  hasTradeIn       Boolean     @default(false)
   tradeInMake      String?
   tradeInModel     String?
   tradeInYear      Int?
   tradeInMileage   Int?
   tradeInVin       String?
-  tradeInHasLoan   Boolean  @default(false)
+  tradeInHasLoan   Boolean     @default(false)
   tradeInPayoff    Int?
   creditApp        String?
   userId           String?
   payload          String?
-  depositStatus    String   @default("pending")
+  depositStatus    String      @default("pending")
   depositAmount    Int?
   depositId        String?
-  creditConsent    Boolean  @default(false)
+  creditConsent    Boolean     @default(false)
   creditScore      Int?
   vin              String?
-  offers           LeadOffer[]
+  createdAt        DateTime    @default(now())
+  assignedToId     String?
+  dealId           String?
+  notes            String?
+  brokerFeeCents   Int         @default(0)
+  dealerReserveCents Int       @default(0)
   complaints       Complaint[]
-  createdAt        DateTime @default(now())
+  assignedTo       User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  deal             DealRecord? @relation(fields: [dealId], references: [id])
+  offers           LeadOffer[]
 }
 
 model Complaint {
-  id          String   @id @default(uuid())
-  leadId      String
-  userId      String
-  dealerId    String?
-  reason      String
-  status      String   @default("open") // open, resolved, refunded
-  createdAt   DateTime @default(now())
-  
-  lead        Lead     @relation(fields: [leadId], references: [id])
+  id        String   @id @default(uuid())
+  leadId    String
+  userId    String
+  dealerId  String?
+  reason    String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id])
 }
 
 model LeadOffer {
   id          String   @id @default(uuid())
   leadId      String
   dealerId    String
-  status      String   @default("pending") // pending, accepted, rejected
+  status      String   @default("pending")
   message     String?
   payment     Int?
   down        Int?
@@ -358,10 +363,32 @@ model DealRecord {
   eligibility              String?
   isFirstTimeBuyerEligible Boolean? @default(false)
   lenderId                 String?
-  lender                   Lender?  @relation(fields: [lenderId], references: [id])
   payload                  String   @default("{}")
   createdAt                DateTime @default(now())
   updatedAt                DateTime @default(now()) @updatedAt
+  brokerFeeCents           Int      @default(0)
+  customUrl                String?  @unique
+  dealerReserveCents       Int      @default(0)
+  profitCents              Int      @default(0)
+  seoDescription           String?
+  seoTitle                 String?
+  lender                   Lender?  @relation(fields: [lenderId], references: [id])
+  
+  // Lifecycle Management
+  expirationDate           DateTime?
+  isSoldOut                Boolean  @default(false)
+  
+  // Marketing & Storefront
+  tags                     String?  // JSON array of tags e.g. ["Special Offer", "1 Left"]
+  isPinned                 Boolean  @default(false)
+  
+  // Analytics & Performance
+  viewCount                Int      @default(0)
+  leadCount                Int      @default(0)
+  
+  // Team & Workflow
+  dealerNotes              String?  // Internal note about which dealer/manager provided this
+  leads                    Lead[]
 }
 
 model Review {
@@ -405,7 +432,6 @@ model BankProgram {
   id          String       @id @default(uuid())
   batchId     String
   lenderId    String?
-  lender      Lender?      @relation(fields: [lenderId], references: [id])
   programType String
   make        String
   model       String
@@ -418,23 +444,69 @@ model BankProgram {
   apr         Float?
   rebates     Int          @default(0)
   batch       ProgramBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  lender      Lender?      @relation(fields: [lenderId], references: [id])
 
   @@index([batchId, lenderId, programType, make, model, year, trim, term, mileage])
 }
 
+model DealerPartner {
+  id          String             @id @default(uuid())
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  adjustments DealerAdjustment[]
+}
+
 model DealerAdjustment {
-  id        String    @id @default(uuid())
-  make      String?
-  model     String?
-  trim      String?
-  amount    Int
-  isActive  Boolean   @default(true)
-  startsAt  DateTime  @default(now())
-  endsAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id              String         @id @default(uuid())
+  make            String?
+  model           String?
+  trim            String?
+  amount          Int
+  isActive        Boolean        @default(true)
+  startsAt        DateTime       @default(now())
+  endsAt          DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  dealerPartnerId String?
+  dealerPartner   DealerPartner? @relation(fields: [dealerPartnerId], references: [id])
 
   @@index([make, model, isActive, startsAt, endsAt])
+}
+
+model PromoCode {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  discountAmount Int
+  discountType   String    @default("FIXED")
+  isActive       Boolean   @default(true)
+  uses           Int       @default(0)
+  maxUses        Int?
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model BlogPost {
+  id             String    @id @default(uuid())
+  title          String
+  slug           String    @unique
+  content        String
+  excerpt        String?
+  authorId       String?
+  publishedAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  imageUrl       String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model Quote {
@@ -442,7 +514,6 @@ model Quote {
   userId           String?
   leadId           String?
   lenderId         String?
-  lender           Lender?       @relation(fields: [lenderId], references: [id])
   programBatchId   String?
   programType      String
   make             String
@@ -461,5 +532,6 @@ model Quote {
   dealerAdjustment Int           @default(0)
   finalPayment     Int
   createdAt        DateTime      @default(now())
+  lender           Lender?       @relation(fields: [lenderId], references: [id])
   batch            ProgramBatch? @relation(fields: [programBatchId], references: [id])
 }

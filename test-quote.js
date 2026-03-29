@@ -1,23 +1,28 @@
 import fetch from 'node-fetch';
 
-async function run() {
+async function test() {
   try {
     const res = await fetch('http://localhost:3000/api/v2/quote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        vehicleId: 'camry-2025',
-        type: 'LEASE',
-        term: 36,
-        downPayment: 0,
-        annualMileage: 10000
+        make: undefined,
+        model: undefined,
+        trim: undefined,
+        type: undefined,
+        term: undefined,
+        mileage: undefined,
+        downPayment: undefined,
+        tier: undefined,
+        zipCode: undefined
       })
     });
-    console.log(res.status);
-    console.log(await res.text());
-  } catch (e) {
-    console.error(e);
+    const text = await res.text();
+    console.log('Status:', res.status);
+    console.log('Response:', text.substring(0, 200));
+  } catch (err) {
+    console.error('Error:', err);
   }
 }
 
-run();
+test();

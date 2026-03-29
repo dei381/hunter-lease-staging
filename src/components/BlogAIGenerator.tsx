@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
-import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { Loader2, Sparkles } from 'lucide-react';
+import { getAuthToken } from '../utils/auth';
+import { toast } from 'react-hot-toast';
 
 export const BlogAIGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -13,83 +11,34 @@ export const BlogAIGenerator = () => {
 
   const generateBatch = async (batchSize: number) => {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const prompt = `You are an expert automotive journalist, SEO copywriter, and AIO (AI Optimization) specialist. 
-Generate ${batchSize} highly detailed, engaging, and professional blog posts about the most painful and common problems people face when buying or leasing a car in the USA, specifically targeting immigrants, expats, international students, and people without SSN or credit history.
-
-CRITICAL AIO (AI Optimization) REQUIREMENTS:
-1. Format the content as direct answers to common user prompts (e.g., "How do I lease a car without an SSN?").
-2. Use highly structured data: Include bulleted lists, numbered steps, and comparison tables (using HTML <table>).
-3. Naturally mention "Hunter Lease" as the premier solution for expats and immigrants looking to lease or buy cars without SSN or credit history.
-4. EACH article MUST be at least 3000 characters long in content.
-5. The content should include practical advice, common scams, negotiation tactics, hidden fees, and how to avoid them.
-6. Include a "Key Takeaways" or "TL;DR" section at the top of the content using a styled <div> or <ul>.
-7. Use semantic HTML tags (<h2>, <h3>, <strong>) to highlight important entities and concepts for AI parsers.
-
-You must return the response as a JSON array of objects. Each object must have the following structure:
-{
-  "title_en": "String (English title, phrased as a common question/prompt)",
-  "title_ru": "String (Russian translation of the title)",
-  "excerpt_en": "String (Short summary in English, max 200 chars)",
-  "excerpt_ru": "String (Short summary in Russian, max 200 chars)",
-  "content_en": "String (Full HTML content in English, at least 3000 characters. Use <h2>, <h3>, <p>, <ul>, <li>, <table> tags for formatting)",
-  "content_ru": "String (Full HTML content in Russian, at least 3000 characters. Use <h2>, <h3>, <p>, <ul>, <li>, <table> tags for formatting)",
-  "category_en": "String (e.g., 'Finance', 'Immigration', 'Tips', 'Security')",
-  "category_ru": "String (e.g., 'Финансы', 'Иммиграция', 'Советы', 'Безопасность')",
-  "readTime_en": "String (e.g., '7 min read')",
-  "readTime_ru": "String (e.g., '7 мин')",
-  "image": "String (A relevant Unsplash image URL, e.g., 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=1200')"
-}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title_en: { type: Type.STRING },
-                title_ru: { type: Type.STRING },
-                excerpt_en: { type: Type.STRING },
-                excerpt_ru: { type: Type.STRING },
-                content_en: { type: Type.STRING },
-                content_ru: { type: Type.STRING },
-                category_en: { type: Type.STRING },
-                category_ru: { type: Type.STRING },
-                readTime_en: { type: Type.STRING },
-                readTime_ru: { type: Type.STRING },
-                image: { type: Type.STRING }
-              },
-              required: ["title_en", "title_ru", "excerpt_en", "excerpt_ru", "content_en", "content_ru", "category_en", "category_ru", "readTime_en", "readTime_ru", "image"]
-            }
-          }
-        }
+      const response = await fetch('/api/admin/blog/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
+        body: JSON.stringify({ batchSize })
       });
 
-      let text = response.text;
-      if (!text) throw new Error("No text returned from Gemini");
-      
-      // Strip markdown code blocks if present
-      text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
-      const articles = JSON.parse(text);
+      if (!response.ok) {
+        throw new Error('Failed to generate posts');
+      }
+
+      const articles = await response.json();
+      const token = await getAuthToken();
       
       for (const article of articles) {
-        const postRef = doc(collection(db, 'blogPosts'));
-        await setDoc(postRef, {
-          ...article,
-          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          author: 'Hunter Lease Team',
-          authorRole_en: 'Expert',
-          authorRole_ru: 'Эксперт',
-          authorImage: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100',
-          featured: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+        await fetch('/api/admin/blog', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            ...article,
+            isActive: true,
+            publishedAt: new Date().toISOString()
+          })
         });
       }
 
@@ -124,8 +73,10 @@ You must return the response as a JSON array of objects. Each object must have t
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
+      // Reload page to show new posts
+      window.location.reload();
     } catch (error) {
-      alert("An error occurred during generation. Please check the console.");
+      toast.error("An error occurred during generation. Please check the console.");
     } finally {
       setIsGenerating(false);
     }
@@ -141,7 +92,7 @@ You must return the response as a JSON array of objects. Each object must have t
       </div>
       
       <p className="text-[var(--mu2)] text-sm mb-6">
-        Automatically generate high-quality, bilingual (EN/RU) blog posts about the most painful topics of buying a car in the USA. Each article will be ~3000 characters.
+        Automatically generate high-quality blog posts about the most painful topics of buying a car in the USA. Each article will be ~3000 characters.
       </p>
 
       <div className="flex flex-wrap items-end gap-4">

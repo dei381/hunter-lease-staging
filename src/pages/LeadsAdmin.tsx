@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lead } from '../types';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { getAuthToken } from '../utils/auth';
 
 export const LeadsAdmin = () => {
   const { language } = useLanguageStore();
@@ -16,7 +17,7 @@ export const LeadsAdmin = () => {
     try {
       const res = await fetch('/api/leads', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       });
       const data = await res.json();
@@ -32,7 +33,7 @@ export const LeadsAdmin = () => {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify({ status })
       });

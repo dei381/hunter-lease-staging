@@ -36,8 +36,9 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
   const effectiveFTB = isFirstTimeBuyer && !hasCosigner;
 
   useEffect(() => {
+    const url = limit ? `/api/deals?limit=${limit * 3}` : '/api/deals'; // Fetch a bit more to account for deduplication
     Promise.all([
-      fetch('/api/deals').then(res => {
+      fetch(url).then(res => {
         if (!res.ok) throw new Error('Failed to fetch deals');
         return res.json();
       }),
@@ -148,7 +149,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
             onChange={(e) => setSelectedClass(e.target.value)}
             className="bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[var(--lime)]"
           >
-            {classes.map(c => <option key={c} value={c}>{c === 'All' ? t.all : c}</option>)}
+            {classes.map((c, idx) => <option key={`${c}-${idx}`} value={c}>{c === 'All' ? t.all : c}</option>)}
           </select>
         </div>
 
@@ -367,6 +368,17 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                 <Info className="w-3 h-3 text-[var(--lime)] mt-0.5 shrink-0" />
                 <p className="text-[10px] text-[var(--mu2)] leading-relaxed italic">"{deal.intel}"</p>
               </div>
+              
+              <div className="flex flex-col gap-1 mt-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-[9px] text-amber-500/80 font-bold uppercase tracking-widest">{t.scarcity}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-[9px] text-red-500/80 font-bold uppercase tracking-widest">{t.inventoryScarcity || "Limited allocation"}</span>
+                </div>
+              </div>
             </div>
 
             <div className="p-4 bg-[var(--s2)]/30 border-t border-[var(--b1)] flex justify-between items-center">
@@ -379,8 +391,8 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
               >
                 <Eye className="w-3 h-3" /> {translations[language].transparency.btnTransparency}
               </button>
-              <button className="bg-[var(--lime)] text-white font-display text-xs tracking-widest px-6 py-2 rounded-lg hover:bg-[var(--lime2)] transition-all group-hover:scale-105">
-                {t.lockInDeal}
+              <button className="bg-[var(--lime)] text-black font-display text-xs tracking-widest px-6 py-2 rounded-lg hover:bg-[var(--lime2)] transition-all group-hover:scale-105">
+                {t.rateLock || t.lockInDeal}
               </button>
             </div>
           </div>

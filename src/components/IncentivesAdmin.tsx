@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Check, X, Tag, Info } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { getAuthToken } from '../utils/auth';
+import { toast } from 'react-hot-toast';
 
 export const IncentivesAdmin = () => {
   const { language } = useLanguageStore();
@@ -42,7 +44,7 @@ export const IncentivesAdmin = () => {
   const fetchIncentives = async () => {
     try {
       const response = await fetch('/api/admin/incentives', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -69,7 +71,7 @@ export const IncentivesAdmin = () => {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify(payload)
       });
@@ -80,11 +82,11 @@ export const IncentivesAdmin = () => {
         fetchIncentives();
       } else {
         const data = await response.json();
-        alert(`Failed to save incentive: ${data.error || 'Unknown error'}`);
+        toast.error(`Failed to save incentive: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to save incentive:', error);
-      alert('Failed to save incentive due to a network error.');
+      toast.error('Failed to save incentive due to a network error.');
     }
   };
 
@@ -94,7 +96,7 @@ export const IncentivesAdmin = () => {
     try {
       const response = await fetch(`/api/admin/incentives/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
 
       if (response.ok) {
@@ -229,7 +231,7 @@ export const IncentivesAdmin = () => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-      <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+      <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
             <Tag className="w-5 h-5" />
@@ -241,7 +243,7 @@ export const IncentivesAdmin = () => {
             setIsAdding(true);
             setEditData({ name: '', type: 'REBATE', dealApplicability: 'ALL', isTaxableCa: true, isActive: true, amountDollars: '' });
           }}
-          className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+          className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium w-full sm:w-auto justify-center"
         >
           <Plus className="w-4 h-4" />
           <span>{t.addIncentive}</span>

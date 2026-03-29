@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { getCarImage, CarPhoto } from '../utils/carImage';
 import { getVal } from '../utils/finance';
+import { useDebounce } from '../hooks/useDebounce';
 
 const fmt = (n: any) => {
   const num = Number(n);
@@ -48,6 +49,7 @@ export const DealsPage = () => {
   const [selectedTerm, setSelectedTerm] = useState<number>(36);
   const [selectedMileage, setSelectedMileage] = useState<string>('10k');
   const [zipCode, setZipCode] = useState<string>('');
+  const debouncedZipCode = useDebounce(zipCode, 500);
   
   // Advanced Filters
   const [selectedBodyStyle, setSelectedBodyStyle] = useState('All');
@@ -56,6 +58,7 @@ export const DealsPage = () => {
   const [selectedSeats, setSelectedSeats] = useState('All');
   const [tier, setTier] = useState('t1');
   const [downPayment, setDownPayment] = useState(3000);
+  const debouncedDownPayment = useDebounce(downPayment, 500);
   const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value'>('payment');
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,11 +66,11 @@ export const DealsPage = () => {
   useEffect(() => {
     setIsLoading(true);
     const params = new URLSearchParams({
-      zipCode: zipCode || '90210',
+      zipCode: debouncedZipCode || '90210',
       isFirstTimeBuyer: isFirstTimeBuyer.toString(),
       tier: tier,
       term: selectedTerm.toString(),
-      down: downPayment.toString(),
+      down: debouncedDownPayment.toString(),
       mileage: selectedMileage,
       displayMode: displayMode
     });
@@ -75,7 +78,7 @@ export const DealsPage = () => {
     Promise.all([
       fetch(`/api/deals?${params.toString()}`).then(res => res.json()),
       fetch('/api/car-photos').then(res => res.json()),
-      fetch(`/api/v2/quotes?zipCode=${zipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`).then(res => res.json())
+      fetch(`/api/v2/quotes?zipCode=${debouncedZipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`).then(res => res.json())
     ])
       .then(([data, photosData, snapshots]) => {
         setPhotos(photosData);
@@ -132,7 +135,7 @@ export const DealsPage = () => {
         console.error('Failed to fetch data:', err);
         setIsLoading(false);
       });
-  }, [zipCode, isFirstTimeBuyer, tier, selectedTerm, downPayment, selectedMileage, displayMode]);
+  }, [debouncedZipCode, isFirstTimeBuyer, tier, selectedTerm, debouncedDownPayment, selectedMileage, displayMode]);
 
   const makes = useMemo(() => ['All', ...Array.from(new Set(deals.map(d => d.make)))].sort(), [deals]);
   const availableModels = useMemo(() => {
@@ -428,8 +431,8 @@ export const DealsPage = () => {
                     }}
                     className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
                   >
-                    {makes.map(make => (
-                      <option key={make} value={make}>{make === 'All' ? t.allMakes : make}</option>
+                    {makes.map((make, idx) => (
+                      <option key={`${make}-${idx}`} value={make}>{make === 'All' ? t.allMakes : make}</option>
                     ))}
                   </select>
                 </div>
@@ -446,8 +449,8 @@ export const DealsPage = () => {
                       }}
                       className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
                     >
-                      {availableModels.map(model => (
-                        <option key={model} value={model}>{model === 'All' ? t.all : model}</option>
+                      {availableModels.map((model, idx) => (
+                        <option key={`${model}-${idx}`} value={model}>{model === 'All' ? t.all : model}</option>
                       ))}
                     </select>
                   </div>
@@ -462,8 +465,8 @@ export const DealsPage = () => {
                       onChange={(e) => setSelectedTrim(e.target.value)}
                       className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
                     >
-                      {availableTrims.map(trim => (
-                        <option key={trim} value={trim}>{trim === 'All' ? t.all : trim}</option>
+                      {availableTrims.map((trim, idx) => (
+                        <option key={`${trim}-${idx}`} value={trim}>{trim === 'All' ? t.all : trim}</option>
                       ))}
                     </select>
                   </div>

@@ -1,21 +1,91 @@
 import { Request, Response, NextFunction } from 'express';
+import admin from 'firebase-admin';
+import fs from 'fs';
+import path from 'path';
+import db from '../lib/db';
 
-export const adminAuth = (req: Request, res: Response, next: NextFunction) => {
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      admin.initializeApp({
+        projectId: config.projectId,
+      });
+      console.log('Firebase Admin initialized with projectId:', config.projectId);
+    } else {
+      console.warn('firebase-applet-config.json not found, attempting default initialization');
+      admin.initializeApp();
+    }
+  } catch (error) {
+    console.error('Error initializing Firebase Admin:', error);
+  }
+}
+
+const verifyRole = async (req: Request, res: Response, next: NextFunction, allowedRoles: string[]) => {
   const authHeader = req.headers.authorization;
+
+  // Fallback for legacy adminSecret
   const adminSecret = process.env.ADMIN_SECRET;
-
-  if (process.env.NODE_ENV === 'production' && !adminSecret) {
-    console.error('CRITICAL: ADMIN_SECRET is not set in production!');
-    return res.status(500).json({ error: 'Server configuration error' });
+  if (adminSecret && authHeader === `Bearer ${adminSecret}`) {
+    (req as any).user = { role: 'SUPER_ADMIN' };
+    return next();
   }
 
-  const secretToUse = adminSecret || (process.env.NODE_ENV === 'production' ? null : 'default_dev_secret');
-
-  console.log(`adminAuth: authHeader=${authHeader}, secretToUse=${secretToUse}`);
-
-  if (!authHeader || !secretToUse || authHeader !== `Bearer ${secretToUse}`) {
-    console.log(`adminAuth: Unauthorized access!`);
-    return res.status(401).json({ error: 'Unauthorized access' });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized access: No token provided' });
   }
-  next();
+
+  const token = authHeader.split('Bearer ')[1];
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    
+    let user = await db.user.findUnique({ where: { email: decodedToken.email } });
+    
+    if (!user && decodedToken.email === 'azat.cutliahmetov@gmail.com') {
+      user = await db.user.create({
+        data: {
+          email: decodedToken.email,
+          name: decodedToken.name || 'Super Admin',
+          role: 'SUPER_ADMIN'
+        }
+      });
+    }
+
+    if (!user) {
+      return res.status(403).json({ error: 'Forbidden: User not found in system' });
+    }
+    
+    if (!allowedRoles.includes(user.role)) {
+      return res.status(403).json({ error: `Forbidden: Requires one of roles: ${allowedRoles.join(', ')}` });
+    }
+    
+    (req as any).user = { ...decodedToken, dbUser: user };
+    next();
+  } catch (error) {
+    console.error('Error verifying Firebase token:', error);
+    return res.status(401).json({ error: 'Unauthorized access: Invalid token' });
+  }
+};
+
+export const adminAuth = async (req: Request, res: Response, next: NextFunction) => {
+  return verifyRole(req, res, next, ['SUPER_ADMIN']);
+};
+
+export const superAdminAuth = async (req: Request, res: Response, next: NextFunction) => {
+  return verifyRole(req, res, next, ['SUPER_ADMIN']);
+};
+
+export const contentManagerAuth = async (req: Request, res: Response, next: NextFunction) => {
+  return verifyRole(req, res, next, ['SUPER_ADMIN', 'CONTENT_MANAGER']);
+};
+
+export const salesAgentAuth = async (req: Request, res: Response, next: NextFunction) => {
+  return verifyRole(req, res, next, ['SUPER_ADMIN', 'SALES_AGENT']);
+};
+
+export const generalAdminAuth = async (req: Request, res: Response, next: NextFunction) => {
+  return verifyRole(req, res, next, ['SUPER_ADMIN', 'SALES_AGENT', 'CONTENT_MANAGER']);
 };

@@ -17,7 +17,12 @@ export const SavedDealsPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/deals')
+    if (savedDealIds.length === 0) {
+      setDeals([]);
+      setLoading(false);
+      return;
+    }
+    fetch(`/api/deals?ids=${savedDealIds.join(',')}`)
       .then(res => res.json())
       .then(data => {
         setDeals(data);
@@ -27,11 +32,9 @@ export const SavedDealsPage = () => {
         console.error('Error fetching deals:', err);
         setLoading(false);
       });
-  }, []);
+  }, [savedDealIds]);
 
-  const savedDeals = useMemo(() => {
-    return deals.filter(deal => savedDealIds.includes(deal.id.toString()));
-  }, [deals, savedDealIds]);
+  const savedDeals = deals;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] pt-32 pb-24">

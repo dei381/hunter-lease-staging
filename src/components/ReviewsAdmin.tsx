@@ -108,12 +108,12 @@ export function ReviewsAdmin() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-display">Client Reviews</h2>
         <button
           onClick={startAdd}
           disabled={isAdding}
-          className="flex items-center gap-2 bg-[var(--lime)] text-white px-4 py-2 rounded-lg font-bold hover:bg-[var(--lime2)] transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 bg-[var(--lime)] text-white px-4 py-2 rounded-lg font-bold hover:bg-[var(--lime2)] transition-colors disabled:opacity-50 w-full sm:w-auto justify-center"
         >
           <Plus className="w-4 h-4" /> Add Review
         </button>

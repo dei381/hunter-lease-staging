@@ -7,6 +7,7 @@ import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { TransparencyModal } from './TransparencyModal';
 import { getCarImage, CarPhoto } from '../utils/carImage';
+import { useDebounce } from '../hooks/useDebounce';
 
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
@@ -87,6 +88,13 @@ export const DealCalculatorModal = ({
   const [quoteResult, setQuoteResult] = useState<any>(null);
   const [isCalculating, setIsCalculating] = useState(false);
 
+  const debouncedDown = useDebounce(down, 500);
+  const debouncedTerm = useDebounce(term, 500);
+  const debouncedMileage = useDebounce(mileage, 500);
+  const debouncedTier = useDebounce(tier, 500);
+  const debouncedMsdCount = useDebounce(msdCount, 500);
+  const debouncedSelectedIncentives = useDebounce(selectedIncentives, 500);
+
   useEffect(() => {
     const fetchQuote = async () => {
       if (!deal) return;
@@ -104,21 +112,16 @@ export const DealCalculatorModal = ({
             lenderId,
             config: {
               type: calcType,
-              term,
-              downPayment: down,
-              annualMileage: parseInt(mileage) * 1000,
-              creditTier: tier === 't1' ? 'tier1' : tier === 't2' ? 'tier2' : tier === 't3' ? 'tier3' : 'tier4',
+              term: debouncedTerm,
+              downPaymentCents: debouncedDown * 100,
+              mileage: parseInt(debouncedMileage) * 1000,
+              creditTier: debouncedTier,
               zipCode: '90210',
-              msdCount,
-              selectedIncentiveIds: selectedIncentives,
+              msdCount: debouncedMsdCount,
+              selectedIncentiveIds: debouncedSelectedIncentives,
               make: deal?.make,
               model: deal?.model,
-              trim: deal?.trim,
-              rv: deal?.rv,
-              mf: deal?.mf,
-              apr: deal?.apr,
-              msrp: deal?.msrp,
-              savings: deal?.savings
+              trim: deal?.trim
             }
           })
         });
@@ -137,7 +140,7 @@ export const DealCalculatorModal = ({
     };
 
     fetchQuote();
-  }, [deal, calcType, term, down, mileage, tier, msdCount, selectedIncentives]);
+  }, [deal, calcType, debouncedTerm, debouncedDown, debouncedMileage, debouncedTier, debouncedMsdCount, debouncedSelectedIncentives]);
 
   const calculatedPayment = useMemo(() => {
     if (quoteResult) {
@@ -153,30 +156,18 @@ export const DealCalculatorModal = ({
   }, [deal]);
 
   const tcoData = useMemo(() => {
-    if (!calculatedPayment || isNaN(calculatedPayment)) return null;
-    const insurancePerMonth = 150;
-    const maintenancePerMonth = 50;
-    const registrationPerYear = 400;
-
-    const totalLeasePayments = calculatedPayment * term;
-    const totalInsurance = insurancePerMonth * term;
-    const totalMaintenance = maintenancePerMonth * term;
-    const totalRegistration = (registrationPerYear / 12) * term;
-    const dueAtSigning = down + (msdCount * Math.ceil(calculatedPayment / 50) * 50);
-
-    const totalCost = totalLeasePayments + dueAtSigning + totalInsurance + totalMaintenance + totalRegistration;
-
+    if (!quoteResult?.tco) return null;
     return {
-      totalCost,
-      monthlyAverage: totalCost / term,
+      totalCost: quoteResult.tco.totalCostCents / 100,
+      monthlyAverage: quoteResult.tco.monthlyAverageCents / 100,
       breakdown: {
-        lease: totalLeasePayments + dueAtSigning,
-        insurance: totalInsurance,
-        maintenance: totalMaintenance,
-        registration: totalRegistration
+        lease: quoteResult.tco.breakdownCents.lease / 100,
+        insurance: quoteResult.tco.breakdownCents.insurance / 100,
+        maintenance: quoteResult.tco.breakdownCents.maintenance / 100,
+        registration: quoteResult.tco.breakdownCents.registration / 100
       }
     };
-  }, [calculatedPayment, term, down, msdCount]);
+  }, [quoteResult]);
 
   return (
     <AnimatePresence>
@@ -279,7 +270,7 @@ export const DealCalculatorModal = ({
 
                     <div>
                       <div className="flex justify-between items-center mb-3">
-                        <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider">{t.downPayment}</label>
+                        <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider">{t.dueAtSigning}</label>
                         <span className="text-[var(--lime)] font-mono text-base bg-[var(--lime)]/10 px-2 py-1 rounded-md">{fmt(down)}</span>
                       </div>
                       <div className="flex gap-2 mb-4">
@@ -509,18 +500,18 @@ export const DealCalculatorModal = ({
                       <div className="pt-2 border-t border-[var(--b2)] flex justify-between items-center">
                         <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
                         <span className="text-lg font-display text-[var(--lime)]">
-                          {fmt((Number(deal.msrp) || 0) - (deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0))}
+                          {fmt(quoteResult?.sellingPriceCents !== undefined ? quoteResult.sellingPriceCents / 100 : ((Number(deal.msrp) || 0) - (deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)))}
                         </span>
                       </div>
 
                       <div className="flex justify-between items-center text-sm pt-2">
                         <span className="text-[var(--mu2)] uppercase tracking-widest text-[10px] font-bold">{t.dueAtSigning}</span>
-                        <span className="text-[var(--w)] font-mono">{fmt(down + (msdCount * Math.ceil((Number(calculatedPayment) || 0) / 50) * 50))}</span>
+                        <span className="text-[var(--w)] font-mono">{fmt(quoteResult?.dueAtSigningCents !== undefined ? quoteResult.dueAtSigningCents / 100 : (down + (msdCount * Math.ceil((Number(calculatedPayment) || 0) / 50) * 50)))}</span>
                       </div>
                       {msdCount > 0 && (
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-[var(--mu2)] uppercase tracking-widest text-[10px] font-bold">{translations[language].calc.msdTitle} (Refundable)</span>
-                          <span className="text-[var(--lime)] font-mono">{fmt(msdCount * Math.ceil((Number(calculatedPayment) || 0) / 50) * 50)}</span>
+                          <span className="text-[var(--lime)] font-mono">{fmt(quoteResult?.dasBreakdown?.msdAmountCents !== undefined ? quoteResult.dasBreakdown.msdAmountCents / 100 : (msdCount * Math.ceil((Number(calculatedPayment) || 0) / 50) * 50))}</span>
                         </div>
                       )}
                     </div>
@@ -582,7 +573,7 @@ export const DealCalculatorModal = ({
 
                   <button 
                     onClick={() => setIsProcessing(true)}
-                    className="w-full mt-8 bg-[var(--lime)] text-white font-bold text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 relative z-10"
+                    className="w-full mt-8 bg-[var(--lime)] text-black font-bold text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 relative z-10"
                   >
                     {t.lockIn}
                   </button>

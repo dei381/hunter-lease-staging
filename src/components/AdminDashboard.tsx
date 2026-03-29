@@ -11,14 +11,22 @@ import { AuditLogsAdmin } from './admin/AuditLogsAdmin';
 import { BlogAdmin } from './BlogAdmin';
 import { IncentivesAdmin } from './IncentivesAdmin';
 import { BulkEditAdmin } from './BulkEditAdmin';
+import { DealersAdmin } from './DealersAdmin';
+import { PromoCodesAdmin } from './PromoCodesAdmin';
 import { OfferBuilderModal } from './admin/OfferBuilderModal';
-import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers } from 'lucide-react';
+import { VinDecoderModal } from './admin/VinDecoderModal';
+import { BulkGenerateModal } from './admin/BulkGenerateModal';
+import { BulkEditDealsModal } from './admin/BulkEditDealsModal';
+import { DealEditor } from './DealEditor';
+import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3 } from 'lucide-react';
 import { doc, getDoc, setDoc, collection, getDocs, orderBy, query, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { getAuthToken } from '../utils/auth';
+import { toast } from 'react-hot-toast';
 
 declare global {
   interface Window {
@@ -39,11 +47,19 @@ interface Deal {
   eligibility: string;
   lenderId?: string;
   isFirstTimeBuyerEligible: boolean;
+  seoTitle?: string;
+  seoDescription?: string;
+  customUrl?: string;
+  brokerFeeCents?: number;
+  dealerReserveCents?: number;
+  profitCents?: number;
 }
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos'>('overview');
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [showArchivedDeals, setShowArchivedDeals] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [lenders, setLenders] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -59,11 +75,11 @@ export function AdminDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
-  const [editingData, setEditingData] = useState<any>(null);
-  const [selectedLenderId, setSelectedLenderId] = useState<string | null>(null);
-  const [isFirstTimeBuyerEligible, setIsFirstTimeBuyerEligible] = useState<boolean>(true);
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
+  const [dismissApiKeyBanner, setDismissApiKeyBanner] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'date' | 'make' | 'price'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [leadFilter, setLeadFilter] = useState<'all' | 'new' | 'contacted' | 'closed' | 'rejected'>('all');
   const [stats, setStats] = useState<any>({
     totalLeads: 0,
@@ -72,8 +88,12 @@ export function AdminDashboard() {
     totalUsers: 0,
     recentActivity: []
   });
-  const [showLogin, setShowLogin] = useState(!localStorage.getItem('admin_token'));
+  const [showLogin, setShowLogin] = useState(true);
+  const [adminRole, setAdminRole] = useState<string | null>(null);
   const [showOfferBuilder, setShowOfferBuilder] = useState(false);
+  const [isVinModalOpen, setIsVinModalOpen] = useState(false);
+  const [isBulkGenerateModalOpen, setIsBulkGenerateModalOpen] = useState(false);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [adminSecret, setAdminSecret] = useState('');
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
@@ -93,9 +113,114 @@ export function AdminDashboard() {
     onConfirm: () => {},
   });
 
+  const [closeLeadModal, setCloseLeadModal] = useState<{
+    isOpen: boolean;
+    leadId: string;
+    brokerFee: number;
+    dealerReserve: number;
+  }>({ isOpen: false, leadId: '', brokerFee: 0, dealerReserve: 0 });
+
   const { user, role } = useAuthStore();
   const { language } = useLanguageStore();
   const t = translations[language].admin;
+
+  const saveCars = async (newDb: any) => {
+    try {
+      const res = await fetch('/api/admin/cars', {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
+        body: JSON.stringify(newDb),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      setCarDb(newDb);
+      toast.success('Car database updated successfully');
+    } catch (err) {
+      console.error('Failed to save cars', err);
+      toast.error('Failed to update car database');
+    }
+  };
+
+  const handleVinSave = async (data: any) => {
+    // Create new deal
+    try {
+      const financialData = {
+        make: data.make,
+        model: data.model,
+        trim: data.trim,
+        driveType: data.driveType,
+        year: data.year,
+        msrp: { value: data.msrp || 0, provenance_status: 'manual' },
+        hunterDiscount: { value: data.discount || 0, provenance_status: 'manual' }
+      };
+
+      const response = await fetch('/api/admin/deals', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
+        body: JSON.stringify({
+          financialData,
+          reviewStatus: 'NEEDS_REVIEW',
+          publishStatus: 'DRAFT',
+          lenderId: '',
+          isFirstTimeBuyerEligible: false
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to create deal from VIN');
+      toast.success('Deal created successfully');
+      fetchDeals(true);
+    } catch (error) {
+      console.error('Failed to create deal from VIN:', error);
+      toast.error('Failed to create deal');
+    }
+
+    setIsVinModalOpen(false);
+  };
+
+  const canAccess = (tab: string) => {
+    if (adminRole === 'SUPER_ADMIN') return true;
+    if (adminRole === 'SALES_AGENT') {
+      return ['overview', 'analytics', 'deals', 'leads'].includes(tab);
+    }
+    if (adminRole === 'CONTENT_MANAGER') {
+      return ['overview', 'analytics', 'cars', 'promos', 'media', 'blog', 'reviews', 'feedback'].includes(tab);
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = await getAuthToken();
+      if (token && role === 'admin') {
+        setShowLogin(false);
+        try {
+          const response = await fetch('/api/admin/me', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setAdminRole(data.user.role);
+          }
+        } catch (err) {
+          console.error('Failed to fetch admin role:', err);
+        }
+      } else if (localStorage.getItem('admin_token')) {
+        setShowLogin(false);
+        setAdminRole('SUPER_ADMIN'); // Fallback for legacy token
+      } else {
+        setShowLogin(true);
+        setAdminRole(null);
+      }
+    };
+    checkAuth();
+  }, [user, role]);
 
   const handleFirebaseLogin = async () => {
     try {
@@ -103,7 +228,7 @@ export function AdminDashboard() {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error('Firebase login failed:', error);
-      alert('Firebase login failed. Please try again.');
+      toast.error('Firebase login failed. Please try again.');
     }
   };
 
@@ -127,7 +252,7 @@ export function AdminDashboard() {
     // Fallback: Check backend environment variables
     try {
       const response = await fetch('/api/admin/api-key-status', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -147,22 +272,25 @@ export function AdminDashboard() {
         await checkApiKey();
       } catch (err) {
         console.error('Failed to open select key dialog:', err);
-        alert('Failed to open select key dialog. Please try again.');
+        toast.error('Failed to open select key dialog. Please try again.');
       }
     } else {
       console.warn('window.aistudio is not available');
-      alert('This feature is only available within the AI Studio environment.');
+      toast.error('This feature is only available within the AI Studio environment.');
     }
   };
 
-  const fetchDeals = async () => {
+  const fetchDeals = async (showToast = false) => {
     try {
       const response = await fetch('/api/admin/deals', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
         setDeals(data);
+        if (showToast) toast.success('Deals refreshed successfully');
+      } else {
+        if (showToast) toast.error('Failed to refresh deals');
       }
       
       const carRes = await fetch('/api/cars');
@@ -171,6 +299,7 @@ export function AdminDashboard() {
       }
     } catch (error) {
       console.error('Failed to fetch deals or cars:', error);
+      if (showToast) toast.error('Failed to refresh deals');
     } finally {
       if (activeTab === 'deals') setLoading(false);
     }
@@ -179,7 +308,7 @@ export function AdminDashboard() {
   const fetchLeads = async () => {
     try {
       const response = await fetch('/api/leads', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -195,7 +324,7 @@ export function AdminDashboard() {
   const fetchUsers = async () => {
     try {
       const response = await fetch('/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -211,7 +340,7 @@ export function AdminDashboard() {
   const fetchLenders = async () => {
     try {
       const response = await fetch('/api/admin/lenders', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -239,7 +368,7 @@ export function AdminDashboard() {
   const fetchStats = async () => {
     try {
       const response = await fetch('/api/admin/stats', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
@@ -264,7 +393,7 @@ export function AdminDashboard() {
 
       // Fetch sync report
       const syncRes = await fetch('/api/admin/sync-report', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (syncRes.ok) {
         setSyncReport(await syncRes.json());
@@ -277,7 +406,12 @@ export function AdminDashboard() {
   };
 
   useEffect(() => {
-    setLoading(true);
+    if (['overview', 'deals', 'leads', 'users', 'settings'].includes(activeTab)) {
+      setLoading(true);
+    } else {
+      setLoading(false);
+    }
+    
     switch (activeTab) {
       case 'overview': fetchStats(); break;
       case 'deals': 
@@ -287,25 +421,28 @@ export function AdminDashboard() {
       case 'leads': fetchLeads(); break;
       case 'users': fetchUsers(); break;
       case 'settings': fetchSettings(); break;
-      case 'cars': setLoading(false); break;
-      case 'media': setLoading(false); break;
     }
     checkApiKey();
   }, [activeTab]);
 
-  const updateLeadStatus = async (leadId: string, status: string) => {
+  const updateLeadStatus = async (leadId: string, status: string, brokerFeeCents?: number, dealerReserveCents?: number) => {
     try {
+      const body: any = { status };
+      if (brokerFeeCents !== undefined) body.brokerFeeCents = brokerFeeCents;
+      if (dealerReserveCents !== undefined) body.dealerReserveCents = dealerReserveCents;
+
       const response = await fetch(`/api/lead/${leadId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify(body)
       });
       if (response.ok) {
         fetchLeads();
         fetchStats();
+        setCloseLeadModal({ isOpen: false, leadId: '', brokerFee: 0, dealerReserve: 0 });
       }
     } catch (error) {
       console.error('Failed to update lead status:', error);
@@ -313,22 +450,31 @@ export function AdminDashboard() {
   };
 
   const deleteLead = async (leadId: string) => {
-    if (!confirm('Are you sure you want to delete this lead? This action cannot be undone.')) return;
-    try {
-      const response = await fetch(`/api/lead/${leadId}`, { 
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
-      });
-      if (response.ok) {
-        fetchLeads();
-        fetchStats();
-      } else {
-        const err = await response.text();
-        alert(`Failed to delete lead: ${err}`);
+    setConfirmModal({
+      isOpen: true,
+      title: t.deleteLead,
+      message: t.confirmDeleteLead,
+      confirmText: t.delete,
+      confirmColor: 'bg-red-600',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const response = await fetch(`/api/lead/${leadId}`, { 
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
+          });
+          if (response.ok) {
+            fetchLeads();
+            fetchStats();
+          } else {
+            const err = await response.text();
+            toast.error(`Failed to delete lead: ${err}`);
+          }
+        } catch (error) {
+          console.error('Failed to delete lead:', error);
+        }
       }
-    } catch (error) {
-      console.error('Failed to delete lead:', error);
-    }
+    });
   };
 
   const exportLeads = () => {
@@ -347,19 +493,19 @@ export function AdminDashboard() {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify(settings)
       });
       if (response.ok) {
-        alert('Settings saved successfully!');
+        toast.success('Settings saved successfully!');
       } else {
         const err = await response.text();
-        alert(`Failed to save settings: ${err}`);
+        toast.error(`Failed to save settings: ${err}`);
       }
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
+      toast.error('Failed to save settings');
     }
   };
 
@@ -367,89 +513,88 @@ export function AdminDashboard() {
     fetchDeals();
   };
 
-  const handleFieldChange = (key: string, value: any) => {
-    setEditingData((prev: any) => {
-      const currentField = prev[key];
-      if (typeof currentField === 'object' && currentField !== null && 'value' in currentField) {
-        return {
-          ...prev,
-          [key]: {
-            ...currentField,
-            value: typeof currentField.value === 'number' ? parseFloat(value) || 0 : value
-          }
-        };
-      } else {
-        return {
-          ...prev,
-          [key]: value
-        };
+  const handleArchiveDeal = async (dealId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: t.archiveDeal,
+      message: t.confirmArchiveDeal,
+      confirmText: t.archiveDeal,
+      confirmColor: 'bg-amber-600',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await fetch(`/api/admin/deals/${dealId}`, { 
+            method: 'PUT',
+            headers: { 
+              'Authorization': `Bearer ${await getAuthToken()}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ publishStatus: 'ARCHIVED' })
+          });
+          fetchDeals();
+          toast.success('Deal archived successfully');
+        } catch (error) {
+          console.error('Failed to archive deal:', error);
+          toast.error('Failed to archive deal');
+        }
       }
     });
   };
 
-  const handleAddField = () => {
-    const fieldName = prompt('Enter field name (e.g. money_factor, residual_value):');
-    if (!fieldName) return;
-    
-    const isNumeric = confirm('Is this a numeric field?');
-    
-    setEditingData({
-      ...editingData,
-      [fieldName]: isNumeric 
-        ? { value: 0, provenance_status: 'manual' }
-        : ''
+  const handleRestoreDeal = async (dealId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: t.restoreDeal,
+      message: t.confirmRestoreDeal,
+      confirmText: t.restoreDeal,
+      confirmColor: 'bg-emerald-600',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await fetch(`/api/admin/deals/${dealId}`, { 
+            method: 'PUT',
+            headers: { 
+              'Authorization': `Bearer ${await getAuthToken()}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ publishStatus: 'DRAFT', reviewStatus: 'NEEDS_REVIEW' })
+          });
+          fetchDeals();
+          toast.success('Deal restored successfully');
+        } catch (error) {
+          console.error('Failed to restore deal:', error);
+          toast.error('Failed to restore deal');
+        }
+      }
     });
   };
 
-  const handleDeleteDeal = async (dealId: string) => {
-    if (!confirm('Are you sure you want to delete this deal?')) return;
-    try {
-      await fetch(`/api/admin/deals/${dealId}`, { 
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
-      });
-      fetchDeals();
-    } catch (error) {
-      console.error('Failed to delete deal:', error);
-    }
+  const handleHardDeleteDeal = async (dealId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: t.hardDeleteDeal,
+      message: t.confirmHardDeleteDeal,
+      confirmText: t.delete,
+      confirmColor: 'bg-red-600',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await fetch(`/api/admin/deals/${dealId}`, { 
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
+          });
+          fetchDeals();
+          toast.success('Deal permanently deleted');
+        } catch (error) {
+          console.error('Failed to delete deal:', error);
+          toast.error('Failed to delete deal');
+        }
+      }
+    });
   };
 
   const handleCreateManualDeal = () => {
     setShowOfferBuilder(true);
-  };
-
-  const handleSyncDeals = async () => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Sync Deals',
-      message: 'This will import all static deals from the code into the database. Existing deals with same IDs will be updated. Continue?',
-      confirmText: 'Sync Now',
-      confirmColor: 'bg-indigo-600',
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        try {
-          setLoading(true);
-          const response = await fetch('/api/admin/deals/sync', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
-          });
-          if (response.ok) {
-            const result = await response.json();
-            alert(`Sync complete! Created: ${result.createdCount}, Updated: ${result.updatedCount}`);
-            fetchDeals();
-            fetchStats();
-          } else {
-            const err = await response.text();
-            alert(`Sync failed: ${err}`);
-          }
-        } catch (error) {
-          console.error('Failed to sync deals:', error);
-          alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
-        } finally {
-          setLoading(false);
-        }
-      }
-    });
   };
 
   const handleDuplicateDeal = async (deal: Deal) => {
@@ -459,7 +604,7 @@ export function AdminDashboard() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify({
           financialData,
@@ -477,30 +622,139 @@ export function AdminDashboard() {
     }
   };
 
-  const handleBulkDeleteDeals = async () => {
+  const handleBulkArchiveDeals = async () => {
     setConfirmModal({
       isOpen: true,
-      title: 'Bulk Delete Deals',
-      message: `Are you sure you want to delete ${selectedDeals.length} deals? This action cannot be undone.`,
-      confirmText: 'Delete All',
+      title: t.bulkArchiveDeals,
+      message: t.confirmBulkDeleteDeals.replace('{count}', selectedDeals.length.toString()),
+      confirmText: t.archiveDeal,
+      confirmColor: 'bg-amber-600',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          setLoading(true);
+          const token = await getAuthToken();
+          const results = await Promise.allSettled(selectedDeals.map(id => 
+            fetch(`/api/admin/deals/${id}`, { 
+              method: 'PUT',
+              headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ publishStatus: 'ARCHIVED' })
+            }).then(res => {
+              if (!res.ok) throw new Error('Failed to archive');
+              return id;
+            })
+          ));
+          
+          const successful = results.filter(r => r.status === 'fulfilled');
+          const failed = results.filter(r => r.status === 'rejected');
+          
+          if (failed.length > 0) {
+            toast.success(`Successfully archived ${successful.length} deals. Failed to archive ${failed.length} deals.`);
+          } else {
+            toast.success('Selected deals archived successfully');
+          }
+          
+          setSelectedDeals([]);
+          fetchDeals();
+          fetchStats();
+        } catch (error) {
+          console.error('Failed to archive deals:', error);
+          toast.error('Failed to archive some deals');
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
+  };
+
+  const handleBulkRestoreDeals = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: t.bulkRestoreDeals,
+      message: t.confirmBulkDeleteDeals.replace('{count}', selectedDeals.length.toString()),
+      confirmText: t.restoreDeal,
+      confirmColor: 'bg-emerald-600',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          setLoading(true);
+          const token = await getAuthToken();
+          const results = await Promise.allSettled(selectedDeals.map(id => 
+            fetch(`/api/admin/deals/${id}`, { 
+              method: 'PUT',
+              headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ publishStatus: 'DRAFT', reviewStatus: 'NEEDS_REVIEW' })
+            }).then(res => {
+              if (!res.ok) throw new Error('Failed to restore');
+              return id;
+            })
+          ));
+          
+          const successful = results.filter(r => r.status === 'fulfilled');
+          const failed = results.filter(r => r.status === 'rejected');
+          
+          if (failed.length > 0) {
+            toast.success(`Successfully restored ${successful.length} deals. Failed to restore ${failed.length} deals.`);
+          } else {
+            toast.success('Selected deals restored successfully');
+          }
+          
+          setSelectedDeals([]);
+          fetchDeals();
+          fetchStats();
+        } catch (error) {
+          console.error('Failed to restore deals:', error);
+          toast.error('Failed to restore some deals');
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
+  };
+
+  const handleBulkHardDeleteDeals = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: t.bulkHardDeleteDeals,
+      message: t.confirmBulkDeleteDeals.replace('{count}', selectedDeals.length.toString()),
+      confirmText: t.deleteAll,
       confirmColor: 'bg-red-600',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         try {
           setLoading(true);
-          await Promise.all(selectedDeals.map(id => 
+          const token = await getAuthToken();
+          const results = await Promise.allSettled(selectedDeals.map(id => 
             fetch(`/api/admin/deals/${id}`, { 
               method: 'DELETE',
-              headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+              headers: { 'Authorization': `Bearer ${token}` }
+            }).then(res => {
+              if (!res.ok) throw new Error('Failed to delete');
+              return id;
             })
           ));
+          
+          const successful = results.filter(r => r.status === 'fulfilled');
+          const failed = results.filter(r => r.status === 'rejected');
+          
+          if (failed.length > 0) {
+            toast.success(`Successfully deleted ${successful.length} deals. Failed to delete ${failed.length} deals.`);
+          } else {
+            toast.success('Selected deals deleted successfully');
+          }
+          
           setSelectedDeals([]);
           fetchDeals();
           fetchStats();
-          alert('Selected deals deleted successfully');
         } catch (error) {
           console.error('Failed to delete deals:', error);
-          alert('Failed to delete some deals');
+          toast.error('Failed to delete some deals');
         } finally {
           setLoading(false);
         }
@@ -511,19 +765,31 @@ export function AdminDashboard() {
   const handleBulkUpdateDealsStatus = async (status: string) => {
     try {
       setLoading(true);
-      await Promise.all(selectedDeals.map(id => 
+      const token = await getAuthToken();
+      const results = await Promise.allSettled(selectedDeals.map(id => 
         fetch(`/api/admin/deals/${id}`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
             reviewStatus: status,
             publishStatus: status === 'APPROVED' ? 'PUBLISHED' : 'DRAFT'
           })
+        }).then(res => {
+          if (!res.ok) throw new Error('Failed to update');
+          return id;
         })
       ));
+      
+      const successful = results.filter(r => r.status === 'fulfilled');
+      const failed = results.filter(r => r.status === 'rejected');
+      
+      if (failed.length > 0) {
+        toast.success(`Successfully updated ${successful.length} deals. Failed to update ${failed.length} deals.`);
+      }
+      
       setSelectedDeals([]);
       fetchDeals();
     } catch (error) {
@@ -536,27 +802,40 @@ export function AdminDashboard() {
   const handleBulkDeleteLeads = async () => {
     setConfirmModal({
       isOpen: true,
-      title: 'Bulk Delete Leads',
-      message: `Are you sure you want to delete ${selectedLeads.length} leads? This action cannot be undone.`,
-      confirmText: 'Delete All',
+      title: t.bulkDeleteLeads,
+      message: t.confirmBulkDeleteLeads.replace('{count}', selectedLeads.length.toString()),
+      confirmText: t.deleteAll,
       confirmColor: 'bg-red-600',
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         try {
           setLoading(true);
-          await Promise.all(selectedLeads.map(id => 
+          const token = await getAuthToken();
+          const results = await Promise.allSettled(selectedLeads.map(id => 
             fetch(`/api/lead/${id}`, { 
               method: 'DELETE',
-              headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
+              headers: { 'Authorization': `Bearer ${token}` }
+            }).then(res => {
+              if (!res.ok) throw new Error('Failed to delete');
+              return id;
             })
           ));
+          
+          const successful = results.filter(r => r.status === 'fulfilled');
+          const failed = results.filter(r => r.status === 'rejected');
+          
+          if (failed.length > 0) {
+            toast.success(`Successfully deleted ${successful.length} leads. Failed to delete ${failed.length} leads.`);
+          } else {
+            toast.success('Selected leads deleted successfully');
+          }
+          
           setSelectedLeads([]);
           fetchLeads();
           fetchStats();
-          alert('Selected leads deleted successfully');
         } catch (error) {
           console.error('Failed to delete leads:', error);
-          alert('Failed to delete some leads');
+          toast.error('Failed to delete some leads');
         } finally {
           setLoading(false);
         }
@@ -567,16 +846,28 @@ export function AdminDashboard() {
   const handleBulkUpdateLeadsStatus = async (status: string) => {
     try {
       setLoading(true);
-      await Promise.all(selectedLeads.map(id => 
+      const token = await getAuthToken();
+      const results = await Promise.allSettled(selectedLeads.map(id => 
         fetch(`/api/lead/${id}`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({ status })
+        }).then(res => {
+          if (!res.ok) throw new Error('Failed to update');
+          return id;
         })
       ));
+      
+      const successful = results.filter(r => r.status === 'fulfilled');
+      const failed = results.filter(r => r.status === 'rejected');
+      
+      if (failed.length > 0) {
+        toast.success(`Successfully updated ${successful.length} leads. Failed to update ${failed.length} leads.`);
+      }
+      
       setSelectedLeads([]);
       fetchLeads();
       fetchStats();
@@ -587,27 +878,39 @@ export function AdminDashboard() {
     }
   };
 
-  const handleUpdateDeal = async (dealId: string, status: string) => {
+  const handleUpdateDeal = async (dealId: string, status: string, payload?: any) => {
     try {
-      await fetch(`/api/admin/deals/${dealId}`, {
+      const deal = deals.find(d => d.id === dealId);
+      const isArchived = deal?.publishStatus === 'ARCHIVED';
+      
+      const bodyData: any = {
+        reviewStatus: status,
+        publishStatus: isArchived ? 'ARCHIVED' : (status === 'APPROVED' ? 'PUBLISHED' : 'DRAFT')
+      };
+      
+      if (payload) {
+        Object.assign(bodyData, payload);
+      }
+
+      const res = await fetch(`/api/admin/deals/${dealId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
-        body: JSON.stringify({
-          financialData: editingData,
-          reviewStatus: status,
-          publishStatus: status === 'APPROVED' ? 'PUBLISHED' : 'DRAFT',
-          lenderId: selectedLenderId,
-          isFirstTimeBuyerEligible: isFirstTimeBuyerEligible
-        })
+        body: JSON.stringify(bodyData)
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to update deal');
+      }
+
       fetchDeals();
       setExpandedDealId(null);
-      setEditingData(null);
     } catch (error) {
       console.error('Failed to update deal:', error);
+      toast.error('Failed to save deal. Please try again.');
+      throw error;
     }
   };
 
@@ -617,6 +920,12 @@ export function AdminDashboard() {
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
             <Clock className="w-3 h-3 mr-1" /> {t.needsReview}
+          </span>
+        );
+      case 'NEEDS_WORK':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+            <AlertTriangle className="w-3 h-3 mr-1" /> {t.needsWork || "Needs Work"}
           </span>
         );
       case 'APPROVED':
@@ -649,290 +958,383 @@ export function AdminDashboard() {
               <Settings className="w-8 h-8 text-indigo-600" />
             </div>
             <h2 className="text-2xl font-bold text-slate-900">{t.adminAccess}</h2>
-            <p className="text-slate-500 mt-2">{t.enterSecret}</p>
+            <p className="text-slate-500 mt-2">Sign in with your admin account to continue.</p>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{t.adminSecret}</label>
-              <input 
-                type="password" 
-                value={adminSecret}
-                onChange={e => setAdminSecret(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder={t.enterSecret}
-                required
-              />
-            </div>
+          
+          <div className="space-y-4">
             <button 
-              type="submit"
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors"
+              onClick={handleFirebaseLogin}
+              className="w-full flex items-center justify-center space-x-2 bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-colors"
             >
-              {t.login}
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              <span>Sign in with Google</span>
             </button>
-            <p className="text-[10px] text-slate-400 text-center">
-              Please enter the admin secret configured in your environment variables.
-            </p>
-          </form>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-slate-500">Or use legacy access</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <input 
+                  type="password" 
+                  value={adminSecret}
+                  onChange={e => setAdminSecret(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder={t.enterSecret}
+                  required
+                />
+              </div>
+              <button 
+                type="submit"
+                className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg font-bold hover:bg-slate-200 transition-colors"
+              >
+                {t.login}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      {/* Top Navigation */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center space-x-3">
-              <div className="bg-indigo-600 p-2 rounded-lg">
-                <Activity className="w-5 h-5 text-white" />
-              </div>
-              <h1 className="text-xl font-semibold text-slate-900 tracking-tight">
-                {t.dashboard}
-              </h1>
-              {!user && (
-                <button 
-                  onClick={handleFirebaseLogin}
-                  className="flex items-center space-x-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors ml-4"
-                >
-                  <LogIn className="w-3 h-3" />
-                  <span>{t.loginWithGoogle}</span>
-                </button>
-              )}
-              {user && (
-                <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold ml-4">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>Firebase: {user.email}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center space-x-4">
+    <div className="min-h-screen bg-slate-50 font-sans flex">
+      {/* Sidebar Navigation */}
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 z-20">
+        <div className="p-4 border-b border-slate-200 flex items-center space-x-3">
+          <div className="bg-indigo-600 p-2 rounded-lg">
+            <Activity className="w-5 h-5 text-white" />
+          </div>
+          <h1 className="text-xl font-semibold text-slate-900 tracking-tight">
+            {t.dashboard}
+          </h1>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto py-4">
+          {/* Dashboard Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Dashboard</h2>
+            <div className="space-y-1">
+              {canAccess('overview') && (
               <button
-                onClick={handleSelectKey}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  hasApiKey 
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' 
-                    : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                onClick={() => setActiveTab('overview')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'overview' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Key className="w-3.5 h-3.5" />
-                <span>{hasApiKey ? t.verified11Key : t.selectLender}</span>
+                <BarChart3 className="w-4 h-4" />
+                <span>{t.overview}</span>
               </button>
-              <div className="text-sm text-slate-500">
-                System Status: <span className="text-emerald-600 font-medium">{t.active}</span>
-              </div>
+              )}
+              {canAccess('analytics') && (
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'analytics' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>{t.analytics}</span>
+              </button>
+              )}
+            </div>
+          </div>
+
+          {/* Content Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Content</h2>
+            <div className="space-y-1">
+              {canAccess('deals') && (
+              <button
+                onClick={() => setActiveTab('deals')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'deals' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>{t.deals}</span>
+              </button>
+              )}
+              {canAccess('cars') && (
+              <button
+                onClick={() => setActiveTab('cars')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'cars' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Database className="w-4 h-4" />
+                <span>{t.cars}</span>
+              </button>
+              )}
+              {canAccess('dealers') && (
+              <button
+                onClick={() => setActiveTab('dealers')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'dealers' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                <span>Dealers</span>
+              </button>
+              )}
+              {canAccess('promos') && (
+              <button
+                onClick={() => setActiveTab('promos')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'promos' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Ticket className="w-4 h-4" />
+                <span>Promo Codes</span>
+              </button>
+              )}
+              {canAccess('media') && (
+              <button
+                onClick={() => setActiveTab('media')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'media' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span>{t.mediaLibrary}</span>
+              </button>
+              )}
+              {canAccess('blog') && (
+              <button
+                onClick={() => setActiveTab('blog')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'blog' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <PenTool className="w-4 h-4" />
+                <span>Blog</span>
+              </button>
+              )}
+              {canAccess('reviews') && (
+              <button
+                onClick={() => setActiveTab('reviews')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'reviews' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Star className="w-4 h-4" />
+                <span>{t.reviews}</span>
+              </button>
+              )}
+              {canAccess('feedback') && (
+              <button
+                onClick={() => setActiveTab('feedback')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'feedback' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>{t.feedback}</span>
+              </button>
+              )}
+            </div>
+          </div>
+
+          {/* Operations Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Operations</h2>
+            <div className="space-y-1">
+              {canAccess('leads') && (
+              <button
+                onClick={() => setActiveTab('leads')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'leads' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Activity className="w-4 h-4" />
+                <span>{t.leads}</span>
+              </button>
+              )}
+              {canAccess('users') && (
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'users' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>{t.users}</span>
+              </button>
+              )}
+              {canAccess('banks') && (
+              <button
+                onClick={() => setActiveTab('banks')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'banks' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Database className="w-4 h-4" />
+                <span>{t.banks}</span>
+              </button>
+              )}
+              {canAccess('incentives') && (
+              <button
+                onClick={() => setActiveTab('incentives')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'incentives' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Tag className="w-4 h-4" />
+                <span>OEM Incentives</span>
+              </button>
+              )}
+              {canAccess('bulk-edit') && (
+              <button
+                onClick={() => setActiveTab('bulk-edit')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'bulk-edit' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span>Bulk Edit</span>
+              </button>
+              )}
+            </div>
+          </div>
+
+          {/* System Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">System</h2>
+            <div className="space-y-1">
+              {canAccess('settings') && (
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                <span>{t.settings}</span>
+              </button>
+              )}
+              {canAccess('audit') && (
+              <button
+                onClick={() => setActiveTab('audit')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'audit' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <List className="w-4 h-4" />
+                <span>{t.auditLogs}</span>
+              </button>
+              )}
+              <button
+                onClick={() => {
+                  localStorage.removeItem('admin_token');
+                  auth.signOut();
+                  window.location.reload();
+                }}
+                className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors mt-4"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Log Out</span>
+              </button>
             </div>
           </div>
         </div>
-      </header>
+      </aside>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        
-        {/* API Key Notice */}
-        {!hasApiKey && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-start space-x-4">
-            <div className="bg-indigo-100 p-2 rounded-lg">
-              <Key className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-bold text-indigo-900">Paid API Key Recommended</h3>
-              <p className="text-xs text-indigo-700 mt-1">
-                Для стабильной работы извлечения данных рекомендуется выбрать платный API ключ. 
-                Это поможет избежать ограничений по квоте (Unexpected Error).
-              </p>
-              <div className="mt-3 flex items-center space-x-4">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+        {/* Top Header */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+          <div className="px-8">
+            <div className="flex justify-between h-16 items-center">
+              <div className="flex items-center space-x-3">
+                {!user && (
+                  <button 
+                    onClick={handleFirebaseLogin}
+                    className="flex items-center space-x-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors"
+                  >
+                    <LogIn className="w-3 h-3" />
+                    <span>{t.loginWithGoogle}</span>
+                  </button>
+                )}
+                {user && (
+                  <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Firebase: {user.email}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center space-x-4">
                 <button
                   onClick={handleSelectKey}
-                  className="text-xs font-bold text-white bg-indigo-600 px-3 py-1.5 rounded-md hover:bg-indigo-700 transition-colors"
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    hasApiKey 
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' 
+                      : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                  }`}
                 >
-                  {t.selectLender}
+                  <Key className="w-3.5 h-3.5" />
+                  <span>{hasApiKey ? t.verified11Key : t.selectLender}</span>
                 </button>
-                <a 
-                  href="https://ai.google.dev/gemini-api/docs/billing" 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="text-xs font-medium text-indigo-600 hover:text-indigo-500 flex items-center"
-                >
-                  Документация по биллингу <ExternalLink className="w-3 h-3 ml-1" />
-                </a>
+                <div className="text-sm text-slate-500">
+                  System Status: <span className="text-emerald-600 font-medium">{t.active}</span>
+                </div>
               </div>
             </div>
           </div>
-        )}
+        </header>
 
-        {/* Tabs */}
-        <div className="border-b border-slate-200">
-          <nav className="-mb-px flex space-x-8 overflow-x-auto scrollbar-hide" aria-label="Tabs">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`${
-                activeTab === 'overview'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>{t.overview}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('deals')}
-              className={`${
-                activeTab === 'deals'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>{t.deals}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('leads')}
-              className={`${
-                activeTab === 'leads'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Activity className="w-4 h-4" />
-              <span>{t.leads}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('cars')}
-              className={`${
-                activeTab === 'cars'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Database className="w-4 h-4" />
-              <span>{t.cars}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`${
-                activeTab === 'users'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Users className="w-4 h-4" />
-              <span>{t.users}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`${
-                activeTab === 'settings'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Settings className="w-4 h-4" />
-              <span>{t.settings}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('media')}
-              className={`${
-                activeTab === 'media'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <ImageIcon className="w-4 h-4" />
-              <span>{t.mediaLibrary}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('banks')}
-              className={`${
-                activeTab === 'banks'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Database className="w-4 h-4" />
-              <span>{t.banks}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('incentives')}
-              className={`${
-                activeTab === 'incentives'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Tag className="w-4 h-4" />
-              <span>OEM Incentives</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('bulk-edit')}
-              className={`${
-                activeTab === 'bulk-edit'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Layers className="w-4 h-4" />
-              <span>Bulk Edit</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`${
-                activeTab === 'analytics'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>{t.analytics}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('reviews')}
-              className={`${
-                activeTab === 'reviews'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <Star className="w-4 h-4" />
-              <span>{t.reviews}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('feedback')}
-              className={`${
-                activeTab === 'feedback'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>{t.feedback}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('audit')}
-              className={`${
-                activeTab === 'audit'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <List className="w-4 h-4" />
-              <span>{t.auditLogs}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('blog')}
-              className={`${
-                activeTab === 'blog'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-            >
-              <PenTool className="w-4 h-4" />
-              <span>Blog</span>
-            </button>
-          </nav>
-        </div>
+        <main className="flex-1 overflow-y-auto p-8">
+          <div className="max-w-7xl mx-auto space-y-8">
+            
+            {/* API Key Notice */}
+            {!hasApiKey && !dismissApiKeyBanner && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-start space-x-4 relative">
+                <button 
+                  onClick={() => setDismissApiKeyBanner(true)}
+                  className="absolute top-4 right-4 text-indigo-400 hover:text-indigo-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="bg-indigo-100 p-2 rounded-lg">
+                  <Key className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div className="flex-1 pr-8">
+                  <h3 className="text-sm font-bold text-indigo-900">Paid API Key Recommended</h3>
+                  <p className="text-xs text-indigo-700 mt-1">
+                    Для стабильной работы извлечения данных рекомендуется выбрать платный API ключ. 
+                    Это поможет избежать ограничений по квоте (Unexpected Error).
+                  </p>
+                  <div className="mt-3 flex items-center space-x-4">
+                    <button
+                      onClick={handleSelectKey}
+                      className="text-xs font-bold text-white bg-indigo-600 px-3 py-1.5 rounded-md hover:bg-indigo-700 transition-colors"
+                    >
+                      {t.selectLender}
+                    </button>
+                    <a 
+                      href="https://ai.google.dev/gemini-api/docs/billing" 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-500 flex items-center"
+                    >
+                      Документация по биллингу <ExternalLink className="w-3 h-3 ml-1" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
 
-        {activeTab === 'overview' && (
+            {activeTab === 'overview' && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -1041,33 +1443,7 @@ export function AdminDashboard() {
                   )}
                 </div>
               </div>
-              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-                <p className="text-[10px] text-slate-500 max-w-md">
-                  Auto-sync runs every 15 days on server startup. It fetches the latest MSRP, rebates, and finance data from Marketcheck.
-                </p>
-                <button 
-                  onClick={async () => {
-                    if (confirm('Manually trigger a full sync? This will use about 480 API requests.')) {
-                      try {
-                        const res = await fetch('/api/admin/sync-external', {
-                          method: 'POST',
-                          headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` }
-                        });
-                        if (res.ok) {
-                          alert('Sync started in background. Refresh in a few minutes.');
-                          fetchStats();
-                        }
-                      } catch (e) {
-                        alert('Failed to trigger sync');
-                      }
-                    }
-                  }}
-                  disabled={syncReport?.isSyncing}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-500 disabled:opacity-50"
-                >
-                  Trigger Manual Sync
-                </button>
-              </div>
+
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1194,18 +1570,25 @@ export function AdminDashboard() {
 
             {/* Queue Section */}
             <section>
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{t.inventoryQueue}</h2>
                   <p className="text-sm text-slate-500">{t.manageDeals}</p>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={handleSyncDeals}
-                    className="flex items-center space-x-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
+                <div className="flex flex-wrap items-center gap-3">
+                  <button 
+                    onClick={() => setIsVinModalOpen(true)}
+                    className="flex items-center space-x-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors"
                   >
-                    <Database className="w-3.5 h-3.5" />
-                    <span>{t.syncStaticDeals}</span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create from VIN</span>
+                  </button>
+                  <button 
+                    onClick={() => setIsBulkGenerateModalOpen(true)}
+                    className="flex items-center space-x-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t.bulkGenerate}</span>
                   </button>
                   <button 
                     onClick={handleCreateManualDeal}
@@ -1215,7 +1598,7 @@ export function AdminDashboard() {
                     <span>{t.createManualOffer}</span>
                   </button>
                   <button 
-                    onClick={fetchDeals}
+                    onClick={() => fetchDeals(true)}
                     className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
                   >
                     {t.refresh}
@@ -1224,17 +1607,60 @@ export function AdminDashboard() {
               </div>
 
               <div className="mb-6 flex flex-col space-y-4">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Activity className="h-5 w-5 text-slate-400" />
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Activity className="h-5 w-5 text-slate-400" />
+                    </div>
+                    <input
+                      type="text"
+                      className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:placeholder-slate-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      placeholder={t.searchDealsPlaceholder}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                   </div>
-                  <input
-                    type="text"
-                    className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:placeholder-slate-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    placeholder={t.searchDealsPlaceholder}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setShowArchivedDeals(!showArchivedDeals);
+                        setSelectedDeals([]);
+                      }}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                        showArchivedDeals 
+                          ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {showArchivedDeals ? t.activeDeals : t.archivedDeals}
+                    </button>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="APPROVED">Approved</option>
+                      <option value="NEEDS_WORK">Needs Work</option>
+                      <option value="NEEDS_REVIEW">Needs Review</option>
+                    </select>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as any)}
+                      className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                    >
+                      <option value="date">{t.sortByDate}</option>
+                      <option value="make">{t.sortByMake}</option>
+                      <option value="price">{t.sortByPrice}</option>
+                    </select>
+                    <button
+                      onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                      className="p-2 border border-slate-300 rounded-md bg-white hover:bg-slate-50"
+                      title={sortOrder === 'asc' ? t.sortAscending : t.sortDescending}
+                    >
+                      {sortOrder === 'asc' ? '↑' : '↓'}
+                    </button>
+                  </div>
                 </div>
 
                 {selectedDeals.length > 0 && (
@@ -1250,23 +1676,51 @@ export function AdminDashboard() {
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => handleBulkUpdateDealsStatus('APPROVED')}
-                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors"
+                        onClick={() => setIsBulkEditModalOpen(true)}
+                        className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors"
                       >
-                        {t.approveAll}
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Bulk Edit</span>
                       </button>
-                      <button
-                        onClick={() => handleBulkUpdateDealsStatus('REJECTED')}
-                        className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors"
-                      >
-                        {t.rejectAll}
-                      </button>
-                      <button
-                        onClick={handleBulkDeleteDeals}
-                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
-                      >
-                        {t.deleteAll}
-                      </button>
+                      {!showArchivedDeals && (
+                        <>
+                          <button
+                            onClick={() => handleBulkUpdateDealsStatus('APPROVED')}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors"
+                          >
+                            {t.approveAll}
+                          </button>
+                          <button
+                            onClick={() => handleBulkUpdateDealsStatus('REJECTED')}
+                            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+                          >
+                            {t.rejectAll}
+                          </button>
+                        </>
+                      )}
+                      {!showArchivedDeals ? (
+                        <button
+                          onClick={handleBulkArchiveDeals}
+                          className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors"
+                        >
+                          {t.bulkArchiveDeals}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleBulkRestoreDeals}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors"
+                          >
+                            {t.bulkRestoreDeals}
+                          </button>
+                          <button
+                            onClick={handleBulkHardDeleteDeals}
+                            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+                          >
+                            {t.bulkHardDeleteDeals}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1282,15 +1736,60 @@ export function AdminDashboard() {
                     <p className="mt-1 text-sm text-slate-500">{t.uploadOfferToStart}</p>
                   </div>
                 ) : (
-                  <ul className="divide-y divide-slate-200">
-                    {deals
-                      .filter(deal => {
-                        if (!searchTerm) return true;
-                        const data = deal.financialData ? JSON.parse(deal.financialData) : {};
-                        const searchStr = `${deal.ingestionId} ${data.make || ''} ${data.model || ''} ${data.trim || ''}`.toLowerCase();
-                        return searchStr.includes(searchTerm.toLowerCase());
-                      })
-                      .map((deal) => (
+                  <div>
+                    {(() => {
+                      const filteredDeals = deals
+                        .filter(deal => {
+                          const isArchived = deal.publishStatus === 'ARCHIVED';
+                          if (showArchivedDeals && !isArchived) return false;
+                          if (!showArchivedDeals && isArchived) return false;
+                          
+                          if (filterStatus !== 'ALL' && deal.reviewStatus !== filterStatus) return false;
+
+                          if (!searchTerm) return true;
+                          const data = deal.financialData ? JSON.parse(deal.financialData) : {};
+                          const searchStr = `${deal.ingestionId} ${data.make || ''} ${data.model || ''} ${data.trim || ''}`.toLowerCase();
+                          return searchStr.includes(searchTerm.toLowerCase());
+                        })
+                        .sort((a, b) => {
+                          const dataA = a.financialData ? JSON.parse(a.financialData) : {};
+                          const dataB = b.financialData ? JSON.parse(b.financialData) : {};
+                          
+                          let comparison = 0;
+                          if (sortBy === 'date') {
+                            comparison = new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                          } else if (sortBy === 'make') {
+                            const makeModelA = `${dataA.make || ''} ${dataA.model || ''}`.toLowerCase();
+                            const makeModelB = `${dataB.make || ''} ${dataB.model || ''}`.toLowerCase();
+                            comparison = makeModelA.localeCompare(makeModelB);
+                          } else if (sortBy === 'price') {
+                            const priceA = parseFloat(dataA.monthlyPayment) || 0;
+                            const priceB = parseFloat(dataB.monthlyPayment) || 0;
+                            comparison = priceA - priceB;
+                          }
+                          
+                          return sortOrder === 'asc' ? comparison : -comparison;
+                        });
+
+                      return (
+                        <>
+                          <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex items-center">
+                            <input 
+                              type="checkbox"
+                              checked={filteredDeals.length > 0 && selectedDeals.length === filteredDeals.length}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedDeals(filteredDeals.map(d => d.id));
+                                } else {
+                                  setSelectedDeals([]);
+                                }
+                              }}
+                              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
+                            />
+                            <span className="ml-4 text-xs font-medium text-slate-500 uppercase tracking-wider">{t.selectAll}</span>
+                          </div>
+                          <ul className="divide-y divide-slate-200">
+                            {filteredDeals.map((deal) => (
                         <li key={deal.id} className={`hover:bg-slate-50 transition-colors ${selectedDeals.includes(deal.id) ? 'bg-indigo-50/50' : ''}`}>
                           <div className="flex items-center px-6">
                             <input 
@@ -1310,17 +1809,8 @@ export function AdminDashboard() {
                               onClick={() => {
                                 if (expandedDealId === deal.id) {
                                   setExpandedDealId(null);
-                                  setEditingData(null);
-                                  setSelectedLenderId(null);
                                 } else {
                                   setExpandedDealId(deal.id);
-                                  const data = deal.financialData ? JSON.parse(deal.financialData) : {};
-                                  // Ensure new fields exist
-                                  if (!data.hunterDiscount) data.hunterDiscount = { value: 0, provenance_status: 'unresolved', disclosure_required: false, isGlobal: true };
-                                  if (!data.manufacturerRebate) data.manufacturerRebate = { value: 0, provenance_status: 'unresolved', disclosure_required: false, isGlobal: true };
-                                  setEditingData(data);
-                                  setSelectedLenderId(deal.lenderId || null);
-                                  setIsFirstTimeBuyerEligible(deal.isFirstTimeBuyerEligible);
                                 }
                               }}
                             >
@@ -1382,308 +1872,63 @@ export function AdminDashboard() {
                                     <ChevronRight className="h-5 w-5" />
                                   )}
                                 </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteDeal(deal.id);
-                                  }}
-                                  className="text-slate-300 hover:text-red-600 transition-colors"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                {!showArchivedDeals ? (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleArchiveDeal(deal.id);
+                                    }}
+                                    className="text-slate-300 hover:text-amber-600 transition-colors"
+                                    title={t.archiveDeal}
+                                  >
+                                    <ArchiveRestore className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRestoreDeal(deal.id);
+                                      }}
+                                      className="text-slate-300 hover:text-emerald-600 transition-colors"
+                                      title={t.restoreDeal}
+                                    >
+                                      <ArchiveRestore className="h-4 w-4" />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleHardDeleteDeal(deal.id);
+                                      }}
+                                      className="text-slate-300 hover:text-red-600 transition-colors"
+                                      title={t.hardDeleteDeal}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
                         
                         {/* Expanded Details - Moderator Form */}
-                        {expandedDealId === deal.id && editingData && (
-                          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
-                            <div className="mb-4 flex items-center justify-between">
-                              <div>
-                                <h4 className="text-sm font-bold text-slate-900">{t.dataExtractionReview}</h4>
-                                <span className="text-xs text-slate-500">{t.extractionReviewDesc}</span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-xs font-mono text-slate-500 block">{t.eligibilityStatus}:</span>
-                                <span className={`text-xs font-bold ${JSON.parse(deal.eligibility || '{}').is_publishable ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                  {JSON.parse(deal.eligibility || '{}').is_publishable ? t.publishable : t.blocked}
-                                </span>
-                              </div>
-                            </div>
-
-                            {JSON.parse(deal.eligibility || '{}').blocking_reasons?.length > 0 && (
-                              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-                                <h5 className="text-sm font-bold text-red-800 mb-2">{t.blockingReasons}</h5>
-                                <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                                  {JSON.parse(deal.eligibility || '{}').blocking_reasons.map((reason: string, idx: number) => (
-                                    <li key={idx}>{reason}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-indigo-50/50 rounded-lg border border-indigo-100">
-                              <div>
-                                <label className="block text-xs font-bold text-indigo-900 uppercase mb-2">
-                                  {t.lenderBank}
-                                </label>
-                                <select
-                                  className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border bg-white"
-                                  value={selectedLenderId || ''}
-                                  onChange={(e) => setSelectedLenderId(e.target.value || null)}
-                                >
-                                  <option value="">{t.defaultCaptive}</option>
-                                  {lenders.map(lender => (
-                                      <option key={lender.id} value={lender.id}>
-                                        {lender.name} {lender.isFirstTimeBuyerFriendly ? `(${t.ftbFriendly})` : ''}
-                                      </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-bold text-indigo-900 uppercase mb-2">
-                                  {t.ftbEligibility}
-                                </label>
-                                <div className="flex items-center space-x-4 mt-2">
-                                  <button
-                                    onClick={() => setIsFirstTimeBuyerEligible(true)}
-                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                                      isFirstTimeBuyerEligible 
-                                        ? 'bg-emerald-600 text-white shadow-sm' 
-                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    {t.eligible}
-                                  </button>
-                                  <button
-                                    onClick={() => setIsFirstTimeBuyerEligible(false)}
-                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                                      !isFirstTimeBuyerEligible 
-                                        ? 'bg-red-600 text-white shadow-sm' 
-                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    {t.notEligible}
-                                  </button>
-                                </div>
-                                <p className="text-[10px] text-indigo-600 mt-2 italic">
-                                  {t.ftbEligibilityDesc}
-                                </p>
-                              </div>
-                              <div className="md:col-span-2">
-                                <label className="block text-xs font-bold text-indigo-900 uppercase mb-2">
-                                  Image URL
-                                </label>
-                                <p className="text-[10px] text-slate-500 mb-2">
-                                  Вы можете использовать внешнюю ссылку или загрузить фото в <strong>Библиотеку медиа</strong> и скопировать путь (например, /uploads/cars/filename.png).
-                                </p>
-                                <div className="flex gap-2">
-                                  <input 
-                                    type="text" 
-                                    value={editingData.image || ''} 
-                                    onChange={e => handleFieldChange('image', e.target.value)}
-                                    className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                    placeholder="https://images.unsplash.com/..."
-                                  />
-                                  <button 
-                                    onClick={async () => {
-                                      if (!editingData.make || !editingData.model) {
-                                        alert('Please enter Make and Model first');
-                                        return;
-                                      }
-                                      try {
-                                        const res = await fetch('/api/cars');
-                                        const carDb = await res.json();
-                                        const make = carDb.makes.find((m: any) => m.name.toLowerCase() === editingData.make.toLowerCase());
-                                        if (make) {
-                                          const model = make.models.find((m: any) => 
-                                            editingData.model.toLowerCase().includes(m.name.toLowerCase()) || 
-                                            m.name.toLowerCase().includes(editingData.model.toLowerCase())
-                                          );
-                                          if (model && model.imageUrl) {
-                                            handleFieldChange('image', model.imageUrl);
-                                          } else {
-                                            alert('No image found for this model in database');
-                                          }
-                                        } else {
-                                          alert('Manufacturer not found in database');
-                                        }
-                                      } catch (err) {
-                                        console.error('Failed to fetch car image', err);
-                                      }
-                                    }}
-                                    className="px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
-                                  >
-                                    Fetch
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                              {Object.entries(editingData).map(([key, data]: [string, any]) => {
-                                if (key === 'image') return null; // Handled above
-                                
-                                if (typeof data === 'string' || typeof data === 'number') {
-                                  let inputElement = (
-                                    <input
-                                      type={typeof data === 'number' ? 'number' : 'text'}
-                                      className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                                      value={data}
-                                      onChange={(e) => handleFieldChange(key, e.target.value)}
-                                    />
-                                  );
-
-                                  if (carDb && (key === 'make' || key === 'model' || key === 'trim')) {
-                                    if (key === 'make') {
-                                      inputElement = (
-                                        <select
-                                          className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border bg-white"
-                                          value={data}
-                                          onChange={(e) => handleFieldChange(key, e.target.value)}
-                                        >
-                                          <option value="">Select Make</option>
-                                          {carDb.makes.map((m: any) => <option key={m.name} value={m.name}>{m.name}</option>)}
-                                        </select>
-                                      );
-                                    } else if (key === 'model' && editingData.make) {
-                                      const makeObj = carDb.makes.find((m: any) => m.name.toLowerCase() === editingData.make.toLowerCase());
-                                      if (makeObj) {
-                                        inputElement = (
-                                          <select
-                                            className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border bg-white"
-                                            value={data}
-                                            onChange={(e) => handleFieldChange(key, e.target.value)}
-                                          >
-                                            <option value="">Select Model</option>
-                                            {makeObj.models.map((m: any) => <option key={m.name} value={m.name}>{m.name}</option>)}
-                                          </select>
-                                        );
-                                      }
-                                    } else if (key === 'trim' && editingData.make && editingData.model) {
-                                      const makeObj = carDb.makes.find((m: any) => m.name.toLowerCase() === editingData.make.toLowerCase());
-                                      const modelObj = makeObj?.models.find((m: any) => m.name.toLowerCase() === editingData.model.toLowerCase());
-                                      if (modelObj) {
-                                        inputElement = (
-                                          <select
-                                            className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border bg-white"
-                                            value={data}
-                                            onChange={(e) => {
-                                              handleFieldChange(key, e.target.value);
-                                              const trimObj = modelObj.trims.find((t: any) => t.name === e.target.value);
-                                              if (trimObj) {
-                                                if (trimObj.msrp) handleFieldChange('msrp', trimObj.msrp);
-                                                if (trimObj.mf) handleFieldChange('moneyFactor', trimObj.mf);
-                                                if (trimObj.rv36) handleFieldChange('residualValue', trimObj.rv36);
-                                                if (trimObj.leaseCash) handleFieldChange('manufacturerRebate', trimObj.leaseCash);
-                                                // Default hunter discount could be 5-10% for a "good" deal
-                                              }
-                                            }}
-                                          >
-                                            <option value="">Select Trim</option>
-                                            {modelObj.trims.map((t: any) => <option key={t.name} value={t.name}>{t.name}</option>)}
-                                          </select>
-                                        );
-                                      }
-                                    }
-                                  }
-
-                                  return (
-                                    <div key={key} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                                      <label className="block text-xs font-medium text-slate-700 uppercase mb-1">
-                                        {key.replace(/_/g, ' ')}
-                                      </label>
-                                      <div className="relative">
-                                        {inputElement}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                if (typeof data !== 'object' || data === null || !('value' in data)) return null;
-                                return (
-                                  <div key={key} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                                    <label className="block text-xs font-medium text-slate-700 uppercase mb-1">
-                                      {key.replace(/_/g, ' ')}
-                                    </label>
-                                    <div className="relative">
-                                      <input
-                                        type={typeof data.value === 'number' ? 'number' : 'text'}
-                                        step="any"
-                                        className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                                        value={data.value || ''}
-                                        onChange={(e) => handleFieldChange(key, e.target.value)}
-                                      />
-                                    </div>
-                                    <div className="mt-2 flex items-center justify-between">
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                        data.provenance_status === 'extracted_from_document' 
-                                          ? 'bg-emerald-100 text-emerald-800' 
-                                          : data.provenance_status === 'matched_from_verified_program'
-                                          ? 'bg-blue-100 text-blue-800'
-                                          : 'bg-amber-100 text-amber-800'
-                                      }`}>
-                                        {data.provenance_status === 'extracted_from_document' ? t.foundInDoc : 
-                                         data.provenance_status === 'matched_from_verified_program' ? t.verified11Key : t.missingAssumed}
-                                      </span>
-
-                                      {(key === 'hunterDiscount' || key === 'manufacturerRebate' || key === 'rebates' || key === 'savings') && (
-                                        <label className="flex items-center gap-1.5 cursor-pointer">
-                                          <input 
-                                            type="checkbox" 
-                                            className="rounded text-indigo-600 focus:ring-indigo-500 h-3 w-3"
-                                            checked={data.isGlobal || false}
-                                            onChange={(e) => {
-                                              setEditingData((prev: any) => ({
-                                                ...prev,
-                                                [key]: {
-                                                  ...prev[key],
-                                                  isGlobal: e.target.checked
-                                                }
-                                              }));
-                                            }}
-                                          />
-                                          <span className="text-[10px] font-medium text-slate-600">For Everyone</span>
-                                        </label>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              <button 
-                                onClick={handleAddField}
-                                className="flex items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-3 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all"
-                              >
-                                <Plus className="w-4 h-4 mr-2" />
-                                <span className="text-xs font-bold">{t.addField}</span>
-                              </button>
-                            </div>
-
-                            <div className="flex justify-end space-x-3 border-t border-slate-200 pt-4">
-                              <button
-                                onClick={() => handleUpdateDeal(deal.id, 'REJECTED')}
-                                className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-                              >
-                                {t.rejectDeal}
-                              </button>
-                              <button
-                                onClick={() => handleUpdateDeal(deal.id, 'NEEDS_REVIEW')}
-                                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors"
-                              >
-                                {t.saveDraft}
-                              </button>
-                              <button
-                                onClick={() => handleUpdateDeal(deal.id, 'APPROVED')}
-                                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors flex items-center"
-                              >
-                                <CheckCircle2 className="w-4 h-4 mr-2" />
-                                {t.approvePublish}
-                              </button>
-                            </div>
-                          </div>
+                        {expandedDealId === deal.id && (
+                          <DealEditor 
+                            deal={deal} 
+                            carDb={carDb} 
+                            lenders={lenders} 
+                            onSave={handleUpdateDeal} 
+                            onCancel={() => setExpandedDealId(null)} 
+                            t={t} 
+                          />
                         )}
                       </li>
-                    ))}
-                  </ul>
+                            ))}
+                          </ul>
+                        </>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             </section>
@@ -1849,17 +2094,6 @@ export function AdminDashboard() {
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700">{t.geminiApiKey || 'Gemini API Key'}</label>
-                  <p className="text-[10px] text-slate-500 mb-1">{t.geminiApiKeyDesc || 'Key for automatic data extraction from quotes (Gemini AI).'}</p>
-                  <input
-                    type="password"
-                    value={settings.geminiApiKey || ''}
-                    onChange={(e) => setSettings({...settings, geminiApiKey: e.target.value})}
-                    placeholder={t.enterApiKey || 'Enter your API key'}
-                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  />
-                </div>
-                <div className="sm:col-span-2">
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-medium text-slate-900">{t.maintenanceMode}</h4>
@@ -1965,7 +2199,7 @@ export function AdminDashboard() {
         )}
         {activeTab === 'analytics' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <AnalyticsAdmin />
+            <AnalyticsAdmin adminRole={adminRole} />
           </section>
         )}
         {activeTab === 'reviews' && (
@@ -2195,8 +2429,8 @@ export function AdminDashboard() {
                                 <p><span className="font-medium">{t.phone}:</span> {lead.phone}</p>
                                 <p><span className="font-medium">{t.paymentMethod}:</span> {lead.payMethod === 'z' ? 'Zelle' : lead.payMethod === 'v' ? 'Venmo' : 'Credit Card'}</p>
                                 {lead.paymentName && <p><span className="font-medium">{t.paymentName}:</span> {lead.paymentName}</p>}
-                                <p><span className="font-medium">Deposit Status:</span> <span className={`font-bold ${lead.depositStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>{lead.depositStatus || 'pending'}</span></p>
-                                {lead.depositAmount && <p><span className="font-medium">Deposit Amount:</span> ${(lead.depositAmount / 100).toFixed(2)}</p>}
+                                <p><span className="font-medium">{t.depositStatus}:</span> <span className={`font-bold ${lead.depositStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>{lead.depositStatus || 'pending'}</span></p>
+                                {lead.depositAmount && <p><span className="font-medium">{t.depositAmount}:</span> ${(lead.depositAmount / 100).toFixed(2)}</p>}
                                 <p><span className="font-medium">{t.tcpaConsent}:</span> {lead.legalConsent?.tcpa ? t.yes : t.no}</p>
                                 <p><span className="font-medium">{t.termsConsent}:</span> {lead.legalConsent?.terms ? t.yes : t.no}</p>
                                 <p><span className="font-medium">{t.ftb}:</span> {lead.isFirstTimeBuyer ? t.yes : t.no}</p>
@@ -2209,7 +2443,7 @@ export function AdminDashboard() {
                                 <p><span className="font-medium">{t.vehicle}:</span> {lead.vehicle?.year} {lead.vehicle?.make} {lead.vehicle?.model} {lead.vehicle?.trim}</p>
                                 <p><span className="font-medium">{t.msrp}:</span> ${lead.vehicle?.msrp?.toLocaleString()}</p>
                                 <p><span className="font-medium">{t.type}:</span> {lead.calc?.type}</p>
-                                <p><span className="font-medium">{t.payment}:</span> ${lead.calc?.payment}/mo</p>
+                                <p><span className="font-medium">{t.payment}:</span> ${lead.calc?.payment}{t.mo}</p>
                                 <p><span className="font-medium">{t.down}:</span> ${lead.calc?.down}</p>
                                 <p><span className="font-medium">{t.mileage}:</span> {lead.calc?.mileage}</p>
                                 <p><span className="font-medium">{t.tier}:</span> {lead.calc?.tier}</p>
@@ -2228,7 +2462,7 @@ export function AdminDashboard() {
                                   {t.contacted}
                                 </button>
                                 <button 
-                                  onClick={() => updateLeadStatus(lead.id, 'closed')}
+                                  onClick={() => setCloseLeadModal({ isOpen: true, leadId: lead.id, brokerFee: 0, dealerReserve: 0 })}
                                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${lead.status === 'closed' ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                                 >
                                   {t.closedWon}
@@ -2275,7 +2509,64 @@ export function AdminDashboard() {
             <BulkEditAdmin />
           </section>
         )}
-      </main>
+        
+        {activeTab === 'dealers' && (
+          <section className="animate-fade-in">
+            <DealersAdmin />
+          </section>
+        )}
+
+        {activeTab === 'promos' && (
+          <section className="animate-fade-in">
+            <PromoCodesAdmin />
+          </section>
+        )}
+          </div>
+        </main>
+      </div>
+      {closeLeadModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-slate-900 mb-4">Close Deal & Record Revenue</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Broker Fee ($)</label>
+                  <input
+                    type="number"
+                    value={closeLeadModal.brokerFee}
+                    onChange={(e) => setCloseLeadModal(prev => ({ ...prev, brokerFee: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Dealer Reserve ($)</label>
+                  <input
+                    type="number"
+                    value={closeLeadModal.dealerReserve}
+                    onChange={(e) => setCloseLeadModal(prev => ({ ...prev, dealerReserve: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="bg-slate-50 px-6 py-4 flex justify-end space-x-3 border-t border-slate-100">
+              <button
+                onClick={() => setCloseLeadModal({ isOpen: false, leadId: '', brokerFee: 0, dealerReserve: 0 })}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                onClick={() => updateLeadStatus(closeLeadModal.leadId, 'closed', closeLeadModal.brokerFee * 100, closeLeadModal.dealerReserve * 100)}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+              >
+                Mark as Closed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmationModal 
         isOpen={confirmModal.isOpen}
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
@@ -2292,6 +2583,29 @@ export function AdminDashboard() {
           fetchDeals();
           fetchStats();
         }}
+      />
+      <VinDecoderModal 
+        isOpen={isVinModalOpen} 
+        onClose={() => setIsVinModalOpen(false)} 
+        onSave={handleVinSave} 
+        carDb={carDb}
+      />
+      <BulkEditDealsModal
+        isOpen={isBulkEditModalOpen}
+        onClose={() => setIsBulkEditModalOpen(false)}
+        selectedDealIds={selectedDeals}
+        onSuccess={() => {
+          setSelectedDeals([]);
+          fetchDeals(true);
+        }}
+      />
+      <BulkGenerateModal
+        isOpen={isBulkGenerateModalOpen}
+        onClose={() => setIsBulkGenerateModalOpen(false)}
+        onComplete={() => {
+          fetchDeals(true);
+        }}
+        carDb={carDb}
       />
     </div>
   );

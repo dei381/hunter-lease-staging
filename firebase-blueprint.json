@@ -74,6 +74,7 @@
         "finPay": { "type": "number" },
         "image": { "type": "string" },
         "hot": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["active", "archived"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

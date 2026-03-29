@@ -126,4 +126,5 @@ export interface Deal {
   };
   detailedSpecs?: Record<string, string>;
   detailedSpecsRu?: Record<string, string>;
+  status?: 'active' | 'archived';
 }

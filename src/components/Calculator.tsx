@@ -10,6 +10,7 @@ import { useAuthStore } from '../store/authStore';
 import { TransparencyModal } from './TransparencyModal';
 import { getVal } from '../utils/finance';
 import { TradeInEstimator } from './TradeInEstimator';
+import { useDebounce } from '../hooks/useDebounce';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -74,6 +75,11 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const currentCar = useMemo(() => {
     if (deal?.id) return deal;
     if (!selectedTrim) return null;
+    
+    const baseMF = Number(selectedTrim.mf) || Number(selectedModel?.mf) || Number(selectedMake?.baseMF) || 0;
+    const baseAPR = Number(selectedTrim.baseAPR) || Number(selectedTrim.apr) || Number(selectedModel?.baseAPR) || Number(selectedMake?.baseAPR) || 0;
+    const baseRV = Number(selectedTrim.rv36) || Number(selectedTrim.rv) || Number(selectedModel?.rv36) || 0;
+
     return {
       make: selectedMake?.name,
       model: selectedModel?.name,
@@ -81,7 +87,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
       msrp: selectedTrim?.msrp,
       year: 2025, // Default year
       savings: selectedTrim?.msrp * 0.05, // Default 5% savings for standalone calc
-      ...selectedTrim
+      ...selectedTrim,
+      mf: baseMF,
+      baseAPR: baseAPR,
+      rv36: baseRV
     };
   }, [deal, selectedMake, selectedModel, selectedTrim]);
 
@@ -106,19 +115,13 @@ export const Calculator: React.FC<CalculatorProps> = ({
             type: calcType,
             term,
             mileage: mileage.replace('k', '000'),
-            downPayment: down + tradeInEquity,
+            downPaymentCents: down * 100,
+            tradeInEquityCents: tradeInEquity * 100,
             tier,
             zipCode,
             selectedIncentives,
             isFirstTimeBuyer,
-            hasCosigner,
-            rv: currentCar.tiersData?.[tier]?.rv36 !== undefined ? currentCar.tiersData[tier].rv36 : (currentCar.rv36 || currentCar.rv),
-            mf: currentCar.tiersData?.[tier]?.mf !== undefined ? currentCar.tiersData[tier].mf : currentCar.mf,
-            apr: currentCar.tiersData?.[tier]?.baseAPR !== undefined ? currentCar.tiersData[tier].baseAPR : (currentCar.baseAPR || currentCar.apr),
-            leaseCash: currentCar.tiersData?.[tier]?.leaseCash !== undefined ? currentCar.tiersData[tier].leaseCash : (currentCar.leaseCash || 0),
-            usedTiersData: !!currentCar.tiersData?.[tier],
-            msrp: currentCar.msrp,
-            savings: currentCar.savings
+            hasCosigner
           })
         });
         const data = await response.json();
@@ -199,8 +202,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [backendPayment, quoteStatus]);
 
   const totalIncentives = useMemo(() => {
-    if (quoteData?.calculation?.incentivesCents !== undefined) {
-      return quoteData.calculation.incentivesCents / 100;
+    if (quoteData?.totalIncentivesCents !== undefined) {
+      return quoteData.totalIncentivesCents / 100;
     }
     return currentCar?.availableIncentives?.reduce((sum: number, inc: any) => {
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
@@ -217,42 +220,18 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [currentCar]);
 
   const tcoData = useMemo(() => {
-    if (quoteData?.tco) {
-      return {
-        totalCost: quoteData.tco.totalCostCents / 100,
-        monthlyAverage: quoteData.tco.monthlyAverageCents / 100,
-        breakdown: {
-          lease: quoteData.tco.breakdownCents.lease / 100,
-          insurance: quoteData.tco.breakdownCents.insurance / 100,
-          maintenance: quoteData.tco.breakdownCents.maintenance / 100,
-          registration: quoteData.tco.breakdownCents.registration / 100
-        }
-      };
-    }
-    if (!calculatedPayment || isNaN(calculatedPayment)) return null;
-    const insurancePerMonth = 150;
-    const maintenancePerMonth = 50;
-    const registrationPerYear = 400;
-
-    const totalLeasePayments = calculatedPayment * term;
-    const totalInsurance = insurancePerMonth * term;
-    const totalMaintenance = maintenancePerMonth * term;
-    const totalRegistration = (registrationPerYear / 12) * term;
-    const dueAtSigning = down;
-
-    const totalCost = totalLeasePayments + dueAtSigning + totalInsurance + totalMaintenance + totalRegistration;
-
+    if (!quoteData?.tco) return null;
     return {
-      totalCost,
-      monthlyAverage: totalCost / term,
+      totalCost: quoteData.tco.totalCostCents / 100,
+      monthlyAverage: quoteData.tco.monthlyAverageCents / 100,
       breakdown: {
-        lease: totalLeasePayments + dueAtSigning,
-        insurance: totalInsurance,
-        maintenance: totalMaintenance,
-        registration: totalRegistration
+        lease: quoteData.tco.breakdownCents.lease / 100,
+        insurance: quoteData.tco.breakdownCents.insurance / 100,
+        maintenance: quoteData.tco.breakdownCents.maintenance / 100,
+        registration: quoteData.tco.breakdownCents.registration / 100
       }
     };
-  }, [calculatedPayment, term, down, quoteData]);
+  }, [quoteData]);
 
   return (
     <>
@@ -260,7 +239,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
       {/* Header with Urgency Timer */}
       <div className="p-4 border-b border-[var(--b2)] bg-[var(--w)]/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="space-y-1 w-full">
-          {!isStandalone && (
+          {!isStandalone ? (
             <div className="flex items-center gap-3 mb-1">
               <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
                 <Eye size={12} className="text-[var(--lime)]" />
@@ -270,6 +249,17 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
                 <Zap size={12} className="text-orange-500" />
                 <span>{translations[language].dealPage.highDemand}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+                <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                <span className="text-orange-500">{language === 'ru' ? 'Ограниченный сток' : 'Limited Inventory'}</span>
+              </div>
+              <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
+              <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+                <span>{language === 'ru' ? 'Доступно 3-5 авто в сети' : '3-5 vehicles available in network'}</span>
               </div>
             </div>
           )}
@@ -345,8 +335,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   }}
                   className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
                 >
-                  {carDb?.makes?.map((m: any) => (
-                    <option key={m.name} value={m.name}>{m.name}</option>
+                  {carDb?.makes?.map((m: any, idx: number) => (
+                    <option key={`${m.name}-${idx}`} value={m.name}>{m.name}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
@@ -367,8 +357,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   }}
                   className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
                 >
-                  {selectedMake?.models?.map((m: any) => (
-                    <option key={m.name} value={m.name}>{m.name}</option>
+                  {selectedMake?.models?.map((m: any, idx: number) => (
+                    <option key={`${m.name}-${idx}`} value={m.name}>{m.name}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
@@ -386,8 +376,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   }}
                   className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
                 >
-                  {selectedModel?.trims?.map((tr: any) => (
-                    <option key={tr.name} value={tr.name}>{tr.name} ({fmt(tr.msrp)})</option>
+                  {selectedModel?.trims?.map((tr: any, idx: number) => (
+                    <option key={`${tr.name}-${idx}`} value={tr.name}>{tr.name} ({fmt(tr.msrp)})</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
@@ -790,7 +780,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
                   <span className="text-blue-400">{t.hunterLeaseDiscount}</span>
                   <span className="font-mono text-blue-400">
-                    -{fmt(quoteData?.calculation?.dealerDiscountCents ? Math.abs(quoteData.calculation.dealerDiscountCents) / 100 : (currentCar?.savings || 0))}
+                    -{fmt(quoteData?.dealerDiscountCents !== undefined ? Math.abs(quoteData.dealerDiscountCents) / 100 : (currentCar?.savings || 0))}
                   </span>
                 </div>
 
@@ -818,7 +808,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <div className="pt-2 flex justify-between items-center border-t border-[var(--b2)]">
                 <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
                 <span className="text-lg font-display text-[var(--lime)]">
-                  {fmt(quoteData?.calculation?.sellingPriceCents ? quoteData.calculation.sellingPriceCents / 100 : ((Number(currentCar?.msrp) || 0) - (currentCar?.savings || 0) - (showIncentives ? totalIncentives : 0)))}
+                  {fmt(quoteData?.sellingPriceCents !== undefined ? quoteData.sellingPriceCents / 100 : ((Number(currentCar?.msrp) || 0) - (currentCar?.savings || 0) - (showIncentives ? totalIncentives : 0)))}
                 </span>
               </div>
             </div>
@@ -920,11 +910,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   <Zap size={20} className="text-[var(--lime)]" />
                   <span className="text-xl font-display uppercase tracking-widest">{t.lockIn}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded bg-[var(--s2)] flex items-center justify-center border border-[var(--b2)]">
-                    <ShieldCheck size={16} className="text-[var(--lime)]" />
-                  </div>
-                </div>
               </div>
 
               <div className="text-right">
@@ -990,6 +975,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           ...currentCar,
           term,
           down,
+          tradeInEquity,
           type: calcType,
           rv: currentCar?.rv36 || currentCar?.rv || 0.55,
           mf: currentCar?.mf || 0.002,
@@ -997,33 +983,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           rebates: totalIncentives
         } : null}
         mileage={mileage}
-        quoteResult={{ 
-          calculation: { 
-            msrpCents: (currentCar?.msrp || 0) * 100, 
-            sellingPriceCents: ((currentCar?.msrp || 0) - (currentCar?.savings || 0)) * 100, 
-            residualValueCents: (currentCar?.msrp || 0) * (parseFloat(String(currentCar?.rv36 || currentCar?.rv || 0.55).replace('%', '')) > 1 ? parseFloat(String(currentCar?.rv36 || currentCar?.rv || 0.55).replace('%', '')) / 100 : parseFloat(String(currentCar?.rv36 || currentCar?.rv || 0.55).replace('%', ''))) * 100, 
-            dealerDiscountCents: -(currentCar?.savings || 0) * 100, 
-            incentivesCents: (totalIncentives + (calcType === 'lease' ? (currentCar?.tiersData?.[tier]?.leaseCash !== undefined ? currentCar.tiersData[tier].leaseCash : (currentCar?.leaseCash || 0)) : 0)) * 100, 
-            fees: [
-              {name: "Acquisition Fee", amountCents: 65000}, 
-              {name: "Doc Fee", amountCents: 8500}, 
-              {name: "DMV Fee", amountCents: 40000}, 
-              {name: "Platform Fee", amountCents: 59500}
-            ], 
-            monthlyPaymentCents: Math.round(calculatedPayment * 100), 
-            totalDueAtSigningCents: down * 100 
-          }, 
-          metadata: { 
-            debug: { 
-              bankProgram: { 
-                rv: currentCar?.tiersData?.[tier]?.rv36 !== undefined ? currentCar.tiersData[tier].rv36 : (currentCar?.rv36 || currentCar?.rv || 0.55), 
-                mf: currentCar?.tiersData?.[tier]?.mf !== undefined ? currentCar.tiersData[tier].mf : (currentCar?.mf || 0.002), 
-                apr: currentCar?.tiersData?.[tier]?.baseAPR !== undefined ? currentCar.tiersData[tier].baseAPR : (currentCar?.baseAPR || currentCar?.apr || 4.9),
-                leaseCash: currentCar?.tiersData?.[tier]?.leaseCash !== undefined ? currentCar.tiersData[tier].leaseCash : (currentCar?.leaseCash || 0)
-              } 
-            } 
-          } 
-        }}
+        quoteResult={quoteData}
       />
     </>
   );

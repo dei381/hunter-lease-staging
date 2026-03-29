@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Calculator, Car, Building2, Tag, Image as ImageIcon, DollarSign } from 'lucide-react';
+import { getAuthToken } from '../../utils/auth';
+import { toast } from 'react-hot-toast';
+import { safeValidate, LendersResponseSchema, ProgramsResponseSchema, IncentivesResponseSchema } from '../../utils/schemas';
 
 export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean, onClose: () => void, onSave: () => void }) => {
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,10 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
   const [manualMsrp, setManualMsrp] = useState('');
   const [manualSellingPrice, setManualSellingPrice] = useState('');
 
+  const logError = (source: string, payload: any, error: any) => {
+    console.error(`[OfferBuilder Error] Source: ${source}`, { payload, error });
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchData();
@@ -36,7 +43,7 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
   const fetchData = async () => {
     setLoading(true);
     try {
-      const headers = { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` };
+      const headers = { 'Authorization': `Bearer ${await getAuthToken()}` };
       const [carsRes, lendersRes, leaseRes, financeRes, incentivesRes, discountsRes, mediaRes] = await Promise.all([
         fetch('/api/admin/cars', { headers }),
         fetch('/api/admin/lenders', { headers }),
@@ -47,15 +54,60 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
         fetch('/api/car-photos') // public endpoint
       ]);
 
-      if (carsRes.ok) setCars(await carsRes.json());
-      if (lendersRes.ok) setLenders(await lendersRes.json());
-      if (leaseRes.ok) setLeasePrograms(await leaseRes.json());
-      if (financeRes.ok) setFinancePrograms(await financeRes.json());
-      if (incentivesRes.ok) setIncentives(await incentivesRes.json());
-      if (discountsRes.ok) setDiscounts(await discountsRes.json());
-      if (mediaRes.ok) setMedia(await mediaRes.json());
+      if (carsRes.ok) {
+        const carDb = await carsRes.json();
+        const flatCars: any[] = [];
+        if (carDb && Array.isArray(carDb.makes)) {
+          carDb.makes.forEach((make: any) => {
+            if (Array.isArray(make.models)) {
+              make.models.forEach((model: any) => {
+                if (Array.isArray(model.trims)) {
+                  model.trims.forEach((trim: any) => {
+                    const years = Array.isArray(model.years) ? model.years : [parseInt(model.years) || new Date().getFullYear()];
+                    years.forEach((year: number) => {
+                      flatCars.push({
+                        id: `${make.id}-${model.id}-${trim.id || trim.name?.toLowerCase().replace(/\s+/g, '-') || 'unknown'}-${year}`,
+                        make: make.name,
+                        model: model.name,
+                        trim: trim.name || 'Unknown',
+                        year: year,
+                        msrpCents: trim.msrp != null ? trim.msrp * 100 : null
+                      });
+                    });
+                  });
+                }
+              });
+            }
+          });
+        }
+        setCars(flatCars);
+      }
+      if (lendersRes.ok) {
+        const data = await lendersRes.json();
+        setLenders(safeValidate(LendersResponseSchema, data, [], 'fetchLenders'));
+      }
+      if (leaseRes.ok) {
+        const data = await leaseRes.json();
+        setLeasePrograms(safeValidate(ProgramsResponseSchema, data, [], 'fetchLeasePrograms'));
+      }
+      if (financeRes.ok) {
+        const data = await financeRes.json();
+        setFinancePrograms(safeValidate(ProgramsResponseSchema, data, [], 'fetchFinancePrograms'));
+      }
+      if (incentivesRes.ok) {
+        const data = await incentivesRes.json();
+        setIncentives(safeValidate(IncentivesResponseSchema, data, [], 'fetchIncentives'));
+      }
+      if (discountsRes.ok) {
+        const data = await discountsRes.json();
+        setDiscounts(Array.isArray(data) ? data : []);
+      }
+      if (mediaRes.ok) {
+        const data = await mediaRes.json();
+        setMedia(Array.isArray(data) ? data : []);
+      }
     } catch (error) {
-      console.error('Failed to fetch builder data:', error);
+      logError('Fetch Builder Data', null, error);
     } finally {
       setLoading(false);
     }
@@ -90,32 +142,39 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
   const selectedIncentives = availableIncentives.filter(i => selectedIncentiveIds.includes(i.id));
 
   // Calculations
-  const msrp = manualMsrp ? parseFloat(manualMsrp) : (selectedCar ? selectedCar.msrpCents / 100 : 0);
+  const msrp = manualMsrp ? parseFloat(manualMsrp) : (selectedCar && selectedCar.msrpCents != null ? selectedCar.msrpCents / 100 : null);
   const totalIncentives = selectedIncentives.reduce((sum, i) => sum + (i.amountCents / 100), 0);
-  const dealerDiscount = selectedDiscount ? selectedDiscount.amount : 0;
+  const dealerDiscount = selectedDiscount?.amount ?? null;
   
-  const sellingPrice = manualSellingPrice ? parseFloat(manualSellingPrice) : Math.max(0, msrp - dealerDiscount - totalIncentives);
+  const sellingPrice = manualSellingPrice ? parseFloat(manualSellingPrice) : (msrp !== null && dealerDiscount !== null ? Math.max(0, msrp - dealerDiscount - totalIncentives) : null);
 
-  let monthlyPayment = 0;
-  if (selectedProgram && sellingPrice > 0) {
+  let monthlyPayment: number | null = null;
+  
+  // Input validation: term cannot be 0, MSRP, selling price, rate/MF must be present
+  const isTermValid = selectedProgram && selectedProgram.term > 0;
+  const isRateValid = selectedProgram && (dealType === 'lease' ? selectedProgram.buyRateMf !== null && selectedProgram.residualPercentage !== null : selectedProgram.buyRateApr !== null);
+  const canCalculate = isTermValid && isRateValid && msrp !== null && sellingPrice !== null;
+
+  if (canCalculate) {
     if (dealType === 'lease') {
-      const rvAmount = msrp * (selectedProgram.residualPercentage / 100);
-      const depreciation = (sellingPrice - rvAmount) / selectedProgram.term;
-      const rentCharge = (sellingPrice + rvAmount) * selectedProgram.buyRateMf;
+      const rvAmount = msrp! * (selectedProgram!.residualPercentage / 100);
+      const depreciation = (sellingPrice! - rvAmount) / selectedProgram!.term;
+      const rentCharge = (sellingPrice! + rvAmount) * selectedProgram!.buyRateMf;
       monthlyPayment = depreciation + rentCharge;
     } else {
-      const r = (selectedProgram.buyRateApr / 100) / 12;
-      const n = selectedProgram.term;
+      const r = (selectedProgram!.buyRateApr / 100) / 12;
+      const n = selectedProgram!.term;
       if (r === 0) {
-        monthlyPayment = sellingPrice / n;
+        monthlyPayment = sellingPrice! / n;
       } else {
-        monthlyPayment = sellingPrice * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+        monthlyPayment = sellingPrice! * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
       }
     }
   }
 
   const handleSave = async () => {
-    if (!selectedCar) return alert('Please select a vehicle');
+    if (!selectedCar) return toast.error('Please select a vehicle');
+    if (!canCalculate) return toast.error('Missing required data for calculation (MSRP, Selling Price, Term, or Rate)');
     
     setSaving(true);
     try {
@@ -126,7 +185,7 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
         year: selectedCar.year,
         msrp: { value: msrp, provenance_status: 'manual' },
         sellingPrice: { value: sellingPrice, provenance_status: 'manual' },
-        monthlyPayment: { value: Math.round(monthlyPayment), provenance_status: 'manual' },
+        monthlyPayment: { value: Math.round(monthlyPayment!), provenance_status: 'manual' },
         term: { value: selectedProgram?.term || 36, provenance_status: 'manual' },
         mileage: { value: selectedProgram?.mileage || 10000, provenance_status: 'manual' },
         downPayment: { value: 0, provenance_status: 'manual' },
@@ -138,29 +197,35 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
         image: selectedMediaId ? media.find(m => m.id === selectedMediaId)?.url : undefined
       };
 
+      const payload = {
+        financialData,
+        reviewStatus: 'APPROVED',
+        publishStatus: 'PUBLISHED',
+        lenderId: selectedLenderId || undefined,
+        isFirstTimeBuyerEligible: false
+      };
+
       const response = await fetch('/api/admin/deals', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
-        body: JSON.stringify({
-          financialData,
-          reviewStatus: 'APPROVED',
-          publishStatus: 'PUBLISHED',
-          lenderId: selectedLenderId || undefined
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
+        toast.success('Deal saved successfully');
         onSave();
         onClose();
       } else {
-        alert('Failed to save deal');
+        const errData = await response.json().catch(() => ({}));
+        logError('Save Deal API', payload, errData);
+        toast.error('Failed to save deal');
       }
     } catch (error) {
-      console.error('Error saving deal:', error);
-      alert('Network error while saving deal');
+      logError('Save Deal Network', null, error);
+      toast.error('Network error while saving deal');
     } finally {
       setSaving(false);
     }
@@ -223,7 +288,7 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
                         type="number" 
                         value={manualMsrp} 
                         onChange={e => setManualMsrp(e.target.value)}
-                        placeholder={selectedCar ? (selectedCar.msrpCents / 100).toString() : '0'}
+                        placeholder={selectedCar && selectedCar.msrpCents != null ? (selectedCar.msrpCents / 100).toString() : '0'}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                       />
                     </div>
@@ -371,11 +436,11 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-slate-500">MSRP</span>
-                    <span className="font-medium">${msrp.toLocaleString()}</span>
+                    <span className="font-medium">{msrp !== null ? `$${msrp.toLocaleString()}` : 'данные недоступны'}</span>
                   </div>
                   <div className="flex justify-between text-red-600">
                     <span>Dealer Discount</span>
-                    <span>-${dealerDiscount.toLocaleString()}</span>
+                    <span>{dealerDiscount !== null ? `-$${dealerDiscount.toLocaleString()}` : 'данные недоступны'}</span>
                   </div>
                   <div className="flex justify-between text-red-600">
                     <span>OEM Incentives</span>
@@ -383,7 +448,7 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
                     <span>Selling Price</span>
-                    <span>${sellingPrice.toLocaleString()}</span>
+                    <span>{sellingPrice !== null ? `$${sellingPrice.toLocaleString()}` : 'данные недоступны'}</span>
                   </div>
                   
                   {selectedProgram && (
@@ -403,18 +468,21 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500">Residual Value</span>
-                            <span className="font-medium">{selectedProgram.residualPercentage}% (${(msrp * (selectedProgram.residualPercentage / 100)).toLocaleString()})</span>
+                            <span className="font-medium">
+                              {selectedProgram.residualPercentage !== null ? `${selectedProgram.residualPercentage}%` : 'данные недоступны'}
+                              {selectedProgram.residualPercentage !== null && msrp !== null ? ` ($${(msrp * (selectedProgram.residualPercentage / 100)).toLocaleString()})` : ''}
+                            </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500">Money Factor</span>
-                            <span className="font-medium">{selectedProgram.buyRateMf}</span>
+                            <span className="font-medium">{selectedProgram.buyRateMf !== null ? selectedProgram.buyRateMf : 'данные недоступны'}</span>
                           </div>
                         </>
                       )}
                       {dealType === 'finance' && (
                         <div className="flex justify-between">
                           <span className="text-slate-500">APR</span>
-                          <span className="font-medium">{selectedProgram.buyRateApr}%</span>
+                          <span className="font-medium">{selectedProgram.buyRateApr !== null ? `${selectedProgram.buyRateApr}%` : 'данные недоступны'}</span>
                         </div>
                       )}
                     </>
@@ -424,20 +492,23 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
                     <div className="flex justify-between items-end">
                       <span className="text-slate-700 font-bold">Est. Monthly Payment</span>
                       <span className="text-3xl font-black text-indigo-600">
-                        ${monthlyPayment > 0 ? monthlyPayment.toFixed(0) : '---'}
+                        {monthlyPayment !== null && monthlyPayment > 0 && isFinite(monthlyPayment) ? `$${monthlyPayment.toFixed(0)}` : 'данные недоступны'}
                       </span>
                     </div>
                     {!selectedProgram && (
                       <p className="text-xs text-amber-600 mt-2 text-right">Select a program to calculate</p>
+                    )}
+                    {selectedProgram && !canCalculate && (
+                      <p className="text-xs text-red-600 mt-2 text-right">Missing required data for calculation</p>
                     )}
                   </div>
                 </div>
 
                 <button
                   onClick={handleSave}
-                  disabled={saving || !selectedCar || !selectedProgram}
+                  disabled={saving || !selectedCar || !selectedProgram || !canCalculate}
                   className={`w-full mt-8 flex items-center justify-center space-x-2 py-3 rounded-xl font-bold transition-all ${
-                    !selectedCar || !selectedProgram
+                    !selectedCar || !selectedProgram || !canCalculate
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                       : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-lg hover:-translate-y-0.5'
                   }`}

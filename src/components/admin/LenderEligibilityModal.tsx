@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, AlertTriangle } from 'lucide-react';
+import { getAuthToken } from '../../utils/auth';
+import { toast } from 'react-hot-toast';
 
 export const LenderEligibilityModal = ({ 
   lender, 
@@ -44,7 +46,7 @@ export const LenderEligibilityModal = ({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: JSON.stringify({
           name: lender.name,
@@ -59,11 +61,11 @@ export const LenderEligibilityModal = ({
         onClose();
       } else {
         const data = await response.json();
-        alert(`Failed to save rules: ${data.error || 'Unknown error'}`);
+        toast.error(`Failed to save rules: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to save rules:', error);
-      alert('Network error while saving rules.');
+      toast.error('Network error while saving rules.');
     } finally {
       setSaving(false);
     }
