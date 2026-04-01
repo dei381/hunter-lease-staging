@@ -1,0 +1,411 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model VehicleCache {
+  id             String          @id @default(uuid())
+  vin            String?         @unique
+  make           String
+  model          String
+  trim           String
+  year           Int
+  msrpCents      Int
+  bodyStyle      String?
+  features       String
+  isActive       Boolean         @default(true)
+  updatedAt      DateTime        @updatedAt
+  quoteSnapshots QuoteSnapshot[]
+
+  @@index([make, model, year, trim, isActive])
+}
+
+model RegionalTaxFeeCache {
+  id                   String   @id @default(uuid())
+  zipCode              String   @unique
+  state                String
+  county               String?
+  salesTaxRate         Decimal
+  estimatedDmvFeeCents Int
+  updatedAt            DateTime @updatedAt
+
+  @@index([zipCode])
+}
+
+model GlobalEstimationPolicy {
+  id                   String   @id
+  fallbackSalesTaxRate Decimal
+  fallbackDmvFeeCents  Int
+  fallbackDocFeeCents  Int
+  updatedAt            DateTime @updatedAt
+}
+
+model CatalogDefaultScenario {
+  id                   String   @id
+  quoteType            String
+  term                 Int
+  mileage              Int?
+  dueAtSigningCents    Int?
+  downPaymentCents     Int?
+  uxTier               String
+  assumeFirstTimeBuyer Boolean  @default(false)
+  updatedAt            DateTime @updatedAt
+}
+
+
+
+model Lender {
+  id                    String                      @id @default(uuid())
+  name                  String                      @unique
+  isCaptive             Boolean                     @default(false)
+  lenderType            String                      @default("NATIONAL_BANK")
+  priority              Int                         @default(0)
+  isActive              Boolean                     @default(true)
+  createdAt             DateTime                    @default(now())
+  financePrograms       FinanceProgram[]
+  leasePrograms         LeaseProgram[]
+  bankPrograms          BankProgram[]
+  eligibilityRules      LenderEligibilityRule[]
+  feePolicies           LenderFeePolicy[]
+  programAvailabilities LenderProgramAvailability[]
+  tierMappings          LenderTierMapping[]
+  quoteSnapshots        QuoteSnapshot[]
+  dealRecords           DealRecord[]
+  quotes                Quote[]
+
+  @@index([isActive, priority])
+}
+
+model LenderProgramAvailability {
+  id                String @id @default(uuid())
+  lenderId          String
+  make              String
+  dealApplicability String
+  lender            Lender @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderId, make, dealApplicability])
+}
+
+model LenderEligibilityRule {
+  id                        String  @id @default(uuid())
+  lenderId                  String
+  make                      String
+  dealApplicability         String
+  allowFirstTimeBuyer       Boolean @default(false)
+  allowWithCoSigner         Boolean @default(true)
+  requiresEstablishedCredit Boolean @default(true)
+  minUxTierRequired         String
+  lender                    Lender  @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderId, make, dealApplicability])
+}
+
+model LenderTierMapping {
+  id                 String  @id @default(uuid())
+  lenderId           String
+  uxTier             String
+  internalLenderTier String
+  mfMarkup           Decimal
+  aprMarkup          Decimal
+  lender             Lender  @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderId, uxTier])
+}
+
+model LenderFeePolicy {
+  id                  String               @id @default(uuid())
+  lenderId            String
+  quoteType           String
+  acquisitionFeeCents Int
+  docFeeLimitCents    Int
+  maxLtvPercentage    Decimal
+  rollabilityRules    FeeRollabilityRule[]
+  lender              Lender               @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderId, quoteType])
+}
+
+model FeeRollabilityRule {
+  id                String          @id @default(uuid())
+  lenderFeePolicyId String
+  tierScope         String          @default("ALL")
+  canRollAcqFee     Boolean         @default(true)
+  canRollDocFee     Boolean         @default(false)
+  canRollTaxes      Boolean         @default(false)
+  feePolicy         LenderFeePolicy @relation(fields: [lenderFeePolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderFeePolicyId, tierScope])
+}
+
+model LeaseProgram {
+  id                 String    @id @default(uuid())
+  lenderId           String
+  make               String
+  model              String
+  trim               String
+  year               Int
+  term               Int
+  mileage            Int
+  internalLenderTier String
+  buyRateMf          Decimal
+  residualPercentage Decimal
+  isActive           Boolean   @default(true)
+  effectiveFrom      DateTime?
+  effectiveTo        DateTime?
+  lender             Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderId, make, model, trim, year, term, mileage, internalLenderTier])
+  @@index([make, model, year, trim, isActive])
+}
+
+model FinanceProgram {
+  id                 String    @id @default(uuid())
+  lenderId           String
+  make               String
+  model              String
+  trim               String
+  year               Int
+  term               Int
+  internalLenderTier String
+  buyRateApr         Decimal
+  isActive           Boolean   @default(true)
+  effectiveFrom      DateTime?
+  effectiveTo        DateTime?
+  lender             Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+
+  @@unique([lenderId, make, model, trim, year, term, internalLenderTier])
+  @@index([make, model, year, trim, isActive])
+}
+
+model OemIncentiveProgram {
+  id                String    @id @default(uuid())
+  seedKey           String?   @unique
+  name              String
+  amountCents       Int
+  type              String
+  dealApplicability String
+  isTaxableCa       Boolean   @default(true)
+  exclusiveGroupId  String?
+  make              String
+  model             String?
+  isActive          Boolean   @default(true)
+  effectiveFrom     DateTime?
+  effectiveTo       DateTime?
+
+  @@index([make, model, isActive])
+}
+
+model HunterDiscountPolicy {
+  id              String   @id @default(uuid())
+  seedKey         String?  @unique
+  name            String
+  discountType    String
+  flatAmountCents Int?
+  percentageMsrp  Decimal?
+  scopeLevel      String
+  targetValue     String?
+  isActive        Boolean  @default(true)
+}
+
+model QuoteSnapshot {
+  id                       String       @id @default(uuid())
+  vehicleId                String
+  surface                  String
+  quoteType                String
+  quoteStatus              String
+  confidenceLevel          String
+  usedFallbackFlags        String       @default("[]")
+  manualReviewFlags        String       @default("[]")
+  isDefaultCatalogScenario Boolean      @default(false)
+  monthlyPaymentCents      Int
+  effectiveDasOrDownCents  Int
+  totalSavingsCents        Int
+  lenderId                 String?
+  auditPayload             String
+  createdAt                DateTime     @default(now())
+  lender                   Lender?      @relation(fields: [lenderId], references: [id])
+  vehicle                  VehicleCache @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([isDefaultCatalogScenario, vehicleId, quoteType])
+  @@index([vehicleId, surface, quoteType, quoteStatus])
+  @@index([surface, monthlyPaymentCents, effectiveDasOrDownCents])
+  @@index([createdAt])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  password  String?  @default("temporary-password")
+  role      String   @default("user")
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+}
+
+model Lead {
+  id               String   @id @default(uuid())
+  email            String?
+  phone            String?
+  name             String?
+  clientName       String?
+  clientPhone      String?
+  clientEmail      String?
+  source           String?
+  status           String   @default("new")
+  dealersSent      Int      @default(0)
+  dealersAccepted  Int      @default(0)
+  acceptedBy       String?
+  carMake          String?
+  carModel         String?
+  carYear          Int?
+  carTrim          String?
+  carMsrp          Int?
+  calcType         String?
+  calcPayment      Int?
+  calcDown         Int?
+  calcTier         String?
+  payMethod        String?
+  paymentName      String?
+  isFirstTimeBuyer Boolean  @default(false)
+  hasTradeIn       Boolean  @default(false)
+  tradeInMake      String?
+  tradeInModel     String?
+  tradeInYear      Int?
+  tradeInMileage   Int?
+  tradeInVin       String?
+  tradeInHasLoan   Boolean  @default(false)
+  tradeInPayoff    Int?
+  creditApp        String?
+  userId           String?
+  payload          String?
+  createdAt        DateTime @default(now())
+}
+
+model SiteSettings {
+  id        String   @id @default("default")
+  key       String?  @unique @default(uuid())
+  value     String?
+  data      String?
+  updatedAt DateTime @updatedAt
+}
+
+model DealRecord {
+  id                       String   @id @default(uuid())
+  type                     String   @default("legacy")
+  ingestionId              String?  @unique
+  publishStatus            String   @default("draft")
+  reviewStatus             String   @default("pending")
+  financialData            String?
+  programKeys              String?
+  eligibility              String?
+  isFirstTimeBuyerEligible Boolean? @default(false)
+  lenderId                 String?
+  lender                   Lender?  @relation(fields: [lenderId], references: [id])
+  payload                  String   @default("{}")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @default(now()) @updatedAt
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  clientName String?
+  carName    String?
+  location   String?
+  imageUrl   String?
+  videoUrl   String?
+  savings    String?
+  rating     Int
+  comment    String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  name      String?
+  email     String?
+  message   String?
+  content   String?
+  status    String   @default("new")
+  createdAt DateTime @default(now())
+}
+
+model ProgramBatch {
+  id               String        @id @default(uuid())
+  status           String        @default("DRAFT")
+  isValid          Boolean       @default(false)
+  validationErrors String?
+  importedAt       DateTime      @default(now())
+  publishedAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  programs         BankProgram[]
+  quotes           Quote[]
+}
+
+model BankProgram {
+  id          String       @id @default(uuid())
+  batchId     String
+  lenderId    String?
+  lender      Lender?      @relation(fields: [lenderId], references: [id])
+  programType String
+  make        String
+  model       String
+  trim        String
+  year        Int
+  term        Int
+  mileage     Int?
+  rv          Float?
+  mf          Float?
+  apr         Float?
+  rebates     Int          @default(0)
+  batch       ProgramBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, lenderId, programType, make, model, year, trim, term, mileage])
+}
+
+model DealerAdjustment {
+  id        String    @id @default(uuid())
+  make      String?
+  model     String?
+  trim      String?
+  amount    Int
+  isActive  Boolean   @default(true)
+  startsAt  DateTime  @default(now())
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([make, model, isActive, startsAt, endsAt])
+}
+
+model Quote {
+  id               String        @id @default(uuid())
+  userId           String?
+  leadId           String?
+  lenderId         String?
+  lender           Lender?       @relation(fields: [lenderId], references: [id])
+  programBatchId   String?
+  programType      String
+  make             String
+  model            String
+  trim             String
+  year             Int
+  term             Int
+  mileage          Int?
+  msrp             Int
+  sellingPrice     Int
+  downPayment      Int
+  mf               Float?
+  apr              Float?
+  residual         Float?
+  rebates          Int           @default(0)
+  dealerAdjustment Int           @default(0)
+  finalPayment     Int
+  createdAt        DateTime      @default(now())
+  batch            ProgramBatch? @relation(fields: [programBatchId], references: [id])
+}

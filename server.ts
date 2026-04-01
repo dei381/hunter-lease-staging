@@ -65,6 +65,8 @@ import { DealEngineFacade } from "./server/services/engine/DealEngineFacade";
 import { PureMathEngine } from "./server/services/engine/PureMathEngine";
 import { EligibilityEngine } from "./server/services/EligibilityEngine";
 import { MarketcheckSyncService } from "./server/services/MarketcheckSyncService";
+import { StripeService } from "./server/services/StripeService";
+import { CreditService } from "./server/services/CreditService";
 
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
@@ -3930,6 +3932,353 @@ You must return the response as a JSON array of objects. Each object must have t
     } catch (error) {
       console.error("Error serving dynamic meta tags for deal:", error);
       next();
+    }
+  });
+
+  // ============================================
+  // STRIPE PAYMENT ROUTES
+  // ============================================
+
+  // Stripe webhook (must be before express.json() — needs raw body)
+  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    try {
+      const sig = req.headers['stripe-signature'] as string;
+      const result = await StripeService.handleWebhook(req.body, sig);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Stripe webhook error:', error.message);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Create checkout session for $95 deposit
+  app.post('/api/payments/create-session', async (req, res) => {
+    try {
+      const { leadId, userId, quoteId, customerEmail, vehicleDescription } = req.body;
+      if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+
+      const result = await StripeService.createCheckoutSession({
+        leadId, userId, quoteId, customerEmail, vehicleDescription
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Create checkout session error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get payment status for a lead
+  app.get('/api/payments/lead/:leadId', async (req, res) => {
+    try {
+      const payment = await StripeService.getPaymentByLead(req.params.leadId);
+      res.json(payment || { status: 'none' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: refund a payment
+  app.post('/api/admin/payments/:id/refund', adminAuth, async (req, res) => {
+    try {
+      const result = await StripeService.refundPayment(req.params.id, req.body.reason);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Refund error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: list all payments
+  app.get('/api/admin/payments', adminAuth, async (req, res) => {
+    try {
+      const payments = await prisma.payment.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: { lead: { select: { id: true, name: true, clientName: true, carMake: true, carModel: true } } }
+      });
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================
+  // 700CREDIT ROUTES
+  // ============================================
+
+  // Record credit consent
+  app.post('/api/credit/consent', async (req, res) => {
+    try {
+      const { leadId, userId } = req.body;
+      if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+
+      const creditCheck = await CreditService.recordConsent(leadId, userId);
+      res.json(creditCheck);
+    } catch (error: any) {
+      console.error('Credit consent error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Execute soft pull
+  app.post('/api/credit/soft-pull', async (req, res) => {
+    try {
+      const { creditCheckId, applicant } = req.body;
+      if (!creditCheckId || !applicant) {
+        return res.status(400).json({ error: 'creditCheckId and applicant data are required' });
+      }
+
+      const result = await CreditService.executeSoftPull(creditCheckId, applicant);
+      // Return obfuscated summary to client (no raw score)
+      res.json({
+        creditBand: result.creditBand,
+        scoreRange: result.scoreRange,
+        status: 'completed',
+      });
+    } catch (error: any) {
+      console.error('Soft pull error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Dealer view: get obfuscated credit summary
+  app.get('/api/credit/summary/:leadId', generalAdminAuth, async (req, res) => {
+    try {
+      const summary = await CreditService.getDealerSummary(req.params.leadId);
+      res.json(summary || { status: 'not_checked' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin view: get full credit details
+  app.get('/api/admin/credit/:id', adminAuth, async (req, res) => {
+    try {
+      const details = await CreditService.getFullDetails(req.params.id);
+      res.json(details);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: list all credit checks
+  app.get('/api/admin/credit-checks', adminAuth, async (req, res) => {
+    try {
+      const checks = await prisma.creditCheck.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: { lead: { select: { id: true, name: true, clientName: true } } }
+      });
+      res.json(checks);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================
+  // DEALER ASSIGNMENT ROUTES
+  // ============================================
+
+  // Assign lead to dealer
+  app.post('/api/admin/dealer-assignments', adminAuth, async (req, res) => {
+    try {
+      const { leadId, dealerPartnerId, staffId } = req.body;
+      if (!leadId || !dealerPartnerId) {
+        return res.status(400).json({ error: 'leadId and dealerPartnerId are required' });
+      }
+
+      const dealer = await prisma.dealerPartner.findUnique({ where: { id: dealerPartnerId } });
+      if (!dealer) return res.status(404).json({ error: 'Dealer not found' });
+
+      const assignment = await prisma.dealerAssignment.create({
+        data: {
+          leadId,
+          dealerPartnerId,
+          staffId: staffId || null,
+          status: 'pending',
+          slaDeadline: new Date(Date.now() + (dealer.slaHours || 24) * 60 * 60 * 1000),
+        },
+      });
+
+      // Notify dealer
+      if (dealer.email) {
+        const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+        if (lead) {
+          await NotificationService.notifyDealerNewLead(
+            dealer.email,
+            dealer.phone || '',
+            { carYear: lead.carYear, carMake: lead.carMake, carModel: lead.carModel, carMsrp: lead.carMsrp, calcPayment: lead.calcPayment }
+          );
+        }
+      }
+
+      // Update lead counters
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: { dealersSent: { increment: 1 } },
+      });
+
+      res.json(assignment);
+    } catch (error: any) {
+      console.error('Dealer assignment error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Dealer accepts/rejects assignment
+  app.put('/api/dealer-assignments/:id/respond', generalAdminAuth, async (req, res) => {
+    try {
+      const { action, comment, counterOffer } = req.body;
+      if (!['accept', 'reject', 'counter'].includes(action)) {
+        return res.status(400).json({ error: 'action must be accept, reject, or counter' });
+      }
+
+      const now = new Date();
+      const updateData: any = { comment: comment || null };
+
+      if (action === 'accept') {
+        updateData.status = 'accepted';
+        updateData.acceptedAt = now;
+      } else if (action === 'reject') {
+        updateData.status = 'rejected';
+        updateData.rejectedAt = now;
+      } else if (action === 'counter') {
+        updateData.status = 'countered';
+        updateData.counterOffer = counterOffer || null;
+      }
+
+      const assignment = await prisma.dealerAssignment.update({
+        where: { id: req.params.id },
+        data: updateData,
+        include: { lead: true, dealerPartner: true },
+      });
+
+      // Notify client if accepted
+      if (action === 'accept' && assignment.lead) {
+        const clientEmail = assignment.lead.clientEmail || assignment.lead.email;
+        const clientPhone = assignment.lead.clientPhone || assignment.lead.phone;
+        const vehicle = `${assignment.lead.carYear} ${assignment.lead.carMake} ${assignment.lead.carModel}`;
+
+        if (clientEmail) {
+          await NotificationService.notifyDealerAccepted(
+            clientEmail, clientPhone || '', assignment.dealerPartner.name, vehicle
+          );
+        }
+
+        await prisma.lead.update({
+          where: { id: assignment.leadId },
+          data: {
+            dealersAccepted: { increment: 1 },
+            acceptedBy: assignment.dealerPartner.name,
+            status: 'accepted',
+          },
+        });
+      }
+
+      res.json(assignment);
+    } catch (error: any) {
+      console.error('Assignment response error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get assignments for a lead
+  app.get('/api/admin/dealer-assignments/lead/:leadId', adminAuth, async (req, res) => {
+    try {
+      const assignments = await prisma.dealerAssignment.findMany({
+        where: { leadId: req.params.leadId },
+        include: { dealerPartner: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      res.json(assignments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get assignments for a dealer (dealer portal)
+  app.get('/api/dealer/assignments', generalAdminAuth, async (req, res) => {
+    try {
+      const user = (req as any).user?.dbUser;
+      if (!user?.dealerPartnerId) {
+        return res.status(403).json({ error: 'Not associated with a dealer' });
+      }
+
+      const assignments = await prisma.dealerAssignment.findMany({
+        where: { dealerPartnerId: user.dealerPartnerId },
+        include: {
+          lead: {
+            select: {
+              id: true, name: true, clientName: true, carMake: true, carModel: true,
+              carYear: true, carTrim: true, carMsrp: true, calcPayment: true, calcType: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      res.json(assignments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================
+  // NOTIFICATION LOG ROUTES (admin)
+  // ============================================
+
+  app.get('/api/admin/notification-logs', adminAuth, async (req, res) => {
+    try {
+      const logs = await prisma.notificationLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================
+  // NOTIFICATION TEMPLATES (admin CRUD)
+  // ============================================
+
+  app.get('/api/admin/notification-templates', adminAuth, async (req, res) => {
+    try {
+      const templates = await prisma.notificationTemplate.findMany({ orderBy: { key: 'asc' } });
+      res.json(templates);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/admin/notification-templates', adminAuth, async (req, res) => {
+    try {
+      const { key, channel, subject, body } = req.body;
+      const template = await prisma.notificationTemplate.create({
+        data: { key, channel, subject, body }
+      });
+      res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put('/api/admin/notification-templates/:id', adminAuth, async (req, res) => {
+    try {
+      const template = await prisma.notificationTemplate.update({
+        where: { id: req.params.id },
+        data: req.body,
+      });
+      res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/admin/notification-templates/:id', adminAuth, async (req, res) => {
+    try {
+      await prisma.notificationTemplate.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 

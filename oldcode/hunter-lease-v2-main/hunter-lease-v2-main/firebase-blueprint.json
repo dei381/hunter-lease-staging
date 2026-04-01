@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application, either a customer or an admin.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "A customer inquiry or deal lock request.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Associated User UID, if registered" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "payMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "contacted", "approved", "delivered", "closed"] },
+        "vehicle": {
+          "type": "object",
+          "properties": {
+            "make": { "type": "string" },
+            "model": { "type": "string" },
+            "year": { "type": "number" },
+            "trim": { "type": "string" },
+            "msrp": { "type": "number" }
+          }
+        },
+        "calc": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["lease", "finance"] },
+            "payment": { "type": "number" },
+            "down": { "type": "number" },
+            "tier": { "type": "string" },
+            "mileage": { "type": "string" }
+          }
+        },
+        "legalConsent": {
+          "type": "object",
+          "properties": {
+            "tcpa": { "type": "boolean" },
+            "terms": { "type": "boolean" }
+          },
+          "required": ["tcpa", "terms"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone", "status", "legalConsent", "createdAt"]
+    },
+    "Deal": {
+      "title": "Deal",
+      "description": "A vehicle deal available in the catalog.",
+      "type": "object",
+      "properties": {
+        "make": { "type": "string" },
+        "model": { "type": "string" },
+        "year": { "type": "number" },
+        "trim": { "type": "string" },
+        "msrp": { "type": "number" },
+        "type": { "type": "string", "enum": ["lease", "finance", "both"] },
+        "leasePay": { "type": "number" },
+        "finPay": { "type": "number" },
+        "image": { "type": "string" },
+        "hot": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["make", "model", "year", "msrp", "createdAt"]
+    },
+    "VehicleListing": {
+      "title": "VehicleListing",
+      "description": "A specific vehicle listing from Marketcheck.",
+      "type": "object",
+      "properties": {
+        "vin": { "type": "string" },
+        "make": { "type": "string" },
+        "model": { "type": "string" },
+        "trim": { "type": "string" },
+        "year": { "type": "number" },
+        "price": { "type": "number" },
+        "msrp": { "type": "number" },
+        "miles": { "type": "number" },
+        "dealerName": { "type": "string" },
+        "dealerCity": { "type": "string" },
+        "dealerState": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "fuelType": { "type": "string" },
+        "engine": { "type": "string" },
+        "drivetrain": { "type": "string" },
+        "transmission": { "type": "string" },
+        "dom": { "type": "number" },
+        "dom180": { "type": "number" },
+        "refPrice": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["vin", "make", "model", "year", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Collection of users."
+    },
+    "leads": {
+      "schema": { "$ref": "#/entities/Lead" },
+      "description": "Collection of leads."
+    },
+    "deals": {
+      "schema": { "$ref": "#/entities/Deal" },
+      "description": "Collection of deals."
+    },
+    "listings": {
+      "schema": { "$ref": "#/entities/VehicleListing" },
+      "description": "Collection of live vehicle listings from Marketcheck."
+    },
+    "siteSettings": {
+      "schema": "object",
+      "description": "Global site configuration."
+    },
+    "carDatabase": {
+      "schema": "object",
+      "description": "The entire car database (makes, models, trims, tiers)."
+    },
+    "carPhotos": {
+      "schema": "array",
+      "description": "Metadata for uploaded car photos."
+    },
+    "visits": {
+      "schema": "object",
+      "description": "Analytics data for site visits."
+    }
+  }
+}
