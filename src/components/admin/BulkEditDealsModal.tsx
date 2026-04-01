@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
 import { getAuthToken } from '../../utils/auth';
 import { toast } from 'react-hot-toast';
+import { clearClientCache } from '../../utils/fetchWithCache';
 
 interface BulkEditDealsModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDealIds: string[];
   onSuccess: () => void;
+  lenders?: any[];
 }
 
-export function BulkEditDealsModal({ isOpen, onClose, selectedDealIds, onSuccess }: BulkEditDealsModalProps) {
+export function BulkEditDealsModal({ isOpen, onClose, selectedDealIds, onSuccess, lenders = [] }: BulkEditDealsModalProps) {
   const [updates, setUpdates] = useState<any>({});
   const [saving, setSaving] = useState(false);
 
@@ -39,6 +41,7 @@ export function BulkEditDealsModal({ isOpen, onClose, selectedDealIds, onSuccess
       if (!response.ok) throw new Error('Failed to bulk update deals');
       
       const result = await response.json();
+      clearClientCache();
       toast.success(`Successfully updated ${result.count} deals`);
       onSuccess();
       onClose();
@@ -127,6 +130,65 @@ export function BulkEditDealsModal({ isOpen, onClose, selectedDealIds, onSuccess
             <div className="space-y-4">
               <h3 className="font-semibold text-slate-900 border-b pb-2">Lifecycle & Marketing</h3>
               
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Review Status</label>
+                <select
+                  value={updates.reviewStatus || ''}
+                  onChange={e => setUpdates({ ...updates, reviewStatus: e.target.value || undefined })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- No Change --</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="NEEDS_WORK">Needs Work</option>
+                  <option value="NEEDS_REVIEW">Needs Review</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Publish Status</label>
+                <select
+                  value={updates.publishStatus || ''}
+                  onChange={e => setUpdates({ ...updates, publishStatus: e.target.value || undefined })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- No Change --</option>
+                  <option value="DRAFT">Draft</option>
+                  <option value="PUBLISHED">Published</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">First Time Buyer Eligible</label>
+                <select
+                  value={updates.isFirstTimeBuyerEligible === undefined ? '' : String(updates.isFirstTimeBuyerEligible)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setUpdates({ ...updates, isFirstTimeBuyerEligible: val === '' ? undefined : val === 'true' });
+                  }}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- No Change --</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Lender</label>
+                <select
+                  value={updates.lenderId || ''}
+                  onChange={e => setUpdates({ ...updates, lenderId: e.target.value || undefined })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- No Change --</option>
+                  <option value="null">None</option>
+                  {lenders.map(lender => (
+                    <option key={lender.id} value={lender.id}>{lender.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Expiration Date</label>
                 <input

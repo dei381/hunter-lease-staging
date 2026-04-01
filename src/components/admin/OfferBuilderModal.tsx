@@ -148,29 +148,77 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
   
   const sellingPrice = manualSellingPrice ? parseFloat(manualSellingPrice) : (msrp !== null && dealerDiscount !== null ? Math.max(0, msrp - dealerDiscount - totalIncentives) : null);
 
-  let monthlyPayment: number | null = null;
+  const [monthlyPayment, setMonthlyPayment] = useState<number | null>(null);
+  const [calculating, setCalculating] = useState(false);
   
   // Input validation: term cannot be 0, MSRP, selling price, rate/MF must be present
   const isTermValid = selectedProgram && selectedProgram.term > 0;
   const isRateValid = selectedProgram && (dealType === 'lease' ? selectedProgram.buyRateMf !== null && selectedProgram.residualPercentage !== null : selectedProgram.buyRateApr !== null);
   const canCalculate = isTermValid && isRateValid && msrp !== null && sellingPrice !== null;
 
-  if (canCalculate) {
-    if (dealType === 'lease') {
-      const rvAmount = msrp! * (selectedProgram!.residualPercentage / 100);
-      const depreciation = (sellingPrice! - rvAmount) / selectedProgram!.term;
-      const rentCharge = (sellingPrice! + rvAmount) * selectedProgram!.buyRateMf;
-      monthlyPayment = depreciation + rentCharge;
-    } else {
-      const r = (selectedProgram!.buyRateApr / 100) / 12;
-      const n = selectedProgram!.term;
-      if (r === 0) {
-        monthlyPayment = sellingPrice! / n;
-      } else {
-        monthlyPayment = sellingPrice! * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-      }
+  useEffect(() => {
+    if (!canCalculate || !selectedCar) {
+      setMonthlyPayment(null);
+      return;
     }
-  }
+
+    const calculatePreview = async () => {
+      setCalculating(true);
+      try {
+        const financialData = {
+          make: selectedCar.make,
+          model: selectedCar.model,
+          trim: selectedCar.trim,
+          year: selectedCar.year,
+          msrp: { value: msrp, provenance_status: 'manual' },
+          salePrice: { value: sellingPrice, provenance_status: 'manual' },
+          monthlyPayment: { value: 0, provenance_status: 'unresolved' },
+          term: { value: selectedProgram?.term || 36, provenance_status: 'manual' },
+          mileage: { value: selectedProgram?.mileage || 10000, provenance_status: 'manual' },
+          downPayment: { value: 0, provenance_status: 'manual' },
+          moneyFactor: { value: selectedProgram?.mf || 0.002, provenance_status: 'manual' },
+          residualValue: { value: (selectedProgram?.rv || 50) / 100, provenance_status: 'manual' },
+          docFee: { value: 85, provenance_status: "estimated_from_rule" },
+          dmvFee: { value: 600, provenance_status: "estimated_from_rule" },
+          taxMonthly: { value: 0, provenance_status: "estimated_from_rule" },
+          acquisitionFee: { value: 0, provenance_status: "estimated_from_rule" },
+          rebates: { value: 0, provenance_status: "manual" },
+          hunterDiscount: { value: 0, provenance_status: "manual" },
+          manufacturerRebate: { value: 0, provenance_status: "manual" },
+          type: dealType,
+          lenderId: selectedLenderId,
+          programId: selectedProgramId,
+          incentives: selectedIncentives.map(i => ({ name: i.name, amount: i.amountCents / 100 })),
+          dealerDiscount,
+          image: selectedMediaId ? media.find(m => m.id === selectedMediaId)?.url : undefined
+        };
+
+        const response = await fetch('/api/admin/calculate-preview', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${await getAuthToken()}`
+          },
+          body: JSON.stringify({ financialData })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setMonthlyPayment(data.monthlyPayment);
+        } else {
+          setMonthlyPayment(null);
+        }
+      } catch (error) {
+        console.error('Failed to calculate preview:', error);
+        setMonthlyPayment(null);
+      } finally {
+        setCalculating(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(calculatePreview, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [canCalculate, selectedCar, msrp, sellingPrice, selectedProgram, dealType, selectedLenderId, selectedProgramId, selectedIncentives, dealerDiscount, selectedMediaId]);
 
   const handleSave = async () => {
     if (!selectedCar) return toast.error('Please select a vehicle');
@@ -184,11 +232,20 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
         trim: selectedCar.trim,
         year: selectedCar.year,
         msrp: { value: msrp, provenance_status: 'manual' },
-        sellingPrice: { value: sellingPrice, provenance_status: 'manual' },
-        monthlyPayment: { value: Math.round(monthlyPayment!), provenance_status: 'manual' },
+        salePrice: { value: sellingPrice, provenance_status: 'manual' },
+        monthlyPayment: { value: 0, provenance_status: 'unresolved' },
         term: { value: selectedProgram?.term || 36, provenance_status: 'manual' },
         mileage: { value: selectedProgram?.mileage || 10000, provenance_status: 'manual' },
         downPayment: { value: 0, provenance_status: 'manual' },
+        moneyFactor: { value: selectedProgram?.mf || 0.002, provenance_status: 'manual' },
+        residualValue: { value: (selectedProgram?.rv || 50) / 100, provenance_status: 'manual' },
+        docFee: { value: 85, provenance_status: "estimated_from_rule" },
+        dmvFee: { value: 600, provenance_status: "estimated_from_rule" },
+        taxMonthly: { value: 0, provenance_status: "estimated_from_rule" },
+        acquisitionFee: { value: 0, provenance_status: "estimated_from_rule" },
+        rebates: { value: 0, provenance_status: "manual" },
+        hunterDiscount: { value: 0, provenance_status: "manual" },
+        manufacturerRebate: { value: 0, provenance_status: "manual" },
         type: dealType,
         lenderId: selectedLenderId,
         programId: selectedProgramId,

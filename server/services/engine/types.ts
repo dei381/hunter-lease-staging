@@ -20,6 +20,7 @@ export const QuoteContextSchema = z.object({
   hasCosigner: z.boolean().default(false),
   selectedIncentiveIds: z.array(z.string()).default([]),
   saveSnapshot: z.boolean().default(false),
+  isStandalone: z.boolean().default(false),
 
   adminOverrides: z.object({
     msrpCents: z.number().optional(),
@@ -27,7 +28,8 @@ export const QuoteContextSchema = z.object({
     apr: z.number().optional(),
     rv: z.number().optional(),
     dealerDiscountCents: z.number().optional(),
-  }).optional()
+  }).optional(),
+  audit: z.boolean().default(false)
 });
 
 export type QuoteContext = z.infer<typeof QuoteContextSchema>;
@@ -82,6 +84,9 @@ export interface PaymentBreakdown {
     msrpSource: 'DB' | 'ADMIN_OVERRIDE';
     ratesSource: 'BANK_PROGRAM' | 'ADMIN_OVERRIDE';
   };
+
+  dealerReserveCents?: number;
+  lenderPriority?: number;
 
   quoteId?: string;
   options?: {

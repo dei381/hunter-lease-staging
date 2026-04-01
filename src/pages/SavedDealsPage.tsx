@@ -8,27 +8,32 @@ import { Heart, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { CompareBar } from '../components/CompareBar';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 export const SavedDealsPage = () => {
   const { language } = useLanguageStore();
   const t = translations[language];
   const { savedDealIds } = useGarageStore();
   const [deals, setDeals] = useState<any[]>([]);
+  const [photos, setPhotos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    fetchWithCache('/api/car-photos')
+      .then((data: any) => setPhotos(data || []))
+      .catch(err => console.error('Failed to fetch car photos:', err));
+
     if (savedDealIds.length === 0) {
       setDeals([]);
       setLoading(false);
       return;
     }
-    fetch(`/api/deals?ids=${savedDealIds.join(',')}`)
-      .then(res => res.json())
-      .then(data => {
+    fetchWithCache(`/api/deals?ids=${savedDealIds.join(',')}`)
+      .then((data: any) => {
         setDeals(data);
         setLoading(false);
       })
-      .catch(err => {
+      .catch((err: any) => {
         console.error('Error fetching deals:', err);
         setLoading(false);
       });
@@ -61,7 +66,7 @@ export const SavedDealsPage = () => {
         ) : savedDeals.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {savedDeals.map(deal => (
-              <DealCard key={deal.id} deal={deal} />
+              <DealCard key={deal.id} deal={deal} photos={photos} />
             ))}
           </div>
         ) : (

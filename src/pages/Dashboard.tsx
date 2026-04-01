@@ -11,6 +11,7 @@ import { ReportDealerModal } from '../components/ReportDealerModal';
 import { VIPCertificateModal } from '../components/VIPCertificateModal';
 import { ReviewDealerModal } from '../components/ReviewDealerModal';
 import { DealCard } from '../components/DealCard';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 export const Dashboard = () => {
   const { user } = useAuthStore();
@@ -28,13 +29,15 @@ export const Dashboard = () => {
   const [vipModalOpen, setVipModalOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLeadData, setSelectedLeadData] = useState<any>(null);
+  const [photos, setPhotos] = useState<any[]>([]);
 
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [leadsRes, notifsRes] = await Promise.all([
+      const [leadsRes, notifsRes, photosRes] = await Promise.all([
         fetch('/api/leads/my', { headers: { 'x-user-uid': user.uid } }),
-        fetch('/api/notifications/my', { headers: { 'x-user-uid': user.uid } })
+        fetch('/api/notifications/my', { headers: { 'x-user-uid': user.uid } }),
+        fetchWithCache('/api/car-photos')
       ]);
       
       let fetchedLeads: any[] = [];
@@ -45,15 +48,18 @@ export const Dashboard = () => {
       if (notifsRes.ok) {
         setNotifications(await notifsRes.json());
       }
+      if (photosRes) {
+        setPhotos(photosRes as any[]);
+      }
 
       // Fetch deals that are either saved or associated with leads
       const leadDealIds = fetchedLeads.map(l => l.dealId).filter(Boolean);
       const allDealIdsToFetch = Array.from(new Set([...savedDealIds, ...leadDealIds]));
       
       if (allDealIdsToFetch.length > 0) {
-        const dealsRes = await fetch(`/api/deals?ids=${allDealIdsToFetch.join(',')}`);
-        if (dealsRes.ok) {
-          setDeals(await dealsRes.json());
+        const dealsRes = await fetchWithCache(`/api/deals?ids=${allDealIdsToFetch.join(',')}`);
+        if (dealsRes) {
+          setDeals(dealsRes as any[]);
         }
       } else {
         setDeals([]);
@@ -321,7 +327,7 @@ export const Dashboard = () => {
                 ) : savedDeals.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {savedDeals.map(deal => (
-                      <DealCard key={deal.id} deal={deal} />
+                      <DealCard key={deal.id} deal={deal} photos={photos} />
                     ))}
                   </div>
                 ) : (

@@ -20,6 +20,8 @@ const fmt = (n: any) => {
 import { CompareBar } from '../components/CompareBar';
 import { logEvent } from '../components/VisitTracker';
 
+import { fetchWithCache } from '../utils/fetchWithCache';
+
 export const DealsPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -63,6 +65,7 @@ export const DealsPage = () => {
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+
   useEffect(() => {
     setIsLoading(true);
     const params = new URLSearchParams({
@@ -76,11 +79,11 @@ export const DealsPage = () => {
     });
 
     Promise.all([
-      fetch(`/api/deals?${params.toString()}`).then(res => res.json()),
-      fetch('/api/car-photos').then(res => res.json()),
-      fetch(`/api/v2/quotes?zipCode=${debouncedZipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`).then(res => res.json())
+      fetchWithCache(`/api/deals?${params.toString()}`),
+      fetchWithCache('/api/car-photos'),
+      fetchWithCache(`/api/v2/quotes?zipCode=${debouncedZipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`)
     ])
-      .then(([data, photosData, snapshots]) => {
+      .then(([data, photosData, snapshots]: any) => {
         setPhotos(photosData);
         setQuoteSnapshots(snapshots || []);
         
@@ -238,6 +241,8 @@ export const DealsPage = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pt-4 pb-32 font-sans">
+
+
       <SEO 
         title={`${selectedMake !== 'All' ? selectedMake + ' ' : ''}${selectedModel !== 'All' ? selectedModel + ' ' : ''}Lease Deals in Los Angeles | Hunter Lease`}
         description={`Browse the best ${selectedMake !== 'All' ? selectedMake + ' ' : ''}car lease and finance deals in Los Angeles. AI-monitored inventory with transparent pricing and zero markup.`}

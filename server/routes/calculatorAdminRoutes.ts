@@ -2,7 +2,21 @@ import express from 'express';
 import { adminAuth } from '../middleware/auth';
 import db from '../lib/db';
 
+import { CalculatorAuditService } from '../services/engine/CalculatorAuditService';
+import { Validator } from '../services/engine/Validator';
+
 const router = express.Router();
+
+// --- Calculator Audit ---
+router.post('/audit', adminAuth, async (req, res) => {
+  try {
+    const context = Validator.parseAdminRequest(req.body);
+    const trace = await CalculatorAuditService.generateTrace(context);
+    res.json(trace);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // --- Bulk Updates ---
 router.post('/bulk-update', adminAuth, async (req, res) => {
@@ -319,8 +333,108 @@ router.delete('/taxes/:id', adminAuth, async (req, res) => {
 // --- Incentives ---
 router.get('/incentives', adminAuth, async (req, res) => {
   try {
-    const incentives = await db.oemIncentiveProgram.findMany();
+    const incentives = await db.oemIncentiveProgram.findMany({
+      orderBy: [
+        { make: 'asc' },
+        { model: 'asc' },
+        { trim: 'asc' },
+        { amountCents: 'desc' }
+      ]
+    });
     res.json(incentives);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/dealer-adjustments', adminAuth, async (req, res) => {
+  try {
+    const adjustments = await db.dealerAdjustment.findMany({
+      orderBy: [
+        { make: 'asc' },
+        { model: 'asc' },
+        { trim: 'asc' },
+        { amount: 'desc' }
+      ]
+    });
+    res.json(adjustments);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/dealer-adjustments', adminAuth, async (req, res) => {
+  try {
+    const adjustment = await db.dealerAdjustment.create({
+      data: req.body
+    });
+    res.json(adjustment);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/dealer-adjustments/:id', adminAuth, async (req, res) => {
+  try {
+    const adjustment = await db.dealerAdjustment.update({
+      where: { id: req.params.id },
+      data: req.body
+    });
+    res.json(adjustment);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/dealer-adjustments/:id', adminAuth, async (req, res) => {
+  try {
+    await db.dealerAdjustment.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Program Overrides ---
+
+router.get('/program-overrides', adminAuth, async (req, res) => {
+  try {
+    const overrides = await db.programOverride.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(overrides);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/program-overrides', adminAuth, async (req, res) => {
+  try {
+    const override = await db.programOverride.create({
+      data: req.body
+    });
+    res.json(override);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/program-overrides/:id', adminAuth, async (req, res) => {
+  try {
+    const override = await db.programOverride.update({
+      where: { id: req.params.id },
+      data: req.body
+    });
+    res.json(override);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/program-overrides/:id', adminAuth, async (req, res) => {
+  try {
+    await db.programOverride.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

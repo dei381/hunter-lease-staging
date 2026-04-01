@@ -129,7 +129,11 @@ export const BulkUpdateDealsSchema = z.object({
     expirationDate: z.union([z.string(), z.date()]).nullable().optional(),
     isSoldOut: z.boolean().optional(),
     tags: z.string().nullable().optional(),
-    isPinned: z.boolean().optional()
+    isPinned: z.boolean().optional(),
+    reviewStatus: z.string().optional(),
+    publishStatus: z.string().optional(),
+    lenderId: z.string().nullable().optional(),
+    isFirstTimeBuyerEligible: z.boolean().optional()
   })
 });
 

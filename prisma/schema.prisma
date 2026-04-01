@@ -8,18 +8,20 @@ datasource db {
 }
 
 model VehicleCache {
-  id             String          @id @default(uuid())
-  vin            String?         @unique
-  make           String
-  model          String
-  trim           String
-  year           Int
-  msrpCents      Int
-  bodyStyle      String?
-  features       String
-  isActive       Boolean         @default(true)
-  updatedAt      DateTime        @updatedAt
-  quoteSnapshots QuoteSnapshot[]
+  id              String          @id @default(uuid())
+  vin             String?         @unique
+  make            String
+  model           String
+  trim            String
+  year            Int
+  msrpCents       Int
+  bodyStyle       String?
+  features        String
+  isActive        Boolean         @default(true)
+  verifiedByAdmin Boolean         @default(false)
+  verifiedAt      DateTime?
+  updatedAt       DateTime        @updatedAt
+  quoteSnapshots  QuoteSnapshot[]
 
   @@index([make, model, year, trim, isActive])
 }
@@ -154,6 +156,7 @@ model LeaseProgram {
   buyRateMf          Decimal
   residualPercentage Decimal
   isActive           Boolean   @default(true)
+  status             String    @default("PUBLISHED")
   effectiveFrom      DateTime?
   effectiveTo        DateTime?
   lender             Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
@@ -173,6 +176,7 @@ model FinanceProgram {
   internalLenderTier String
   buyRateApr         Decimal
   isActive           Boolean   @default(true)
+  status             String    @default("PUBLISHED")
   effectiveFrom      DateTime?
   effectiveTo        DateTime?
   lender             Lender    @relation(fields: [lenderId], references: [id], onDelete: Cascade)
@@ -192,7 +196,14 @@ model OemIncentiveProgram {
   exclusiveGroupId  String?
   make              String
   model             String?
+  trim              String?
+  trimGroup         String?
+  stackable         Boolean   @default(true)
+  eligibilityRules  Json?
+  verifiedByAdmin   Boolean   @default(false)
+  verifiedAt        DateTime?
   isActive          Boolean   @default(true)
+  status            String    @default("PUBLISHED")
   effectiveFrom     DateTime?
   effectiveTo       DateTime?
 
@@ -480,6 +491,18 @@ model DealerAdjustment {
   @@index([make, model, isActive, startsAt, endsAt])
 }
 
+model ProgramOverride {
+  id              String         @id @default(uuid())
+  bankId          String?
+  make            String?
+  model           String?
+  mfMarkup        Float?
+  aprMarkup       Float?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
 model PromoCode {
   id             String    @id @default(uuid())
   code           String    @unique
@@ -534,4 +557,45 @@ model Quote {
   createdAt        DateTime      @default(now())
   lender           Lender?       @relation(fields: [lenderId], references: [id])
   batch            ProgramBatch? @relation(fields: [programBatchId], references: [id])
+}
+
+model VehicleMake {
+  id        String         @id @default(uuid())
+  name      String         @unique
+  isActive  Boolean        @default(true)
+  models    VehicleModel[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model VehicleModel {
+  id        String        @id @default(uuid())
+  makeId    String
+  make      VehicleMake   @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  name      String
+  years     Int[]
+  imageUrl  String?
+  isActive  Boolean       @default(true)
+  trims     VehicleTrim[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([makeId, name])
+}
+
+model VehicleTrim {
+  id             String       @id @default(uuid())
+  modelId        String
+  model          VehicleModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  name           String
+  msrpCents      Int          @default(0)
+  baseMF         Float        @default(0)
+  baseAPR        Float        @default(0)
+  rv36           Float        @default(0)
+  leaseCashCents Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([modelId, name])
 }

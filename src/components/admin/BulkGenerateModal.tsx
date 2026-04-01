@@ -60,14 +60,16 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
     makes.forEach((make: any) => {
       if (selectedBrands.includes(make.id)) {
         make.models?.forEach((model: any) => {
-          model.years?.forEach((year: any) => {
-            year.trims?.forEach((trim: any) => {
-              const id = `${make.id}|${model.id}|${year.year}|${trim.name}`;
+          const years = Array.isArray(model.years) ? model.years : [parseInt(model.years) || new Date().getFullYear()];
+          const uniqueTrims = Array.from(new Map(model.trims?.map((t: any) => [t.name?.trim(), t])).values());
+          years.forEach((year: any) => {
+            uniqueTrims.forEach((trim: any) => {
+              const id = `${make.id}|${model.id}|${year}|${trim.name?.trim()}`;
               trims.push({
                 id,
                 make: make.name,
                 model: model.name,
-                year: year.year,
+                year: year,
                 trim: trim.name,
                 msrp: trim.msrp || 0,
                 baseMF: model.mf || make.baseMF || 0.002,
@@ -110,12 +112,52 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
     }
   };
 
-  const calculateMonthlyPayment = (msrp: number, rv: number, mf: number) => {
-    const term = 36;
-    const rvAmount = msrp * rv;
-    const depreciation = (msrp - rvAmount) / term;
-    const rentCharge = (msrp + rvAmount) * mf;
-    return Math.round(depreciation + rentCharge);
+  const getTrimsForMake = (make: any) => {
+    const trims: string[] = [];
+    make.models?.forEach((model: any) => {
+      const years = Array.isArray(model.years) ? model.years : [parseInt(model.years) || new Date().getFullYear()];
+      const uniqueTrims = Array.from(new Map(model.trims?.map((t: any) => [t.name?.trim(), t])).values());
+      years.forEach((year: any) => {
+        uniqueTrims.forEach((trim: any) => {
+          trims.push(`${make.id}|${model.id}|${year}|${trim.name?.trim()}`);
+        });
+      });
+    });
+    return trims;
+  };
+
+  const getTrimsForModel = (make: any, model: any) => {
+    const trims: string[] = [];
+    const years = Array.isArray(model.years) ? model.years : [parseInt(model.years) || new Date().getFullYear()];
+    const uniqueTrims = Array.from(new Map(model.trims?.map((t: any) => [t.name?.trim(), t])).values());
+    years.forEach((year: any) => {
+      uniqueTrims.forEach((trim: any) => {
+        trims.push(`${make.id}|${model.id}|${year}|${trim.name?.trim()}`);
+      });
+    });
+    return trims;
+  };
+
+  const handleMakeToggle = (e: React.MouseEvent, make: any) => {
+    e.stopPropagation();
+    const trims = getTrimsForMake(make);
+    const isAllMakeSelected = trims.length > 0 && trims.every(id => selectedTrims.includes(id));
+    if (isAllMakeSelected) {
+      setSelectedTrims(prev => prev.filter(id => !trims.includes(id)));
+    } else {
+      setSelectedTrims(prev => Array.from(new Set([...prev, ...trims])));
+    }
+  };
+
+  const handleModelToggle = (e: React.MouseEvent, make: any, model: any) => {
+    e.stopPropagation();
+    const trims = getTrimsForModel(make, model);
+    const isAllModelSelected = trims.length > 0 && trims.every(id => selectedTrims.includes(id));
+    if (isAllModelSelected) {
+      setSelectedTrims(prev => prev.filter(id => !trims.includes(id)));
+    } else {
+      setSelectedTrims(prev => Array.from(new Set([...prev, ...trims])));
+    }
   };
 
   const handleGenerate = async () => {
@@ -137,7 +179,6 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
 
     for (let i = 0; i < trimsToGenerate.length; i++) {
       const trimData = trimsToGenerate[i];
-      const monthlyPayment = calculateMonthlyPayment(trimData.msrp, trimData.baseRV, trimData.baseMF);
 
       const payload = {
         financialData: {
@@ -146,14 +187,21 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
           trim: trimData.trim,
           year: trimData.year,
           msrp: { value: trimData.msrp, provenance_status: "catalog" },
-          sellingPrice: { value: trimData.msrp, provenance_status: "catalog" },
-          monthlyPayment: { value: monthlyPayment, provenance_status: "calculated" },
+          salePrice: { value: trimData.msrp, provenance_status: "catalog" },
+          monthlyPayment: { value: 0, provenance_status: "unresolved" },
           term: { value: 36, provenance_status: "catalog" },
           mileage: { value: 10000, provenance_status: "catalog" },
           downPayment: { value: 0, provenance_status: "catalog" },
           apr: { value: trimData.baseAPR, provenance_status: "catalog" },
-          mf: { value: trimData.baseMF, provenance_status: "catalog" },
-          rv: { value: trimData.baseRV * 100, provenance_status: "catalog" },
+          moneyFactor: { value: trimData.baseMF, provenance_status: "catalog" },
+          residualValue: { value: trimData.baseRV, provenance_status: "catalog" },
+          docFee: { value: 85, provenance_status: "estimated_from_rule" },
+          dmvFee: { value: 600, provenance_status: "estimated_from_rule" },
+          taxMonthly: { value: 0, provenance_status: "estimated_from_rule" },
+          acquisitionFee: { value: 0, provenance_status: "estimated_from_rule" },
+          rebates: { value: 0, provenance_status: "catalog" },
+          hunterDiscount: { value: 0, provenance_status: "catalog" },
+          manufacturerRebate: { value: 0, provenance_status: "catalog" },
           type: "lease",
           lenderId: null,
           programId: null,
@@ -186,7 +234,11 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
       setProgress(i + 1);
     }
 
-    toast.success(t.generatedSuccessfully.replace('{success}', successCount.toString()).replace('{fail}', failCount.toString()));
+    if (successCount > 0) {
+      toast.success(t.generatedSuccessfully.replace('{success}', successCount.toString()).replace('{fail}', failCount.toString()));
+    } else {
+      toast.error(`Failed to generate deals. 0 succeeded, ${failCount} failed.`);
+    }
     onComplete();
     onClose();
   };
@@ -254,7 +306,12 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
               </div>
 
               <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-2">
-                {makes.filter((m: any) => selectedBrands.includes(m.id)).map((make: any) => (
+                {makes.filter((m: any) => selectedBrands.includes(m.id)).map((make: any) => {
+                  const makeTrims = getTrimsForMake(make);
+                  const isAllMakeSelected = makeTrims.length > 0 && makeTrims.every(id => selectedTrims.includes(id));
+                  const isSomeMakeSelected = makeTrims.some(id => selectedTrims.includes(id));
+
+                  return (
                   <div key={make.id} className="border border-slate-200 rounded-lg bg-white overflow-hidden">
                     <div 
                       className="flex items-center justify-between p-3 bg-slate-100 cursor-pointer"
@@ -264,53 +321,81 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
                         {expandedBrands.includes(make.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                         <span className="font-bold text-slate-800">{make.name}</span>
                       </div>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isAllMakeSelected}
+                          ref={input => {
+                            if (input) {
+                              input.indeterminate = isSomeMakeSelected && !isAllMakeSelected;
+                            }
+                          }}
+                          onChange={(e) => handleMakeToggle(e as any, make)}
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </div>
                     </div>
                     
                     {expandedBrands.includes(make.id) && (
                       <div className="p-2 space-y-2">
-                        {make.models?.map((model: any) => (
+                        {make.models?.map((model: any) => {
+                          const modelTrims = getTrimsForModel(make, model);
+                          const isAllModelSelected = modelTrims.length > 0 && modelTrims.every(id => selectedTrims.includes(id));
+                          const isSomeModelSelected = modelTrims.some(id => selectedTrims.includes(id));
+
+                          return (
                           <div key={model.id} className="ml-4 border-l-2 border-slate-200 pl-4">
                             <div 
-                              className="flex items-center gap-2 py-2 cursor-pointer"
+                              className="flex items-center justify-between py-2 cursor-pointer"
                               onClick={() => toggleModelExpand(model.id)}
                             >
-                              {expandedModels.includes(model.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                              <span className="font-semibold text-slate-700">{model.name}</span>
+                              <div className="flex items-center gap-2">
+                                {expandedModels.includes(model.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                <span className="font-semibold text-slate-700">{model.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={isAllModelSelected}
+                                  ref={input => {
+                                    if (input) {
+                                      input.indeterminate = isSomeModelSelected && !isAllModelSelected;
+                                    }
+                                  }}
+                                  onChange={(e) => handleModelToggle(e as any, make, model)}
+                                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                />
+                              </div>
                             </div>
                             
                             {expandedModels.includes(model.id) && (
                               <div className="ml-6 space-y-1 mt-1">
-                                {model.years?.map((year: any) => (
-                                  <div key={year.year} className="space-y-1">
-                                    <div className="text-xs font-bold text-slate-500 uppercase mt-2 mb-1">{year.year}</div>
-                                    {year.trims?.map((trim: any) => {
-                                      const trimId = `${make.id}|${model.id}|${year.year}|${trim.name}`;
+                                {(Array.isArray(model.years) ? model.years : [parseInt(model.years) || new Date().getFullYear()]).map((year: any) => (
+                                  <div key={year} className="space-y-1">
+                                    <div className="text-xs font-bold text-slate-500 uppercase mt-2 mb-1">{year}</div>
+                                    {Array.from(new Map(model.trims?.map((t: any) => [t.name?.trim(), t])).values()).map((trim: any) => {
+                                      const trimId = `${make.id}|${model.id}|${year}|${trim.name?.trim()}`;
                                       const isSelected = selectedTrims.includes(trimId);
-                                      const monthlyPayment = calculateMonthlyPayment(
-                                        trim.msrp || 0, 
-                                        model.rv36 || 0.60, 
-                                        model.mf || make.baseMF || 0.002
-                                      );
 
                                       return (
                                         <div 
                                           key={trimId}
-                                          className={`flex items-center justify-between p-2 rounded-md border ${
-                                            isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200 opacity-60'
+                                          onClick={() => handleTrimToggle(trimId)}
+                                          className={`flex items-center justify-between p-2 rounded-md border cursor-pointer transition-colors ${
+                                            isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200 opacity-60 hover:opacity-100'
                                           }`}
                                         >
                                           <div className="flex items-center gap-3">
                                             <input 
                                               type="checkbox"
                                               checked={isSelected}
-                                              onChange={() => handleTrimToggle(trimId)}
-                                              className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                              onChange={() => {}}
+                                              className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 pointer-events-none"
                                             />
-                                            <span className="text-sm font-medium text-slate-700">{trim.name}</span>
+                                            <span className="text-sm font-medium text-slate-700">{trim.name?.trim()}</span>
                                           </div>
                                           <div className="flex items-center gap-4 text-sm">
                                             <span className="text-slate-500">MSRP: ${trim.msrp?.toLocaleString() || 0}</span>
-                                            <span className="font-bold text-indigo-600">~${monthlyPayment}{t.mo}</span>
                                           </div>
                                         </div>
                                       );
@@ -320,11 +405,11 @@ export const BulkGenerateModal: React.FC<BulkGenerateModalProps> = ({ isOpen, on
                               </div>
                             )}
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           )}

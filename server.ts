@@ -9,9 +9,46 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import db from "./server/lib/db";
 import admin from 'firebase-admin';
+import NodeCache from 'node-cache';
+import { AuditLogger } from './server/services/AuditLogger';
 import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
+
+import { JobQueue } from './server/services/JobQueue';
+
+// Initialize cache with 1 hour TTL
+const apiCache = new NodeCache({ stdTTL: 3600 });
+
+// Helper to clear cache when car data changes
+const clearCarCache = () => {
+  apiCache.flushAll();
+};
+
+JobQueue.registerHandler('SYNC_EXTERNAL_CARS', async (job, updateProgress) => {
+  const { diff, userId } = job.data;
+  updateProgress(10);
+  
+  const carDb = await getCarDb();
+  updateProgress(30);
+
+  const appliedCount = await MarketcheckSyncService.applyDiff(carDb, diff, db);
+  updateProgress(70);
+  
+  await saveCarDb(carDb);
+  clearCarCache();
+  updateProgress(90);
+
+  await AuditLogger.log(
+    userId,
+    'SYNC_EXTERNAL_CARS',
+    'CarDatabase',
+    undefined,
+    { appliedCount }
+  );
+
+  return { appliedCount };
+});
 
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err);
@@ -39,29 +76,7 @@ import { safeValidate, LendersResponseSchema, ProgramsResponseSchema, Incentives
 
 const prisma = db;
 
-// Helper to get CAR_DB from Postgres
-const getCarDb = async () => {
-  try {
-    const record = await prisma.siteSettings.findUnique({ where: { id: 'car_db' } });
-    return record ? JSON.parse(record.data) : {};
-  } catch (error) {
-    console.error("Error in getCarDb:", error);
-    return {};
-  }
-};
-
-// Helper to save CAR_DB to Postgres
-const saveCarDb = async (data: any) => {
-  try {
-    await prisma.siteSettings.upsert({
-      where: { id: 'car_db' },
-      update: { data: JSON.stringify(data) },
-      create: { id: 'car_db', data: JSON.stringify(data) }
-    });
-  } catch (error) {
-    console.error("Failed to save CAR_DB to database:", error);
-  }
-};
+import { getCarDb, saveCarDb } from './server/utils/carDb';
 
 // Helper to get CAR_PHOTOS from Postgres
 const getCarPhotos = async () => {
@@ -172,6 +187,7 @@ const leadSchema = z.object({
   }),
   userId: z.string().optional().nullable(),
   dealId: z.string().optional().nullable(),
+  source: z.string().optional().nullable(),
 });
 
 const creditAppSchema = z.object({
@@ -330,133 +346,9 @@ async function startServer() {
       console.log('Default site settings created');
     }
 
-    const carDbCount = await prisma.siteSettings.count({ where: { id: 'car_db' } });
-    if (carDbCount === 0) {
-      const initialCarDb = {
-        makes: [
-          {
-            name: "Toyota",
-            destinationFee: 1095,
-            rules: {
-              mileageRV: { "7500": 1, "10000": 0, "12000": -1, "15000": -2 },
-              tierMF: { "t1": 0, "t2": 0.00020, "t3": 0.00045, "t4": 0.00085 }
-            },
-            models: [
-              {
-                name: "Camry",
-                trims: [
-                  { id: "camry-le-2026", name: "LE (2026)", msrp: 29495, rv36: 58, mf: 0.00210, baseAPR: 4.9, leaseCash: 500 },
-                  { id: "camry-se-2026", name: "SE (2026)", msrp: 31795, rv36: 59, mf: 0.00210, baseAPR: 4.9, leaseCash: 500 },
-                  { id: "camry-xle-2026", name: "XLE (2026)", msrp: 34495, rv36: 56, mf: 0.00210, baseAPR: 4.9, leaseCash: 500 }
-                ]
-              },
-              {
-                name: "RAV4",
-                trims: [
-                  { id: "rav4-le-2026", name: "LE (2026)", msrp: 29970, rv36: 62, mf: 0.00240, baseAPR: 5.9, leaseCash: 0 },
-                  { id: "rav4-xle-2026", name: "XLE (2026)", msrp: 31480, rv36: 61, mf: 0.00240, baseAPR: 5.9, leaseCash: 0 },
-                  { id: "rav4-limited-2026", name: "Limited (2026)", msrp: 38275, rv36: 59, mf: 0.00240, baseAPR: 5.9, leaseCash: 0 }
-                ]
-              },
-              {
-                name: "Prius",
-                trims: [
-                  { id: "prius-le-2026", name: "LE (2026)", msrp: 29045, rv36: 63, mf: 0.00220, baseAPR: 4.9, leaseCash: 0 },
-                  { id: "prius-xle-2026", name: "XLE (2026)", msrp: 32490, rv36: 61, mf: 0.00220, baseAPR: 4.9, leaseCash: 0 }
-                ]
-              }
-            ]
-          },
-          {
-            name: "BMW",
-            destinationFee: 1175,
-            rules: {
-              mileageRV: { "7500": 1, "10000": 0, "12000": -1, "15000": -3 },
-              tierMF: { "t1": 0, "t2": 0.00025, "t3": 0.00060, "t4": 0.00100 }
-            },
-            models: [
-              {
-                name: "3 Series",
-                trims: [
-                  { id: "330i-2026", name: "330i (2026)", msrp: 46675, rv36: 57, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 },
-                  { id: "m340i-2026", name: "M340i (2026)", msrp: 58775, rv36: 55, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 }
-                ]
-              },
-              {
-                name: "5 Series",
-                trims: [
-                  { id: "530i-2026", name: "530i (2026)", msrp: 59375, rv36: 54, mf: 0.00220, baseAPR: 5.2, leaseCash: 1500 },
-                  { id: "i5-edrive40-2026", name: "i5 eDrive40 (2026)", msrp: 68975, rv36: 52, mf: 0.00190, baseAPR: 4.9, leaseCash: 7500 }
-                ]
-              },
-              {
-                name: "X5",
-                trims: [
-                  { id: "x5-40i-2026", name: "sDrive40i (2026)", msrp: 66375, rv36: 54, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 },
-                  { id: "x5-xdrive40i-2026", name: "xDrive40i (2026)", msrp: 68675, rv36: 53, mf: 0.00210, baseAPR: 4.9, leaseCash: 1000 }
-                ]
-              }
-            ]
-          },
-          {
-            name: "Kia",
-            destinationFee: 1325,
-            rules: {
-              mileageRV: { "7500": 1, "10000": 0, "12000": -1, "15000": -3 },
-              tierMF: { "t1": 0, "t2": 0.00020, "t3": 0.00050, "t4": 0.00090 }
-            },
-            models: [
-              {
-                name: "Sportage",
-                trims: [
-                  { id: "sportage-lx-2026", name: "LX (2026)", msrp: 28515, rv36: 60, mf: 0.00230, baseAPR: 5.4, leaseCash: 1000 },
-                  { id: "sportage-ex-2026", name: "EX (2026)", msrp: 30415, rv36: 59, mf: 0.00230, baseAPR: 5.4, leaseCash: 1000 },
-                  { id: "sportage-sx-2026", name: "SX Prestige (2026)", msrp: 35915, rv36: 57, mf: 0.00230, baseAPR: 5.4, leaseCash: 1000 }
-                ]
-              },
-              {
-                name: "Telluride",
-                trims: [
-                  { id: "telluride-s-2026", name: "S (2026)", msrp: 39215, rv36: 64, mf: 0.00260, baseAPR: 6.5, leaseCash: 0 },
-                  { id: "telluride-ex-2026", name: "EX (2026)", msrp: 42915, rv36: 62, mf: 0.00260, baseAPR: 6.5, leaseCash: 0 },
-                  { id: "telluride-sx-2026", name: "SX (2026)", msrp: 47115, rv36: 60, mf: 0.00260, baseAPR: 6.5, leaseCash: 0 }
-                ]
-              },
-              {
-                name: "EV9",
-                trims: [
-                  { id: "ev9-light-2026", name: "Light RWD (2026)", msrp: 56225, rv36: 55, mf: 0.00050, baseAPR: 2.9, leaseCash: 7500 },
-                  { id: "ev9-wind-2026", name: "Wind AWD (2026)", msrp: 65225, rv36: 53, mf: 0.00050, baseAPR: 2.9, leaseCash: 7500 }
-                ]
-              }
-            ]
-          }
-        ]
-      };
-      await prisma.siteSettings.create({
-        data: {
-          id: 'car_db',
-          data: JSON.stringify(initialCarDb)
-        }
-      });
-      console.log('Initial CA-specific car database seeded for Toyota, BMW, Kia (March 2026)');
-    }
-
     const dealCount = await prisma.dealRecord.count();
     if (dealCount === 0) {
-      const { DEALS } = await import('./server/data/deals');
-      for (const deal of DEALS) {
-        await prisma.dealRecord.create({
-          data: {
-            type: deal.type || 'lease',
-            publishStatus: 'PUBLISHED',
-            reviewStatus: 'APPROVED',
-            financialData: JSON.stringify(deal),
-            payload: JSON.stringify(deal),
-          }
-        });
-      }
-      console.log(`Seeded ${DEALS.length} deals`);
+      console.log('No deals found in database. Please create deals via the admin panel.');
     }
   } catch (err) {
     console.error('Seeding error:', err);
@@ -493,11 +385,14 @@ async function startServer() {
   // --- API ROUTES ---
   
   async function applyDealerAdjustments(financialData: any) {
-    if (!financialData || !financialData.vehicle || !financialData.salePrice || financialData.salePrice.provenance_status === 'unresolved') {
+    if (!financialData || !financialData.salePrice || financialData.salePrice.provenance_status === 'unresolved') {
       return financialData;
     }
 
-    const { make, model, trim } = financialData.vehicle;
+    const make = financialData.make || financialData.vehicle?.make;
+    const model = financialData.model || financialData.vehicle?.model;
+    const trim = financialData.trim || financialData.vehicle?.trim;
+    
     if (!make) return financialData;
 
     const now = new Date();
@@ -1029,7 +924,7 @@ async function startServer() {
 
   app.post("/api/admin/incentives", adminAuth, express.json(), async (req, res) => {
     try {
-      const { name, amountCents, type, dealApplicability, isTaxableCa, exclusiveGroupId, make, model, isActive, effectiveFrom, effectiveTo } = req.body;
+      const { name, amountCents, type, dealApplicability, isTaxableCa, exclusiveGroupId, make, model, isActive, status, effectiveFrom, effectiveTo } = req.body;
       const incentive = await prisma.oemIncentiveProgram.create({
         data: {
           name,
@@ -1041,6 +936,7 @@ async function startServer() {
           make,
           model: model || null,
           isActive: isActive ?? true,
+          status: status || 'PUBLISHED',
           effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : null,
           effectiveTo: effectiveTo ? new Date(effectiveTo) : null
         }
@@ -1054,7 +950,7 @@ async function startServer() {
 
   app.put("/api/admin/incentives/:id", adminAuth, express.json(), async (req, res) => {
     try {
-      const { name, amountCents, type, dealApplicability, isTaxableCa, exclusiveGroupId, make, model, isActive, effectiveFrom, effectiveTo } = req.body;
+      const { name, amountCents, type, dealApplicability, isTaxableCa, exclusiveGroupId, make, model, isActive, status, effectiveFrom, effectiveTo } = req.body;
       const incentive = await prisma.oemIncentiveProgram.update({
         where: { id: req.params.id },
         data: {
@@ -1067,6 +963,7 @@ async function startServer() {
           make,
           model: model || null,
           isActive: isActive ?? true,
+          status: status || 'PUBLISHED',
           effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : null,
           effectiveTo: effectiveTo ? new Date(effectiveTo) : null
         }
@@ -1786,6 +1683,16 @@ You must return the response as a JSON array of objects. Each object must have t
       if ('tiers' in (carDb as any)) delete (carDb as any).tiers;
       
       await saveCarDb(carDb);
+      clearCarCache();
+      
+      await AuditLogger.log(
+        (req as any).user?.dbUser?.id || (req as any).user?.uid,
+        'UPDATE_CAR_DB',
+        'CarDatabase',
+        undefined,
+        { makesUpdated: makes?.length || 0 }
+      );
+
       res.json({ message: "Car database updated successfully", data: carDb });
     } catch (error) {
       console.error("Failed to update car database:", error);
@@ -1800,10 +1707,10 @@ You must return the response as a JSON array of objects. Each object must have t
         return res.status(400).json({ error: "Marketcheck API Key is not configured." });
       }
 
-      const { makes, models } = req.body || {};
+      const { makes, models, syncOptions } = req.body || {};
       const carDb = await getCarDb();
       
-      const diff = await MarketcheckSyncService.fetchDiff(apiKey, carDb, makes, models);
+      const diff = await MarketcheckSyncService.fetchDiff(apiKey, carDb, makes, models, syncOptions);
       res.json({ diff });
     } catch (error: any) {
       console.error("External sync preview failed:", error);
@@ -1814,23 +1721,31 @@ You must return the response as a JSON array of objects. Each object must have t
   app.post("/api/admin/sync-external/apply", adminAuth, async (req, res) => {
     try {
       const { diff } = req.body;
-      if (!diff || !Array.isArray(diff)) {
+      if (!diff || typeof diff !== 'object') {
         return res.status(400).json({ error: "Invalid diff data" });
       }
 
-      const carDb = await getCarDb();
-      const appliedCount = MarketcheckSyncService.applyDiff(carDb, diff);
-      
-      await saveCarDb(carDb);
+      const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid;
+      const job = await JobQueue.addJob('SYNC_EXTERNAL_CARS', { diff, userId });
 
       res.json({ 
-        message: "External sync applied", 
-        appliedCount
+        message: "External sync job started", 
+        jobId: job.id
       });
     } catch (error: any) {
       console.error("External sync apply failed:", error);
       res.status(502).json({ error: "External sync apply failed", details: error.message });
     }
+  });
+
+  app.get("/api/admin/jobs", adminAuth, (req, res) => {
+    res.json(JobQueue.getAllJobs());
+  });
+
+  app.get("/api/admin/jobs/:id", adminAuth, (req, res) => {
+    const job = JobQueue.getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.json(job);
   });
 
   app.post("/api/admin/snapshot-calculator", adminAuth, async (req, res) => {
@@ -2000,6 +1915,70 @@ You must return the response as a JSON array of objects. Each object must have t
   });
 
   // Cars DB
+  // --- Cascading Car DB Endpoints (v2) ---
+  app.get("/api/v2/makes", async (req, res) => {
+    try {
+      const cacheKey = 'v2_makes';
+      const cached = apiCache.get(cacheKey);
+      if (cached) return res.json(cached);
+
+      const makes = await prisma.vehicleMake.findMany({
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true }
+      });
+      apiCache.set(cacheKey, makes);
+      res.json(makes);
+    } catch (error) {
+      console.error("Failed to fetch makes:", error);
+      res.status(500).json({ error: "Failed to fetch makes" });
+    }
+  });
+
+  app.get("/api/v2/models", async (req, res) => {
+    try {
+      const { makeId } = req.query;
+      if (!makeId) return res.status(400).json({ error: "makeId is required" });
+      
+      const cacheKey = `v2_models_${makeId}`;
+      const cached = apiCache.get(cacheKey);
+      if (cached) return res.json(cached);
+
+      const models = await prisma.vehicleModel.findMany({
+        where: { makeId: String(makeId) },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, imageUrl: true, makeId: true }
+      });
+      apiCache.set(cacheKey, models);
+      res.json(models);
+    } catch (error) {
+      console.error("Failed to fetch models:", error);
+      res.status(500).json({ error: "Failed to fetch models" });
+    }
+  });
+
+  app.get("/api/v2/trims", async (req, res) => {
+    try {
+      const { modelId } = req.query;
+      if (!modelId) return res.status(400).json({ error: "modelId is required" });
+      
+      const cacheKey = `v2_trims_${modelId}`;
+      const cached = apiCache.get(cacheKey);
+      if (cached) return res.json(cached);
+
+      const trims = await prisma.vehicleTrim.findMany({
+        where: { modelId: String(modelId) },
+        orderBy: { name: 'asc' }
+      });
+      apiCache.set(cacheKey, trims);
+      res.json(trims);
+    } catch (error) {
+      console.error("Failed to fetch trims:", error);
+      res.status(500).json({ error: "Failed to fetch trims" });
+    }
+  });
+  // ---------------------------------------
+
+  // Legacy endpoint for backward compatibility (Admin panel still uses this)
   app.get("/api/cars", async (req, res) => {
     try {
       const carDb = await getCarDb();
@@ -2067,7 +2046,8 @@ You must return the response as a JSON array of objects. Each object must have t
             name: modelName,
             class: 'Unknown',
             msrpRange: '$30k - $40k',
-            years: new Date().getFullYear().toString(),
+            years: [new Date().getFullYear()],
+            imageUrl: '',
             mf: 0.00150,
             rv36: 0.60,
             baseAPR: 4.9,
@@ -2081,13 +2061,22 @@ You must return the response as a JSON array of objects. Each object must have t
         if (trimName) {
           const trimExists = model.trims.find((t: any) => t.name === trimName);
           if (!trimExists) {
-            model.trims.push({ name: trimName, msrp: msrpValue });
+            model.trims.push({ name: trimName, msrp: msrpValue, mf: 0.00150, apr: 4.9, rv36: 0.60, leaseCash: 0 });
           }
         }
       }
 
       await saveCarDb(carDb);
+      clearCarCache();
       
+      await AuditLogger.log(
+        (req as any).user?.dbUser?.id || (req as any).user?.uid,
+        'SYNC_CARS_FROM_DEALS',
+        'CarDatabase',
+        undefined,
+        { addedMakes, addedModels }
+      );
+
       res.json({ 
         success: true, 
         message: `Synced ${addedMakes} new makes and ${addedModels} new models from deals.`,
@@ -2108,6 +2097,16 @@ You must return the response as a JSON array of objects. Each object must have t
       if ('tiers' in (carDb as any)) delete (carDb as any).tiers;
       
       await saveCarDb(carDb);
+      clearCarCache();
+
+      await AuditLogger.log(
+        (req as any).user?.dbUser?.id || (req as any).user?.uid,
+        'UPDATE_CAR_DB_LEGACY',
+        'CarDatabase',
+        undefined,
+        { makesUpdated: makes?.length || 0 }
+      );
+
       res.json({ success: true, data: carDb });
     } catch (error) {
       console.error("Failed to update car database:", error);
@@ -2260,10 +2259,11 @@ You must return the response as a JSON array of objects. Each object must have t
     try {
       // Security: Validate input
       const validatedData = leadSchema.parse(req.body);
-      const { client, tradeIn, car, calc } = validatedData;
+      const { client, tradeIn, car, calc, source } = validatedData;
 
       const lead = await prisma.lead.create({
         data: {
+          source: source || 'catalog_deal',
           clientName: client.name,
           clientPhone: client.phone,
           clientEmail: client.email || '',
@@ -2866,6 +2866,7 @@ You must return the response as a JSON array of objects. Each object must have t
         depositAmount: l.depositAmount,
         dealersSent: l.dealersSent,
         dealersAccepted: l.dealersAccepted,
+        source: l.source,
         createdAt: l.createdAt.toISOString()
       }));
       
@@ -2959,6 +2960,10 @@ You must return the response as a JSON array of objects. Each object must have t
       const CAR_DB = await getCarDb();
       extractedData = await applyDealerAdjustments(extractedData);
       const calcResult = await DealEngineFacade.calculateForAdminIngestion(extractedData, CAR_DB);
+      extractedData.monthlyPayment = {
+        value: calcResult.calculatedPayment,
+        provenance_status: "calculated"
+      };
       const eligibility = EligibilityEngine.evaluate(
         extractedData, 
         calcResult.mode, 
@@ -3006,6 +3011,29 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
+  // Calculate deal preview
+  app.post("/api/admin/calculate-preview", salesAgentAuth, async (req, res) => {
+    try {
+      const { financialData } = req.body;
+      if (!financialData) {
+        return res.status(400).json({ error: "Missing financialData" });
+      }
+      
+      const CAR_DB = await getCarDb();
+      const adjustedFinancialData = await applyDealerAdjustments(financialData);
+      const calcResult = await DealEngineFacade.calculateForAdminIngestion(adjustedFinancialData, CAR_DB);
+      
+      res.json({
+        monthlyPayment: calcResult.calculatedPayment,
+        mode: calcResult.mode,
+        markups: calcResult.markups
+      });
+    } catch (error: any) {
+      console.error("Failed to calculate preview:", error);
+      res.status(500).json({ error: "Failed to calculate preview" });
+    }
+  });
+
   // Create a manual deal
   app.post("/api/admin/deals", salesAgentAuth, async (req, res) => {
     try {
@@ -3023,6 +3051,10 @@ You must return the response as a JSON array of objects. Each object must have t
         const CAR_DB = await getCarDb();
         const adjustedFinancialData = await applyDealerAdjustments(financialData);
         const calcResult = await DealEngineFacade.calculateForAdminIngestion(adjustedFinancialData, CAR_DB);
+        adjustedFinancialData.monthlyPayment = {
+          value: calcResult.calculatedPayment,
+          provenance_status: "calculated"
+        };
         const eligibility = EligibilityEngine.evaluate(
           adjustedFinancialData, 
           calcResult.mode, 
@@ -3093,6 +3125,10 @@ You must return the response as a JSON array of objects. Each object must have t
         const CAR_DB = await getCarDb();
         const adjustedFinancialData = await applyDealerAdjustments(financialData);
         const calcResult = await DealEngineFacade.calculateForAdminIngestion(adjustedFinancialData, CAR_DB);
+        adjustedFinancialData.monthlyPayment = {
+          value: calcResult.calculatedPayment,
+          provenance_status: "calculated"
+        };
         const eligibility = EligibilityEngine.evaluate(
           adjustedFinancialData, 
           calcResult.mode, 
@@ -3208,11 +3244,15 @@ You must return the response as a JSON array of objects. Each object must have t
 
         const CAR_DB = await getCarDb();
         const calcResult = await DealEngineFacade.calculateForAdminIngestion(financialData, CAR_DB);
+        financialData.monthlyPayment = {
+          value: calcResult.calculatedPayment,
+          provenance_status: "calculated"
+        };
         const eligibility = EligibilityEngine.evaluate(
           financialData,
           calcResult.mode,
           calcResult.markups,
-          deal.isFirstTimeBuyerEligible,
+          updates.isFirstTimeBuyerEligible !== undefined ? updates.isFirstTimeBuyerEligible : deal.isFirstTimeBuyerEligible,
           calcResult.calculatedPayment
         );
 
@@ -3230,6 +3270,10 @@ You must return the response as a JSON array of objects. Each object must have t
         if (updates.isSoldOut !== undefined) dealUpdates.isSoldOut = updates.isSoldOut;
         if (updates.tags !== undefined) dealUpdates.tags = updates.tags;
         if (updates.isPinned !== undefined) dealUpdates.isPinned = updates.isPinned;
+        if (updates.reviewStatus !== undefined) dealUpdates.reviewStatus = updates.reviewStatus;
+        if (updates.publishStatus !== undefined) dealUpdates.publishStatus = updates.publishStatus;
+        if (updates.lenderId !== undefined) dealUpdates.lenderId = updates.lenderId;
+        if (updates.isFirstTimeBuyerEligible !== undefined) dealUpdates.isFirstTimeBuyerEligible = updates.isFirstTimeBuyerEligible;
 
         const updatedDeal = await prisma.dealRecord.update({
           where: { id: deal.id },

@@ -26,6 +26,11 @@ import { SmartPriceAlertModal } from '../components/SmartPriceAlertModal';
 import { GroupBuyingWidget } from '../components/GroupBuyingWidget';
 import { AINegotiatorModal } from '../components/AINegotiatorModal';
 import { Bell, Bot } from 'lucide-react';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../firebase';
+import { toast } from 'react-hot-toast';
+
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 export const DealPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -47,10 +52,26 @@ export const DealPage = () => {
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [isNegotiatorOpen, setIsNegotiatorOpen] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<any>(null);
+  const handleCalculatorChange = React.useCallback((data: any) => {
+    setSelectedConfig(data);
+  }, []);
+
+  const handleMileageChange = React.useCallback((m: string) => {
+    setMileage(m);
+  }, []);
   const [viewCount, setViewCount] = useState(Math.floor(Math.random() * 5) + 2);
   const [activeTab, setActiveTab] = useState<'specs' | 'options'>('specs');
   const [mileage, setMileage] = useState('10k');
   const [photos, setPhotos] = useState<CarPhoto[]>([]);
+
+  // DepositModal state
+  const [clientInfo, setClientInfo] = useState({ name: '', email: '', phone: '', tcpaConsent: false, termsConsent: false });
+  const [tradeIn, setTradeIn] = useState({ hasTradeIn: false, make: '', model: '', year: '', mileage: '', vin: '', hasLoan: false, payoff: '' });
+  const [payMethod, setPayMethod] = useState('');
+  const [paymentName, setPaymentName] = useState('');
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [leadId, setLeadId] = useState<string | null>(null);
 
   const enrichedDeal = deal;
 
@@ -86,13 +107,10 @@ export const DealPage = () => {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/deals?id=${id}`).then(res => {
-        if (!res.ok) throw new Error('Failed to fetch deals');
-        return res.json();
-      }),
-      fetch('/api/car-photos').then(res => res.json())
+      fetchWithCache(`/api/deals?id=${id}`),
+      fetchWithCache('/api/car-photos')
     ])
-      .then(([data, photosData]) => {
+      .then(([data, photosData]: any) => {
         setPhotos(photosData || []);
         if (!Array.isArray(data)) {
           console.error('Expected array of deals, got:', data);
@@ -155,6 +173,88 @@ export const DealPage = () => {
   const handleProceed = (config: any) => {
     setSelectedConfig(config);
     setIsDepositOpen(true);
+  };
+
+  const submitLead = async () => {
+    setIsSubmitting(true);
+    const activeSelection = selectedConfig || deal;
+
+    const payload = {
+      userId: auth.currentUser?.uid || null,
+      name: clientInfo.name,
+      email: clientInfo.email,
+      phone: clientInfo.phone,
+      payMethod: payMethod,
+      paymentName: paymentName,
+      status: 'new',
+      legalConsent: {
+        tcpa: clientInfo.tcpaConsent,
+        terms: clientInfo.termsConsent
+      },
+      tradeIn: tradeIn.hasTradeIn ? tradeIn : null,
+      vehicle: {
+        make: activeSelection.make?.name || activeSelection.make,
+        model: activeSelection.model?.name || activeSelection.model,
+        year: activeSelection.year,
+        trim: activeSelection.trim?.name || activeSelection.trim,
+        msrp: activeSelection.trim?.msrp || activeSelection.msrp,
+      },
+      calc: {
+        type: activeSelection.type || 'lease',
+        payment: activeSelection.result ? (activeSelection.type === 'lease' ? activeSelection.result.leasePay : activeSelection.result.finPay) : activeSelection.payment || 0,
+        down: activeSelection.down || 0,
+        term: activeSelection.term || '36 mo',
+        tier: activeSelection.tier || 'Tier 1',
+        mileage: activeSelection.mileage || '10k',
+      },
+      source: activeSelection.source || 'catalog_deal',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      const response = await fetch('/api/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ...payload, 
+          client: { ...clientInfo, payMethod, paymentName }, 
+          car: payload.vehicle,
+          userId: auth.currentUser?.uid || null
+        })
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Failed to submit lead to backend');
+      }
+
+      const { leadId: prismaLeadId } = responseData;
+      
+      try {
+        await setDoc(doc(db, 'leads', prismaLeadId.toString()), {
+          ...payload,
+          prismaId: prismaLeadId,
+          status: 'pending',
+          updatedAt: serverTimestamp()
+        });
+      } catch (fsError) {
+        console.warn("Firestore backup failed, but backend succeeded:", fsError);
+      }
+
+      setLeadId(prismaLeadId.toString());
+      localStorage.setItem('leadId', prismaLeadId.toString());
+      localStorage.setItem('activeSelection', JSON.stringify(activeSelection));
+      
+      return true;
+    } catch (e) {
+      console.error('Error submitting lead:', e);
+      toast.error(e instanceof Error ? e.message : "Failed to submit application. Please try again.");
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const offerId = useMemo(() => {
@@ -250,16 +350,14 @@ export const DealPage = () => {
                     addToCompare(deal);
                   }
                 }}
-                className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border ${
+                title={isInCompare(deal.id.toString()) ? (language === 'ru' ? 'Удалить из сравнения' : 'Remove from compare') : (language === 'ru' ? 'Добавить в сравнение' : 'Add to compare')}
+                className={`p-2 rounded-xl transition-colors flex items-center justify-center border ${
                   isInCompare(deal.id.toString()) 
-                    ? 'bg-[var(--s2)] text-[var(--w)] border-[var(--lime)]' 
-                    : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
+                    ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
+                    : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
                 }`}
               >
-                <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-colors ${isInCompare(deal.id.toString()) ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--mu2)]'}`}>
-                  {isInCompare(deal.id.toString()) && <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2 h-2 text-black"><path d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </div>
-                {isInCompare(deal.id.toString()) ? 'Added to Compare' : 'Compare'}
+                <Heart size={16} className={isInCompare(deal.id.toString()) ? "fill-current" : ""} />
               </button>
             </div>
           </div>
@@ -285,7 +383,7 @@ export const DealPage = () => {
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative items-start">
+          <div className="flex flex-col-reverse lg:grid lg:grid-cols-12 gap-8 relative items-start">
             {/* Left Column: Gallery & Technical Specs */}
             <div className="lg:col-span-7 space-y-8">
               <motion.div
@@ -670,7 +768,8 @@ export const DealPage = () => {
                     timeLeft={timeLeft} 
                     viewCount={viewCount}
                     onProceed={handleProceed}
-                    onMileageChange={(m) => setMileage(m)}
+                    onChange={handleCalculatorChange}
+                    onMileageChange={handleMileageChange}
                     mode="offer"
                     initialIsFirstTimeBuyer={isFirstTimeBuyer}
                     initialHasCosigner={hasCosigner}
@@ -837,7 +936,7 @@ export const DealPage = () => {
             
             <div className="flex flex-wrap justify-center gap-4 pt-8">
               <button 
-                onClick={() => handleProceed(deal)}
+                onClick={() => handleProceed(selectedConfig || deal)}
                 className="bg-[var(--lime)] text-black px-12 py-6 rounded-xl font-display text-2xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
               >
                 <span>{td.lockInDeal}</span>
@@ -859,7 +958,21 @@ export const DealPage = () => {
       <DepositModal 
         isOpen={isDepositOpen}
         onClose={() => setIsDepositOpen(false)}
-        deal={selectedConfig || deal}
+        onConfirm={submitLead}
+        isSubmitting={isSubmitting}
+        carName={selectedConfig ? `${selectedConfig.make?.name || selectedConfig.make} ${selectedConfig.model?.name || selectedConfig.model} ${selectedConfig.year || ''}` : `${deal?.make?.name || deal?.make} ${deal?.model?.name || deal?.model} ${deal?.year || ''}`}
+        activeSelection={selectedConfig || deal}
+        clientInfo={clientInfo}
+        setClientInfo={setClientInfo}
+        tradeIn={tradeIn}
+        setTradeIn={setTradeIn}
+        payMethod={payMethod}
+        setPayMethod={setPayMethod}
+        paymentName={paymentName}
+        setPaymentName={setPaymentName}
+        isConfirmed={isConfirmed}
+        setIsConfirmed={setIsConfirmed}
+        leadId={leadId}
       />
 
       <SmartPriceAlertModal
@@ -877,15 +990,15 @@ export const DealPage = () => {
       {/* Mobile Sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
         <div className="flex flex-col">
-          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">{t.calc.leasePayment}</div>
+          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">{selectedConfig?.type === 'finance' ? (language === 'ru' ? 'Платеж по кредиту' : 'Finance Payment') : t.calc.leasePayment}</div>
           <div className="flex items-baseline gap-1">
-            <span className="font-display text-2xl text-[var(--w)] leading-none">${deal.leasePay}</span>
+            <span className="font-display text-2xl text-[var(--w)] leading-none">${selectedConfig?.payment || deal.leasePay}</span>
             <span className="text-[10px] text-[var(--mu2)]">/mo</span>
           </div>
-          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${deal.dueAtSigning} due</div>
+          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${selectedConfig?.down !== undefined ? selectedConfig.down : deal.dueAtSigning} due</div>
         </div>
         <button 
-          onClick={() => handleProceed(deal)}
+          onClick={() => handleProceed(selectedConfig || deal)}
           className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
         >
           <span>{td.lockInDeal}</span>

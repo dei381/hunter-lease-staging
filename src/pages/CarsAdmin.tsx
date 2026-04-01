@@ -7,6 +7,7 @@ import { getAuthToken } from '../utils/auth';
 import { VinDecoderModal } from '../components/admin/VinDecoderModal';
 import { SyncPreviewModal } from '../components/admin/SyncPreviewModal';
 import { toast } from 'react-hot-toast';
+import { fetchWithCache, clearClientCache } from '../utils/fetchWithCache';
 
 export const CarsAdmin = () => {
   const { language } = useLanguageStore();
@@ -18,7 +19,7 @@ export const CarsAdmin = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncPreview, setSyncPreview] = useState<any[] | null>(null);
+  const [syncPreview, setSyncPreview] = useState<any | null>(null);
   const [isApplyingSync, setIsApplyingSync] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [debugData, setDebugData] = useState<string | null>(null);
@@ -136,6 +137,7 @@ export const CarsAdmin = () => {
         if (modelName) {
           payload.models = [modelName];
         }
+        payload.syncOptions = syncOptions;
 
         const res = await fetch('/api/admin/sync-external/preview', {
           method: 'POST',
@@ -160,7 +162,7 @@ export const CarsAdmin = () => {
     });
   };
 
-  const applySync = async (diff: any[]) => {
+  const applySync = async (diff: any) => {
     setIsApplyingSync(true);
     try {
       const res = await fetch('/api/admin/sync-external/apply', {
@@ -172,18 +174,51 @@ export const CarsAdmin = () => {
         body: JSON.stringify({ diff })
       });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.jobId) {
+        toast(`Sync job started. Please wait...`);
+        
+        // Poll for job status
+        const pollJob = async () => {
+          try {
+            const jobRes = await fetch(`/api/admin/jobs/${data.jobId}`, {
+              headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
+            });
+            const jobData = await jobRes.json();
+            
+            if (jobData.status === 'completed') {
+              toast.success(`Successfully applied ${jobData.result?.appliedCount || 0} updates!`);
+              setSyncPreview(null);
+              fetchCars();
+              setSelectedMakes([]);
+              setIsApplyingSync(false);
+            } else if (jobData.status === 'failed') {
+              toast.error(`Sync failed: ${jobData.error}`);
+              setIsApplyingSync(false);
+            } else {
+              // Still processing, poll again
+              setTimeout(pollJob, 2000);
+            }
+          } catch (e) {
+            console.error('Error polling job:', e);
+            setIsApplyingSync(false);
+          }
+        };
+        
+        pollJob();
+      } else if (res.ok) {
+        // Fallback if no job ID returned
         toast.success(`Successfully applied ${data.appliedCount} updates!`);
         setSyncPreview(null);
         fetchCars();
         setSelectedMakes([]);
+        setIsApplyingSync(false);
       } else {
         toast.error(`${data.error}${data.details ? '\n\n' + data.details : ''}`);
+        setIsApplyingSync(false);
       }
     } catch (err) {
       console.error('Failed to apply sync', err);
       toast.error('Failed to apply sync. Check console for details.');
-    } finally {
       setIsApplyingSync(false);
     }
   };
@@ -258,8 +293,7 @@ export const CarsAdmin = () => {
 
   const fetchCars = async () => {
     try {
-      const res = await fetch('/api/cars');
-      const data = await res.json();
+      const data = await fetchWithCache('/api/cars');
       setCarDb(data);
     } catch (err) {
       console.error('Failed to fetch cars', err);
@@ -277,6 +311,7 @@ export const CarsAdmin = () => {
         body: JSON.stringify(newDb),
       });
       if (!res.ok) throw new Error('Failed to save');
+      clearClientCache();
       setCarDb(newDb);
       toast.success('Car database updated successfully');
     } catch (err) {
@@ -531,6 +566,11 @@ export const CarsAdmin = () => {
   };
 
   if (!carDb) return <div className="text-center py-12">{t.loadingCars}</div>;
+  
+  // Ensure makes array exists
+  if (!carDb.makes) {
+    carDb.makes = [];
+  }
 
   return (
     <div className="space-y-6">

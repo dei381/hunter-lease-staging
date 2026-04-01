@@ -135,7 +135,9 @@ export class DealEngineFacade {
     const totalIncentivesCents = await DataResolver.resolveIncentives(context, vehicle);
 
     if (programs.length === 0) {
-      return this.createErrorResponse('NO_PROGRAMS');
+      const err = this.createErrorResponse('NO_PROGRAMS');
+      err.warnings = [`Debug: make=${vehicle.make}, model=${vehicle.model}, trim=${vehicle.trim}, year=${vehicle.year}, term=${context.term}, mileage=${context.mileage}, type=${context.quoteType}`];
+      return err;
     }
 
     // 2. Calculate for each program and find the best one
@@ -232,11 +234,60 @@ export class DealEngineFacade {
           throw new Error("MATH_ERROR");
         }
 
+        // Attach routing metadata
+        formattedResult.lenderPriority = (program.lender as any)?.priority || 99;
+        
+        // Calculate a proxy for dealer reserve (markup potential)
+        // E.g., if the bank allows up to 1% APR markup, the reserve is roughly 1% of the amount financed
+        // For now, we'll use a simplified proxy: higher base MF/APR generally means more reserve potential,
+        // or we could calculate the difference between base and max allowed markup.
+        // Let's assume a standard 1% markup for finance, and 0.00040 for lease as max markup.
+        if (context.quoteType === 'LEASE') {
+          const markupMf = 0.00040;
+          const rentChargeMarkup = (mathResult as any).capitalizedCostCents * markupMf * context.term;
+          formattedResult.dealerReserveCents = rentChargeMarkup;
+        } else {
+          const markupApr = 0.01; // 1%
+          const financeChargeMarkup = (mathResult as any).amountFinancedCents * markupApr * (context.term / 12);
+          formattedResult.dealerReserveCents = financeChargeMarkup;
+        }
+
         allResults.push(formattedResult);
 
-        // 5. Pick the best result (lowest monthly payment)
-        if (!bestResult || formattedResult.monthlyPaymentCents < bestResult.monthlyPaymentCents) {
+        // 5. Pick the best result based on routing strategy
+        if (!bestResult) {
           bestResult = formattedResult;
+        } else {
+          const strategy = settings.routingStrategy || 'BEST_FOR_CUSTOMER';
+          
+          if (strategy === 'BEST_FOR_CUSTOMER') {
+            if (formattedResult.monthlyPaymentCents < bestResult.monthlyPaymentCents) {
+              bestResult = formattedResult;
+            }
+          } else if (strategy === 'HIGHEST_PROFIT') {
+            // For highest profit, we might look at highest dealer reserve or markup potential
+            // This is a simplified proxy: higher MF/APR generally means more reserve potential
+            const currentReserve = formattedResult.dealerReserveCents || 0;
+            const bestReserve = bestResult.dealerReserveCents || 0;
+            if (currentReserve > bestReserve) {
+              bestResult = formattedResult;
+            } else if (currentReserve === bestReserve && formattedResult.monthlyPaymentCents < bestResult.monthlyPaymentCents) {
+              // Tie-breaker: better for customer
+              bestResult = formattedResult;
+            }
+          } else if (strategy === 'HIGHEST_APPROVAL') {
+            // Prefer lenders known for high approval rates (e.g., Captives or specific banks)
+            // This would ideally use a priority score from the lender table
+            const currentPriority = formattedResult.lenderPriority || 99;
+            const bestPriority = bestResult.lenderPriority || 99;
+            
+            if (currentPriority < bestPriority) {
+              bestResult = formattedResult;
+            } else if (currentPriority === bestPriority && formattedResult.monthlyPaymentCents < bestResult.monthlyPaymentCents) {
+              // Tie-breaker: better for customer
+              bestResult = formattedResult;
+            }
+          }
         }
 
       } catch (error) {

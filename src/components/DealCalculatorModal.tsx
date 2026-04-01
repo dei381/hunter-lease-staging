@@ -11,6 +11,9 @@ import { useDebounce } from '../hooks/useDebounce';
 
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
+import { IncentivesModal } from './IncentivesModal';
+
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -18,8 +21,6 @@ const fmt = (n: any) => {
   if (isNaN(num)) return '$0';
   return '$' + Math.round(num).toLocaleString('en-US');
 };
-
-
 
 export const DealCalculatorModal = ({
   isOpen,
@@ -44,22 +45,19 @@ export const DealCalculatorModal = ({
   const [mileage, setMileage] = useState(initialMileage || '7.5k');
   const [msdCount, setMsdCount] = useState(0);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);
-  const [carDb, setCarDb] = useState<any>(null);
   const [photos, setPhotos] = useState<CarPhoto[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTransparencyOpen, setIsTransparencyOpen] = useState(false);
+  const [isIncentivesModalOpen, setIsIncentivesModalOpen] = useState(false);
+  const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(false);
 
   useEffect(() => {
     fetchSettings();
-    Promise.all([
-      fetch('/api/cars').then(res => res.json()),
-      fetch('/api/car-photos').then(res => res.json())
-    ])
-      .then(([carsData, photosData]) => {
-        setCarDb(carsData);
+    fetchWithCache('/api/car-photos')
+      .then((photosData: any) => {
         setPhotos(photosData);
       })
-      .catch(err => console.error('Failed to fetch data', err));
+      .catch(err => console.error('Failed to fetch photos', err));
   }, []);
 
   useEffect(() => {
@@ -94,6 +92,7 @@ export const DealCalculatorModal = ({
   const debouncedTier = useDebounce(tier, 500);
   const debouncedMsdCount = useDebounce(msdCount, 500);
   const debouncedSelectedIncentives = useDebounce(selectedIncentives, 500);
+  const debouncedIsFirstTimeBuyer = useDebounce(isFirstTimeBuyer, 500);
 
   useEffect(() => {
     const fetchQuote = async () => {
@@ -119,6 +118,7 @@ export const DealCalculatorModal = ({
               zipCode: '90210',
               msdCount: debouncedMsdCount,
               selectedIncentiveIds: debouncedSelectedIncentives,
+              isFirstTimeBuyer: debouncedIsFirstTimeBuyer,
               make: deal?.make,
               model: deal?.model,
               trim: deal?.trim
@@ -160,18 +160,18 @@ export const DealCalculatorModal = ({
     return {
       totalCost: quoteResult.tco.totalCostCents / 100,
       monthlyAverage: quoteResult.tco.monthlyAverageCents / 100,
-      breakdown: {
+      breakdown: quoteResult.tco.breakdownCents ? {
         lease: quoteResult.tco.breakdownCents.lease / 100,
         insurance: quoteResult.tco.breakdownCents.insurance / 100,
         maintenance: quoteResult.tco.breakdownCents.maintenance / 100,
         registration: quoteResult.tco.breakdownCents.registration / 100
-      }
+      } : null
     };
   }, [quoteResult]);
 
   return (
     <AnimatePresence>
-      {isOpen && deal && carDb && createPortal(
+      {isOpen && deal && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-6 overflow-y-auto font-sans">
           <motion.div 
             initial={{ opacity: 0 }}
@@ -193,8 +193,8 @@ export const DealCalculatorModal = ({
             <div className="p-4 md:p-12 border-b border-[var(--b1)] bg-[var(--s1)] relative overflow-hidden">
               <div className="absolute top-0 right-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
                 <img 
-                  src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} 
-                  alt={deal.model}
+                  src={deal.image || getCarImage(photos, deal.make?.name || deal.make, deal.model?.name || deal.model, deal.year)} 
+                  alt={deal.model?.name || deal.model}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
@@ -208,12 +208,12 @@ export const DealCalculatorModal = ({
                 </span>
                 {deal.hot && <span className="text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider bg-[var(--lime)]/20 text-[var(--lime)] border border-[var(--lime)]/30 shadow-sm">{t.hotDeal}</span>}
               </div>
-              <h2 className="font-display text-4xl md:text-5xl mb-2 relative z-10">{deal.make} {deal.model}</h2>
-              <p className="text-[var(--mu)] text-sm uppercase tracking-widest font-medium relative z-10">{deal.trim}</p>
+              <h2 className="font-display text-4xl md:text-5xl mb-2 relative z-10">{deal.make?.name || deal.make} {deal.model?.name || deal.model}</h2>
+              <p className="text-[var(--mu)] text-sm uppercase tracking-widest font-medium relative z-10">{deal.trim?.name || deal.trim}</p>
             </div>
 
-            <div className="p-4 md:p-12 grid md:grid-cols-5 gap-8 md:gap-12">
-              <div className="md:col-span-3 space-y-8">
+            <div className="p-4 md:p-12 flex flex-col md:grid md:grid-cols-5 gap-8 md:gap-12">
+              <div className="md:col-span-3 space-y-8 order-2 md:order-1">
                 <div>
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-display">{t.customizeDeal}</h3>
@@ -334,29 +334,41 @@ export const DealCalculatorModal = ({
                     )}
 
                       {deal.availableIncentives && deal.availableIncentives.length > 0 && (
-                        <div className="pt-4">
-                          <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider block mb-3">{t.incentivesTitle}</label>
-                          <p className="text-[10px] text-[var(--mu2)] mb-4">{t.incentivesDesc}</p>
-                          <div className="grid grid-cols-1 gap-2">
-                            {deal.availableIncentives.map((inc: any) => (
-                              <button
-                                key={inc.id}
-                                onClick={() => {
-                                  if (inc.isDefault && role !== 'admin') return;
-                                  toggleIncentive(inc.id);
-                                }}
-                                className={`flex items-center justify-between p-3 rounded-xl border transition-all text-left ${
-                                  selectedIncentives.includes(inc.id)
-                                    ? 'bg-[var(--lime)]/10 border-[var(--lime)] text-[var(--lime)]'
-                                    : 'bg-[var(--s2)] border-[var(--b2)] text-[var(--mu2)] hover:border-[var(--mu)]'
-                                } ${inc.isDefault && role !== 'admin' ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
-                              >
-                                <span className="text-xs font-bold uppercase tracking-wide">
-                                  {language === 'ru' && inc.nameRu ? inc.nameRu : inc.name}
-                                </span>
-                                <span className="font-mono text-xs">-{fmt(inc.amount)}</span>
-                              </button>
-                            ))}
+                        <div className="pt-4 space-y-4">
+                          <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--b2)] bg-[var(--s2)]">
+                            <div className="space-y-1">
+                              <div className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">First Time Buyer</div>
+                              <div className="text-[10px] text-[var(--mu2)]">Check if you have never financed or leased a car before.</div>
+                            </div>
+                            <button
+                              onClick={() => setIsFirstTimeBuyer(!isFirstTimeBuyer)}
+                              className={`w-12 h-6 rounded-full transition-colors relative ${isFirstTimeBuyer ? 'bg-[var(--lime)]' : 'bg-[var(--b2)]'}`}
+                            >
+                              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isFirstTimeBuyer ? 'left-7' : 'left-1'}`} />
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider block mb-3">{t.incentivesTitle}</label>
+                            <p className="text-[10px] text-[var(--mu2)] mb-4">{t.incentivesDesc}</p>
+                            <button
+                              onClick={() => setIsIncentivesModalOpen(true)}
+                              className="w-full flex items-center justify-between p-4 rounded-xl border border-[var(--b2)] bg-[var(--s2)] hover:border-[var(--mu)] transition-all text-left group"
+                            >
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-[var(--mu)] group-hover:text-[var(--lime)] transition-colors">
+                                View & Select Incentives
+                              </span>
+                              <span className="text-[10px] text-[var(--mu2)] mt-1">
+                                {selectedIncentives.length} incentives applied
+                              </span>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-[var(--b2)] flex items-center justify-center group-hover:bg-[var(--lime)]/10 group-hover:text-[var(--lime)] transition-colors">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </div>
+                          </button>
                           </div>
                         </div>
                       )}
@@ -402,7 +414,7 @@ export const DealCalculatorModal = ({
                 </div>
               </div>
 
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 order-1 md:order-2">
                 <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 flex flex-col h-full shadow-lg relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--lime)]/5 rounded-full blur-2xl pointer-events-none" />
                   
@@ -449,7 +461,7 @@ export const DealCalculatorModal = ({
                     )}
 
                     {/* TCO Breakdown Block */}
-                    {tcoData && (
+                    {tcoData && tcoData.breakdown && (
                       <div className="bg-[var(--s2)]/30 border border-[var(--b2)] rounded-2xl p-4 space-y-3 mb-6">
                         <div className="flex justify-between items-center">
                           <span className="text-[10px] text-[var(--mu)] uppercase font-bold tracking-widest">{translations[language].calc.tcoTitle}</span>
@@ -584,7 +596,7 @@ export const DealCalculatorModal = ({
 
           {isProcessing && (
             <ProgressScreen 
-              makeName={deal.make}
+              makeName={deal.make?.name || deal.make}
               onComplete={() => {
                 setIsProcessing(false);
                 onProceed({ ...deal, type: calcType, payment: calculatedPayment, down, term: `${term} mo`, tier, mileage });
@@ -598,6 +610,17 @@ export const DealCalculatorModal = ({
             deal={{ ...deal, type: calcType, payment: calculatedPayment, down, term: `${term} mo` }}
             mileage={mileage}
             quoteResult={quoteResult}
+          />
+
+          <IncentivesModal
+            isOpen={isIncentivesModalOpen}
+            onClose={() => setIsIncentivesModalOpen(false)}
+            deal={deal}
+            selectedIncentives={selectedIncentives}
+            toggleIncentive={toggleIncentive}
+            quoteResult={quoteResult}
+            role={role}
+            isFirstTimeBuyer={isFirstTimeBuyer}
           />
         </div>,
         document.body

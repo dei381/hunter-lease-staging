@@ -76,12 +76,41 @@ export const MediaAdmin = () => {
 
     setIsUploading(true);
     try {
-      // Convert file to base64
+      // Convert file to base64 and resize if needed
       const reader = new FileReader();
       reader.readAsDataURL(selectedFile);
       
       reader.onload = async () => {
-        const imageUrl = reader.result as string;
+        let imageUrl = reader.result as string;
+        
+        // Resize image if it's too large
+        const img = new Image();
+        img.src = imageUrl;
+        await new Promise(resolve => { img.onload = resolve; });
+        
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+          if (width > height) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          } else {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            imageUrl = canvas.toDataURL('image/jpeg', 0.8); // Compress to JPEG with 80% quality
+          }
+        }
         
         // Save metadata and image to backend
         const res = await fetch('/api/admin/car-photos/upload', {

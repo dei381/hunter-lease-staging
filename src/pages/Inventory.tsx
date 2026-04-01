@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Search, Filter, MapPin, Calendar, Tag, Info, ExternalLink } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 export const Inventory = () => {
   const { language } = useLanguageStore();
@@ -27,9 +28,8 @@ export const Inventory = () => {
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value as string);
       });
-      const res = await fetch(`/api/inventory?${params.toString()}`);
-      const data = await res.json();
-      setListings(data);
+      const data = await fetchWithCache(`/api/inventory?${params.toString()}`);
+      setListings(data as any[]);
     } catch (err) {
       console.error('Failed to fetch inventory', err);
     } finally {

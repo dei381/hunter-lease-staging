@@ -70,7 +70,7 @@ export const TradeInEstimator = ({ onEquityCalculated }: { onEquityCalculated: (
   }
 
   return (
-    <div className="p-4 border-b border-[var(--b2)] bg-[var(--s2)]/50">
+    <div className="p-4 sm:p-6 border-b border-[var(--b2)] bg-[var(--s2)]/50">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Car size={16} className="text-[var(--lime)]" />
@@ -100,59 +100,59 @@ export const TradeInEstimator = ({ onEquityCalculated }: { onEquityCalculated: (
             className="space-y-4"
           >
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-1">Year</label>
+              <div className="relative bg-[var(--s1)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-3">
+                <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-1">Year</label>
                 <input 
                   type="text" 
                   value={year}
                   onChange={e => setYear(e.target.value)}
-                  className="w-full bg-[var(--s1)] border border-[var(--b1)] rounded-lg px-3 py-2 text-sm text-[var(--w)] focus:border-[var(--lime)] outline-none"
+                  className="w-full bg-transparent text-base font-bold outline-none placeholder-[var(--mu2)] text-[var(--w)]"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-1">Make</label>
+              <div className="relative bg-[var(--s1)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-3">
+                <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-1">Make</label>
                 <input 
                   type="text" 
                   value={make}
                   onChange={e => setMake(e.target.value)}
-                  className="w-full bg-[var(--s1)] border border-[var(--b1)] rounded-lg px-3 py-2 text-sm text-[var(--w)] focus:border-[var(--lime)] outline-none"
+                  className="w-full bg-transparent text-base font-bold outline-none placeholder-[var(--mu2)] text-[var(--w)]"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-1">Model</label>
+              <div className="relative bg-[var(--s1)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-3">
+                <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-1">Model</label>
                 <input 
                   type="text" 
                   value={model}
                   onChange={e => setModel(e.target.value)}
-                  className="w-full bg-[var(--s1)] border border-[var(--b1)] rounded-lg px-3 py-2 text-sm text-[var(--w)] focus:border-[var(--lime)] outline-none"
+                  className="w-full bg-transparent text-base font-bold outline-none placeholder-[var(--mu2)] text-[var(--w)]"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-1">Mileage</label>
+              <div className="relative bg-[var(--s1)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-3">
+                <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-1">Mileage</label>
                 <input 
                   type="number" 
                   value={mileage}
                   onChange={e => setMileage(e.target.value)}
-                  className="w-full bg-[var(--s1)] border border-[var(--b1)] rounded-lg px-3 py-2 text-sm text-[var(--w)] focus:border-[var(--lime)] outline-none"
+                  className="w-full bg-transparent text-base font-bold outline-none placeholder-[var(--mu2)] text-[var(--w)]"
                   required
                 />
               </div>
             </div>
             
-            <div>
-              <label className="block text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-1">
+            <div className="relative bg-[var(--s1)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-3">
+              <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-1">
                 {language === 'ru' ? 'Остаток по кредиту (Payoff)' : 'Current Loan Payoff'}
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mu2)]">$</span>
+              <div className="relative flex items-center">
+                <span className="text-[var(--mu2)] font-bold text-base mr-1">$</span>
                 <input 
                   type="number" 
                   value={payoff}
                   onChange={e => setPayoff(e.target.value)}
-                  className="w-full bg-[var(--s1)] border border-[var(--b1)] rounded-lg pl-7 pr-3 py-2 text-sm text-[var(--w)] focus:border-[var(--lime)] outline-none"
+                  className="w-full bg-transparent text-base font-bold outline-none placeholder-[var(--mu2)] text-[var(--w)]"
                   placeholder="0 if paid off"
                 />
               </div>
@@ -161,7 +161,7 @@ export const TradeInEstimator = ({ onEquityCalculated }: { onEquityCalculated: (
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full py-3 bg-[var(--lime)] text-black font-bold rounded-lg hover:bg-[var(--lime)]/90 transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 bg-[var(--lime)] text-black font-bold rounded-xl hover:bg-[var(--lime2)] transition-colors flex items-center justify-center gap-2 uppercase tracking-widest text-[10px]"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
               {language === 'ru' ? 'Оценить стоимость' : 'Get Estimated Value'}

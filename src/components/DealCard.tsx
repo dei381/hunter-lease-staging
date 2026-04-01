@@ -7,24 +7,26 @@ import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { cn } from '../utils/cn';
 import { getCarImage, CarPhoto } from '../utils/carImage';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
-export const DealCard = ({ deal, onSelect, effectiveFTB = false }: { deal: any, onSelect?: (deal: any) => void, effectiveFTB?: boolean }) => {
+export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initialPhotos }: { deal: any, onSelect?: (deal: any) => void, effectiveFTB?: boolean, photos?: CarPhoto[] }) => {
   const navigate = useNavigate();
   const { language } = useLanguageStore();
   const { settings } = useSettingsStore();
   const { toggleDeal, isSaved, addToCompare, removeFromCompare, isInCompare } = useGarageStore();
   const t = translations[language].deals;
   const tcalc = translations[language].calc;
-  const [photos, setPhotos] = useState<CarPhoto[]>([]);
+  const [photos, setPhotos] = useState<CarPhoto[]>(initialPhotos || []);
 
   useEffect(() => {
-    fetch('/api/car-photos')
-      .then(res => res.json())
-      .then(data => setPhotos(data || []))
-      .catch(err => console.error('Failed to fetch car photos:', err));
-  }, []);
+    if (!initialPhotos) {
+      fetchWithCache('/api/car-photos')
+        .then((data: any) => setPhotos(data || []))
+        .catch(err => console.error('Failed to fetch car photos:', err));
+    }
+  }, [initialPhotos]);
 
   return (
     <div 

@@ -55,7 +55,14 @@ export const LeadsAdmin = () => {
               {/* Client Info */}
               <div className="space-y-4 flex-1">
                 <div>
-                  <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest mb-1">{t.client}</div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest">{t.client}</div>
+                    {lead.source === 'custom_calculator' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase tracking-widest">
+                        Custom Calc
+                      </span>
+                    )}
+                  </div>
                   <div className="font-bold text-lg">{lead.client.name}</div>
                   <div className="text-sm text-[var(--mu2)]">{lead.client.phone}</div>
                 </div>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Filter, Info, TrendingDown, Eye, Heart, Scale } from 'lucide-react';
+import { ChevronDown, Filter, Info, TrendingDown, Eye, Heart, Scale, Bookmark } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useGarageStore } from '../store/garageStore';
@@ -10,6 +10,7 @@ import { ComparisonTray } from './ComparisonTray';
 import { InventoryAlertModal } from './InventoryAlertModal';
 import { DealCard } from './DealCard';
 import { getCarImage, CarPhoto } from '../utils/carImage';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
@@ -38,13 +39,10 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
   useEffect(() => {
     const url = limit ? `/api/deals?limit=${limit * 3}` : '/api/deals'; // Fetch a bit more to account for deduplication
     Promise.all([
-      fetch(url).then(res => {
-        if (!res.ok) throw new Error('Failed to fetch deals');
-        return res.json();
-      }),
-      fetch('/api/car-photos').then(res => res.json())
+      fetchWithCache(url),
+      fetchWithCache('/api/car-photos')
     ])
-      .then(([data, photosData]) => {
+      .then(([data, photosData]: any) => {
         setPhotos(photosData || []);
         if (!Array.isArray(data)) {
           console.error('Expected array of deals, got:', data);
@@ -265,7 +263,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                   }}
                   className="p-2 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 transition-colors"
                 >
-                  <Heart 
+                  <Bookmark 
                     size={16} 
                     className={isSaved(deal.id) ? "fill-[var(--lime)] text-[var(--lime)]" : "text-white"} 
                   />
@@ -280,13 +278,14 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                       addToCompare(deal);
                     }
                   }}
+                  title={isInCompare(deal.id) ? (language === 'ru' ? 'Удалить из сравнения' : 'Remove from compare') : (language === 'ru' ? 'Добавить в сравнение' : 'Add to compare')}
                   className={`p-2 rounded-full backdrop-blur-sm transition-colors ${
                     isInCompare(deal.id) 
                       ? 'bg-[var(--lime)] text-white' 
                       : 'bg-black/40 text-white hover:bg-black/60'
                   }`}
                 >
-                  <Scale size={16} />
+                  <Heart size={16} className={isInCompare(deal.id) ? "fill-current" : ""} />
                 </button>
               </div>
 

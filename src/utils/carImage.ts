@@ -11,15 +11,15 @@ export interface CarPhoto {
 
 export const getCarImage = (
   photos: CarPhoto[],
-  makeId: string,
-  modelId: string,
+  makeId: any,
+  modelId: any,
   year?: number,
   colorId?: string
 ): string => {
   if (!photos || photos.length === 0) return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800';
 
-  const normalizedMakeId = makeId.toLowerCase().replace(/\s+/g, '-');
-  const normalizedModelId = modelId.toLowerCase().replace(/\s+/g, '-');
+  const normalizedMakeId = (typeof makeId === 'string' ? makeId : makeId?.name || '').toLowerCase().replace(/\s+/g, '-');
+  const normalizedModelId = (typeof modelId === 'string' ? modelId : modelId?.name || '').toLowerCase().replace(/\s+/g, '-');
 
   // 1. Try exact match (Make, Model, Year, Color)
   if (year && colorId) {

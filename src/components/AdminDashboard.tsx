@@ -1,24 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { MediaAdmin } from './MediaAdmin';
-import { BanksAdmin } from './BanksAdmin';
-import { AnalyticsAdmin } from './AnalyticsAdmin';
 import { DragDropUploader } from './DragDropUploader';
-import { CarsAdmin } from '../pages/CarsAdmin';
-import { ReviewsAdmin } from './ReviewsAdmin';
-import { FeedbackAdmin } from './FeedbackAdmin';
-import { AuditLogsAdmin } from './admin/AuditLogsAdmin';
-import { BlogAdmin } from './BlogAdmin';
-import { IncentivesAdmin } from './IncentivesAdmin';
-import { BulkEditAdmin } from './BulkEditAdmin';
-import { DealersAdmin } from './DealersAdmin';
-import { PromoCodesAdmin } from './PromoCodesAdmin';
-import { OfferBuilderModal } from './admin/OfferBuilderModal';
-import { VinDecoderModal } from './admin/VinDecoderModal';
-import { BulkGenerateModal } from './admin/BulkGenerateModal';
-import { BulkEditDealsModal } from './admin/BulkEditDealsModal';
 import { DealEditor } from './DealEditor';
-import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3 } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator } from 'lucide-react';
 import { doc, getDoc, setDoc, collection, getDocs, orderBy, query, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -27,6 +11,32 @@ import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { getAuthToken } from '../utils/auth';
 import { toast } from 'react-hot-toast';
+import { clearClientCache } from '../utils/fetchWithCache';
+
+// Lazy loaded admin components
+const MediaAdmin = lazy(() => import('./MediaAdmin').then(m => ({ default: m.MediaAdmin })));
+const BanksAdmin = lazy(() => import('./BanksAdmin').then(m => ({ default: m.BanksAdmin })));
+const AnalyticsAdmin = lazy(() => import('./AnalyticsAdmin').then(m => ({ default: m.AnalyticsAdmin })));
+const CarsAdmin = lazy(() => import('../pages/CarsAdmin').then(m => ({ default: m.CarsAdmin })));
+const ReviewsAdmin = lazy(() => import('./ReviewsAdmin').then(m => ({ default: m.ReviewsAdmin })));
+const FeedbackAdmin = lazy(() => import('./FeedbackAdmin').then(m => ({ default: m.FeedbackAdmin })));
+const AuditLogsAdmin = lazy(() => import('./admin/AuditLogsAdmin').then(m => ({ default: m.AuditLogsAdmin })));
+const BlogAdmin = lazy(() => import('./BlogAdmin').then(m => ({ default: m.BlogAdmin })));
+const IncentivesAdmin = lazy(() => import('./IncentivesAdmin').then(m => ({ default: m.IncentivesAdmin })));
+const BulkEditAdmin = lazy(() => import('./BulkEditAdmin').then(m => ({ default: m.BulkEditAdmin })));
+const DealersAdmin = lazy(() => import('./DealersAdmin').then(m => ({ default: m.DealersAdmin })));
+const PromoCodesAdmin = lazy(() => import('./PromoCodesAdmin').then(m => ({ default: m.PromoCodesAdmin })));
+const CalculatorAuditAdmin = lazy(() => import('./admin/CalculatorAuditAdmin').then(m => ({ default: m.CalculatorAuditAdmin })));
+const OfferBuilderModal = lazy(() => import('./admin/OfferBuilderModal').then(m => ({ default: m.OfferBuilderModal })));
+const VinDecoderModal = lazy(() => import('./admin/VinDecoderModal').then(m => ({ default: m.VinDecoderModal })));
+const BulkGenerateModal = lazy(() => import('./admin/BulkGenerateModal').then(m => ({ default: m.BulkGenerateModal })));
+const BulkEditDealsModal = lazy(() => import('./admin/BulkEditDealsModal').then(m => ({ default: m.BulkEditDealsModal })));
+
+const AdminLoader = () => (
+  <div className="flex items-center justify-center p-12">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--lime)]"></div>
+  </div>
+);
 
 declare global {
   interface Window {
@@ -56,10 +66,13 @@ interface Deal {
 }
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos' | 'calculator-audit'>('overview');
   const [deals, setDeals] = useState<Deal[]>([]);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [filterMake, setFilterMake] = useState<string>('ALL');
+  const [filterModel, setFilterModel] = useState<string>('ALL');
+  const [filterTrim, setFilterTrim] = useState<string>('ALL');
   const [lenders, setLenders] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -71,7 +84,8 @@ export function AdminDashboard() {
     dmvFee: 400,
     docFee: 85,
     acquisitionFee: 650,
-    dispositionFee: 395
+    dispositionFee: 395,
+    routingStrategy: 'BEST_FOR_CUSTOMER'
   });
   const [loading, setLoading] = useState(true);
   const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
@@ -135,6 +149,7 @@ export function AdminDashboard() {
         body: JSON.stringify(newDb),
       });
       if (!res.ok) throw new Error('Failed to save');
+      clearClientCache();
       setCarDb(newDb);
       toast.success('Car database updated successfully');
     } catch (err) {
@@ -282,6 +297,7 @@ export function AdminDashboard() {
 
   const fetchDeals = async (showToast = false) => {
     try {
+      clearClientCache();
       const response = await fetch('/api/admin/deals', {
         headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
@@ -597,9 +613,9 @@ export function AdminDashboard() {
     setShowOfferBuilder(true);
   };
 
-  const handleDuplicateDeal = async (deal: Deal) => {
+  const handleDuplicateDeal = async (deal: any) => {
     try {
-      const financialData = JSON.parse(deal.financialData);
+      const financialData = deal.financialData ? JSON.parse(deal.financialData) : {};
       const response = await fetch('/api/admin/deals', {
         method: 'POST',
         headers: { 
@@ -615,10 +631,15 @@ export function AdminDashboard() {
         })
       });
       if (response.ok) {
+        toast.success('Deal duplicated successfully');
         fetchDeals();
+      } else {
+        const data = await response.json();
+        toast.error(`Failed to duplicate deal: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to duplicate deal:', error);
+      toast.error('Failed to duplicate deal');
     }
   };
 
@@ -905,6 +926,7 @@ export function AdminDashboard() {
         throw new Error('Failed to update deal');
       }
 
+      clearClientCache();
       fetchDeals();
       setExpandedDealId(null);
     } catch (error) {
@@ -1051,9 +1073,60 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {/* Content Group */}
+          {/* CRM & Sales Group */}
           <div className="px-4 mb-6">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Content</h2>
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">CRM & Sales</h2>
+            <div className="space-y-1">
+              {canAccess('leads') && (
+              <button
+                onClick={() => setActiveTab('leads')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'leads' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Activity className="w-4 h-4" />
+                <span>{t.leads}</span>
+              </button>
+              )}
+              {canAccess('users') && (
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'users' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>{t.users}</span>
+              </button>
+              )}
+              {canAccess('reviews') && (
+              <button
+                onClick={() => setActiveTab('reviews')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'reviews' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Star className="w-4 h-4" />
+                <span>{t.reviews}</span>
+              </button>
+              )}
+              {canAccess('feedback') && (
+              <button
+                onClick={() => setActiveTab('feedback')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'feedback' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>{t.feedback}</span>
+              </button>
+              )}
+            </div>
+          </div>
+
+          {/* Inventory & Pricing Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Inventory & Pricing</h2>
             <div className="space-y-1">
               {canAccess('deals') && (
               <button
@@ -1088,88 +1161,15 @@ export function AdminDashboard() {
                 <span>Dealers</span>
               </button>
               )}
-              {canAccess('promos') && (
+              {canAccess('incentives') && (
               <button
-                onClick={() => setActiveTab('promos')}
+                onClick={() => setActiveTab('incentives')}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'promos' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  activeTab === 'incentives' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Ticket className="w-4 h-4" />
-                <span>Promo Codes</span>
-              </button>
-              )}
-              {canAccess('media') && (
-              <button
-                onClick={() => setActiveTab('media')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'media' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <ImageIcon className="w-4 h-4" />
-                <span>{t.mediaLibrary}</span>
-              </button>
-              )}
-              {canAccess('blog') && (
-              <button
-                onClick={() => setActiveTab('blog')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'blog' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <PenTool className="w-4 h-4" />
-                <span>Blog</span>
-              </button>
-              )}
-              {canAccess('reviews') && (
-              <button
-                onClick={() => setActiveTab('reviews')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'reviews' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Star className="w-4 h-4" />
-                <span>{t.reviews}</span>
-              </button>
-              )}
-              {canAccess('feedback') && (
-              <button
-                onClick={() => setActiveTab('feedback')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'feedback' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>{t.feedback}</span>
-              </button>
-              )}
-            </div>
-          </div>
-
-          {/* Operations Group */}
-          <div className="px-4 mb-6">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Operations</h2>
-            <div className="space-y-1">
-              {canAccess('leads') && (
-              <button
-                onClick={() => setActiveTab('leads')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'leads' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Activity className="w-4 h-4" />
-                <span>{t.leads}</span>
-              </button>
-              )}
-              {canAccess('users') && (
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'users' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>{t.users}</span>
+                <Tag className="w-4 h-4" />
+                <span>OEM Incentives</span>
               </button>
               )}
               {canAccess('banks') && (
@@ -1183,17 +1183,6 @@ export function AdminDashboard() {
                 <span>{t.banks}</span>
               </button>
               )}
-              {canAccess('incentives') && (
-              <button
-                onClick={() => setActiveTab('incentives')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'incentives' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Tag className="w-4 h-4" />
-                <span>OEM Incentives</span>
-              </button>
-              )}
               {canAccess('bulk-edit') && (
               <button
                 onClick={() => setActiveTab('bulk-edit')}
@@ -1203,6 +1192,46 @@ export function AdminDashboard() {
               >
                 <Layers className="w-4 h-4" />
                 <span>Bulk Edit</span>
+              </button>
+              )}
+            </div>
+          </div>
+
+          {/* Marketing Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Marketing</h2>
+            <div className="space-y-1">
+              {canAccess('promos') && (
+              <button
+                onClick={() => setActiveTab('promos')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'promos' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Ticket className="w-4 h-4" />
+                <span>Promo Codes</span>
+              </button>
+              )}
+              {canAccess('blog') && (
+              <button
+                onClick={() => setActiveTab('blog')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'blog' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <PenTool className="w-4 h-4" />
+                <span>Blog</span>
+              </button>
+              )}
+              {canAccess('media') && (
+              <button
+                onClick={() => setActiveTab('media')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'media' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span>{t.mediaLibrary}</span>
               </button>
               )}
             </div>
@@ -1232,6 +1261,17 @@ export function AdminDashboard() {
               >
                 <List className="w-4 h-4" />
                 <span>{t.auditLogs}</span>
+              </button>
+              )}
+              {canAccess('audit') && (
+              <button
+                onClick={() => setActiveTab('calculator-audit')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'calculator-audit' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Calculator className="w-4 h-4" />
+                <span>Calculator Audit</span>
               </button>
               )}
               <button
@@ -1620,7 +1660,7 @@ export function AdminDashboard() {
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => {
                         setShowArchivedDeals(!showArchivedDeals);
@@ -1637,17 +1677,71 @@ export function AdminDashboard() {
                     <select
                       value={filterStatus}
                       onChange={(e) => setFilterStatus(e.target.value)}
-                      className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                      className="block pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                     >
                       <option value="ALL">All Statuses</option>
                       <option value="APPROVED">Approved</option>
                       <option value="NEEDS_WORK">Needs Work</option>
                       <option value="NEEDS_REVIEW">Needs Review</option>
                     </select>
+
+                    {(() => {
+                      const parsedDeals = deals.map(d => d.financialData ? JSON.parse(d.financialData) : {});
+                      const uniqueMakes = Array.from(new Set(parsedDeals.map(d => d.make).filter(Boolean))).sort();
+                      const uniqueModels = Array.from(new Set(parsedDeals.filter(d => filterMake === 'ALL' || d.make === filterMake).map(d => d.model).filter(Boolean))).sort();
+                      const uniqueTrims = Array.from(new Set(parsedDeals.filter(d => (filterMake === 'ALL' || d.make === filterMake) && (filterModel === 'ALL' || d.model === filterModel)).map(d => d.trim).filter(Boolean))).sort();
+
+                      return (
+                        <>
+                          <select
+                            value={filterMake}
+                            onChange={(e) => {
+                              setFilterMake(e.target.value);
+                              setFilterModel('ALL');
+                              setFilterTrim('ALL');
+                            }}
+                            className="block pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                          >
+                            <option value="ALL">All Makes</option>
+                            {uniqueMakes.map((make: any) => (
+                              <option key={make} value={make}>{make}</option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={filterModel}
+                            onChange={(e) => {
+                              setFilterModel(e.target.value);
+                              setFilterTrim('ALL');
+                            }}
+                            className="block pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            disabled={filterMake === 'ALL'}
+                          >
+                            <option value="ALL">All Models</option>
+                            {uniqueModels.map((model: any) => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={filterTrim}
+                            onChange={(e) => setFilterTrim(e.target.value)}
+                            className="block pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            disabled={filterModel === 'ALL'}
+                          >
+                            <option value="ALL">All Trims</option>
+                            {uniqueTrims.map((trim: any) => (
+                              <option key={trim} value={trim}>{trim}</option>
+                            ))}
+                          </select>
+                        </>
+                      );
+                    })()}
+
                     <select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
-                      className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                      className="block pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                     >
                       <option value="date">{t.sortByDate}</option>
                       <option value="make">{t.sortByMake}</option>
@@ -1746,8 +1840,13 @@ export function AdminDashboard() {
                           
                           if (filterStatus !== 'ALL' && deal.reviewStatus !== filterStatus) return false;
 
-                          if (!searchTerm) return true;
                           const data = deal.financialData ? JSON.parse(deal.financialData) : {};
+                          
+                          if (filterMake !== 'ALL' && data.make !== filterMake) return false;
+                          if (filterModel !== 'ALL' && data.model !== filterModel) return false;
+                          if (filterTrim !== 'ALL' && data.trim !== filterTrim) return false;
+
+                          if (!searchTerm) return true;
                           const searchStr = `${deal.ingestionId} ${data.make || ''} ${data.model || ''} ${data.trim || ''}`.toLowerCase();
                           return searchStr.includes(searchTerm.toLowerCase());
                         })
@@ -1832,7 +1931,7 @@ export function AdminDashboard() {
                                     )}
                                     {deal.publishStatus === 'PUBLISHED' && (
                                       <a 
-                                        href={`/deals?id=${deal.id}`} 
+                                        href={`/deal/${deal.id}`} 
                                         target="_blank" 
                                         rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
@@ -1937,7 +2036,9 @@ export function AdminDashboard() {
 
         {activeTab === 'cars' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <CarsAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <CarsAdmin />
+            </Suspense>
           </section>
         )}
 
@@ -2084,6 +2185,20 @@ export function AdminDashboard() {
                 </div>
 
                 <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700">Smart Routing Strategy</label>
+                  <p className="text-xs text-slate-500 mb-2">Determines how the Deal Engine selects the best lender when multiple programs are available.</p>
+                  <select
+                    value={settings.routingStrategy || 'BEST_FOR_CUSTOMER'}
+                    onChange={(e) => setSettings({...settings, routingStrategy: e.target.value})}
+                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  >
+                    <option value="BEST_FOR_CUSTOMER">Best for Customer (Lowest Monthly Payment)</option>
+                    <option value="HIGHEST_PROFIT">Highest Profit (Prioritize Dealer Reserve / Markup)</option>
+                    <option value="HIGHEST_APPROVAL">Highest Approval Rate (Prioritize Captive/Preferred Lenders)</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700">{t.supportEmail}</label>
                   <p className="text-[10px] text-slate-500 mb-1">{t.supportEmailDesc || 'Email for new lead notifications and support.'}</p>
                   <input
@@ -2189,37 +2304,58 @@ export function AdminDashboard() {
         )}
         {activeTab === 'media' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <MediaAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <MediaAdmin />
+            </Suspense>
           </section>
         )}
         {activeTab === 'banks' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <BanksAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <BanksAdmin />
+            </Suspense>
           </section>
         )}
         {activeTab === 'analytics' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <AnalyticsAdmin adminRole={adminRole} />
+            <Suspense fallback={<AdminLoader />}>
+              <AnalyticsAdmin adminRole={adminRole} />
+            </Suspense>
           </section>
         )}
         {activeTab === 'reviews' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <ReviewsAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <ReviewsAdmin />
+            </Suspense>
           </section>
         )}
         {activeTab === 'feedback' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <FeedbackAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <FeedbackAdmin />
+            </Suspense>
           </section>
         )}
         {activeTab === 'audit' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <AuditLogsAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <AuditLogsAdmin />
+            </Suspense>
+          </section>
+        )}
+        {activeTab === 'calculator-audit' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <Suspense fallback={<AdminLoader />}>
+              <CalculatorAuditAdmin />
+            </Suspense>
           </section>
         )}
         {activeTab === 'blog' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <BlogAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <BlogAdmin />
+            </Suspense>
           </section>
         )}
         {activeTab === 'leads' && (
@@ -2372,6 +2508,11 @@ export function AdminDashboard() {
                                   Cosigner
                                 </span>
                               )}
+                              {lead.source === 'custom_calculator' && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                                  Custom Calculator
+                                </span>
+                              )}
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                                 lead.depositStatus === 'paid' 
                                   ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
@@ -2500,25 +2641,33 @@ export function AdminDashboard() {
         
         {activeTab === 'incentives' && (
           <section className="animate-fade-in">
-            <IncentivesAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <IncentivesAdmin />
+            </Suspense>
           </section>
         )}
         
         {activeTab === 'bulk-edit' && (
           <section className="animate-fade-in">
-            <BulkEditAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <BulkEditAdmin />
+            </Suspense>
           </section>
         )}
         
         {activeTab === 'dealers' && (
           <section className="animate-fade-in">
-            <DealersAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <DealersAdmin />
+            </Suspense>
           </section>
         )}
 
         {activeTab === 'promos' && (
           <section className="animate-fade-in">
-            <PromoCodesAdmin />
+            <Suspense fallback={<AdminLoader />}>
+              <PromoCodesAdmin />
+            </Suspense>
           </section>
         )}
           </div>
@@ -2594,6 +2743,7 @@ export function AdminDashboard() {
         isOpen={isBulkEditModalOpen}
         onClose={() => setIsBulkEditModalOpen(false)}
         selectedDealIds={selectedDeals}
+        lenders={lenders}
         onSuccess={() => {
           setSelectedDeals([]);
           fetchDeals(true);

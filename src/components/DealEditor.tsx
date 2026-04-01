@@ -243,11 +243,13 @@ export function DealEditor({ deal, carDb, lenders, onSave, onCancel, t }: any) {
                   return;
                 }
                 try {
-                  const res = await fetch('/api/cars');
-                  const fetchedCarDb = await res.json();
-                  const make = fetchedCarDb.makes.find((m: any) => m.name.toLowerCase() === editingData.make.toLowerCase());
+                  const makesRes = await fetch('/api/v2/makes');
+                  const makes = await makesRes.json();
+                  const make = makes.find((m: any) => m.name.toLowerCase() === editingData.make.toLowerCase());
                   if (make) {
-                    const model = make.models.find((m: any) => 
+                    const modelsRes = await fetch(`/api/v2/models?makeId=${make.id}`);
+                    const models = await modelsRes.json();
+                    const model = models.find((m: any) => 
                       editingData.model.toLowerCase().includes(m.name.toLowerCase()) || 
                       m.name.toLowerCase().includes(editingData.model.toLowerCase())
                     );

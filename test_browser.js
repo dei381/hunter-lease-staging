@@ -1,21 +1,30 @@
 import puppeteer from 'puppeteer';
 
-async function run() {
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+(async () => {
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
   const page = await browser.newPage();
   
-  page.on('console', msg => console.log('PAGE LOG:', msg.text()));
-  page.on('pageerror', error => console.log('PAGE ERROR:', error.message));
-  page.on('requestfailed', request => console.log('REQUEST FAILED:', request.url(), request.failure().errorText));
+  page.on('response', async response => {
+    if (response.url().includes('/api/v2/quote')) {
+      console.log(`QUOTE RESPONSE: ${await response.text()}`);
+    }
+  });
   
-  await page.goto('http://localhost:3000/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-  
-  // Wait for React to render something
-  await page.waitForSelector('#root', { timeout: 10000 });
-  await new Promise(r => setTimeout(r, 5000)); // wait 5 seconds to let things load
-  
-  console.log('Page loaded successfully');
-  await browser.close();
-}
+  page.on('pageerror', err => {
+    console.log(`BROWSER ERROR: ${err.toString()}`);
+  });
 
-run().catch(console.error);
+  page.on('console', msg => {
+    console.log(`PAGE LOG: ${msg.text()}`);
+  });
+
+  console.log('Navigating to http://localhost:3000...');
+  await page.goto('http://localhost:3000', { waitUntil: 'networkidle2' });
+  
+  console.log('Waiting for 5 seconds...');
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  await browser.close();
+})();

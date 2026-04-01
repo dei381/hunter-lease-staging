@@ -33,6 +33,7 @@ export interface Lead {
     tier: string;
   };
   status: 'pending' | 'active' | 'closed' | 'rejected';
+  source?: string;
   dealersSent: number;
   dealersAccepted: number;
   acceptedBy?: string;

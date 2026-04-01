@@ -4,15 +4,16 @@ import { Loader2, CheckCircle2, Search, Zap, ShieldCheck } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
-export const ProgressScreen = ({ makeName, onComplete }: { makeName: string, onComplete: () => void }) => {
+export const ProgressScreen = ({ makeName, onComplete }: { makeName: any, onComplete: () => void }) => {
   const { language } = useLanguageStore();
   const tc = translations[language].dealerCounts;
   const [currentStep, setCurrentStep] = useState(0);
 
-  const dealerCount = tc[makeName.toLowerCase() as keyof typeof tc] || tc.default;
+  const safeMakeName = (typeof makeName === 'string' ? makeName : makeName?.name) || '';
+  const dealerCount = tc[safeMakeName.toLowerCase() as keyof typeof tc] || tc.default;
 
   const steps = [
-    { id: 1, text: `Analyzing ${dealerCount} ${makeName} dealer offers...`, icon: Search },
+    { id: 1, text: `Analyzing ${dealerCount} ${safeMakeName} dealer offers...`, icon: Search },
     { id: 2, text: "Comparing financing programs...", icon: Zap },
     { id: 3, text: "Checking for hidden fees...", icon: ShieldCheck },
     { id: 4, text: "Calculating final payment...", icon: CheckCircle2 }

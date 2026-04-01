@@ -76,6 +76,11 @@ const PageLoader = () => (
 );
 
 function MainApp() {
+  useEffect(() => {
+    console.log('MainApp: MOUNTED');
+    return () => console.log('MainApp: UNMOUNTED');
+  }, []);
+
   const { language } = useLanguageStore();
   const t = translations[language];
   const [leadId, setLeadId] = useState<string | null>(localStorage.getItem('leadId'));
@@ -155,9 +160,11 @@ function MainApp() {
         type: activeSelection.type || 'lease',
         payment: activeSelection.result ? (activeSelection.type === 'lease' ? activeSelection.result.leasePay : activeSelection.result.finPay) : activeSelection.payment || 0,
         down: activeSelection.down || 0,
+        term: activeSelection.term || '36 mo',
         tier: activeSelection.tier || 'Tier 1',
         mileage: activeSelection.mileage || '10k',
       },
+      source: activeSelection.source || 'catalog_deal',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -433,11 +440,36 @@ function MainApp() {
         </div>
 
         <div id="calc" className="mb-32">
-          <div className="flex items-center gap-4 mb-8">
-            <h2 className="font-display text-4xl tracking-widest uppercase">{t.calc.title}</h2>
-            <div className="flex-1 h-px bg-[var(--b2)]" />
+          <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-6 mb-8">
+            <div>
+              <div className="flex items-center gap-4 mb-4">
+                <h2 className="font-display text-4xl tracking-widest uppercase">{t.calc.title}</h2>
+                <div className="flex-1 h-px bg-[var(--b2)] hidden md:block" />
+              </div>
+              <div className="max-w-3xl space-y-4">
+                <p className="text-lg text-[var(--w)] font-medium">
+                  {language === 'ru' 
+                    ? 'Идеальный калькулятор для получения квот среди всех дилеров в радиусе 50 миль.' 
+                    : 'The ideal calculator for getting quotes among all dealers within a 50-mile radius.'}
+                </p>
+                <p className="text-[var(--mu2)] leading-relaxed">
+                  {language === 'ru'
+                    ? 'Наш калькулятор считает платежи по честной цене MSRP, без скрытых наценок дилера (markups), без завышения кредитной ставки и без навязанных допов. Используйте его, чтобы сравнить текущие предложения от дилеров с реальной рыночной ценой. Если наши условия вам нравятся больше — отправьте заявку, и первый дилер, готовый выполнить эти условия, заберет сделку.'
+                    : 'Our calculator computes payments at honest MSRP, with no hidden dealer markups, no inflated money factors or APRs, and no forced add-ons. Use it to compare your current dealer offers with true market pricing. If you prefer our terms, submit a request, and the first dealer willing to meet these terms will win your deal.'}
+                </p>
+              </div>
+            </div>
           </div>
-          <Calculator onProceed={() => navigate('/deals')} mode="standalone" />
+          <Calculator 
+            onProceed={(data) => {
+              setActiveSelection({
+                ...data,
+                source: 'custom_calculator'
+              });
+              setIsModalOpen(true);
+            }} 
+            mode="standalone" 
+          />
         </div>
 
         {/* How it works / Why us Consolidated */}
@@ -906,6 +938,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 };
 
 export default function App() {
+  useEffect(() => {
+    console.log('App: MOUNTED');
+    return () => console.log('App: UNMOUNTED');
+  }, []);
+
   return (
     <ErrorBoundary>
       <Toaster position="top-right" />

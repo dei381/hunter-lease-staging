@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Save, AlertTriangle, CheckCircle } from 'lucide-react';
 import { getAuthToken } from '../../utils/auth';
+import { useCarData } from '../../hooks/useCarData';
 
 export const BulkUpdatesAdmin = () => {
-  const [makes, setMakes] = useState<string[]>([]);
-  const [models, setModels] = useState<string[]>([]);
-  
   const [filters, setFilters] = useState({
     make: '',
+    makeId: '',
     model: '',
     year: '',
     trim: ''
   });
+
+  const { data: makes = [] } = useCarData<{id: string, name: string}[]>('/api/v2/makes');
+  const { data: models = [] } = useCarData<{id: string, name: string}[]>(filters.makeId ? `/api/v2/models?makeId=${filters.makeId}` : null);
 
   const [updates, setUpdates] = useState({
     rvAdjustment: '',
@@ -23,31 +25,6 @@ export const BulkUpdatesAdmin = () => {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-
-  useEffect(() => {
-    fetch('/api/cars')
-      .then(res => res.json())
-      .then(data => {
-        if (data.makes) {
-          setMakes(data.makes.map((m: any) => m.name));
-        }
-      });
-  }, []);
-
-  useEffect(() => {
-    if (filters.make) {
-      fetch(`/api/cars?make=${filters.make}`)
-        .then(res => res.json())
-        .then(data => {
-          const makeData = data.makes?.find((m: any) => m.name === filters.make);
-          if (makeData) {
-            setModels(makeData.models.map((m: any) => m.name));
-          }
-        });
-    } else {
-      setModels([]);
-    }
-  }, [filters.make]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,12 +104,15 @@ export const BulkUpdatesAdmin = () => {
             <label className="space-y-1">
               <span className="text-xs text-[var(--mu2)]">Make</span>
               <select 
-                value={filters.make} 
-                onChange={e => setFilters({...filters, make: e.target.value, model: ''})}
+                value={filters.makeId} 
+                onChange={e => {
+                  const make = makes.find(m => m.id === e.target.value);
+                  setFilters({...filters, makeId: e.target.value, make: make?.name || '', model: ''});
+                }}
                 className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)]"
               >
                 <option value="">All Makes</option>
-                {makes.map((m, idx) => <option key={`${m}-${idx}`} value={m}>{m}</option>)}
+                {makes.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </label>
             <label className="space-y-1">
@@ -140,11 +120,11 @@ export const BulkUpdatesAdmin = () => {
               <select 
                 value={filters.model} 
                 onChange={e => setFilters({...filters, model: e.target.value})}
-                disabled={!filters.make}
+                disabled={!filters.makeId}
                 className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--lime)] disabled:opacity-50"
               >
                 <option value="">All Models</option>
-                {models.map((m, idx) => <option key={`${m}-${idx}`} value={m}>{m}</option>)}
+                {models.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
               </select>
             </label>
             <label className="space-y-1">

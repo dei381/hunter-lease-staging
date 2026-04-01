@@ -8,9 +8,11 @@ import { translations } from '../translations';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
 import { TransparencyModal } from './TransparencyModal';
+import { IncentivesModal } from './IncentivesModal';
 import { getVal } from '../utils/finance';
 import { TradeInEstimator } from './TradeInEstimator';
 import { useDebounce } from '../hooks/useDebounce';
+import { useCarData } from '../hooks/useCarData';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -26,6 +28,7 @@ interface CalculatorProps {
   timeLeft?: { days: number; hours: number; minutes: number; seconds: number } | null;
   viewCount?: number;
   onProceed?: (data: any) => void;
+  onChange?: (data: any) => void;
   onMileageChange?: (mileage: string) => void;
   mode?: 'standalone' | 'offer';
   initialIsFirstTimeBuyer?: boolean;
@@ -33,10 +36,11 @@ interface CalculatorProps {
 }
 
 export const Calculator: React.FC<CalculatorProps> = ({ 
-  deal = {}, 
+  deal, 
   timeLeft, 
   viewCount = 6, 
   onProceed, 
+  onChange,
   onMileageChange,
   mode = 'offer',
   initialIsFirstTimeBuyer = false,
@@ -56,16 +60,18 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [selectedTrim, setSelectedTrim] = useState<any>(null);
   const [down, setDown] = useState(Number(deal?.down) || 3000);
   const [tradeInEquity, setTradeInEquity] = useState(0);
-  const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 72 : (parseInt(deal?.term) || 36)));
+  const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 60 : (parseInt(deal?.term) || 36)));
   const [mileage, setMileage] = useState(['Kia', 'Hyundai'].includes(deal?.make) ? '10k' : '7.5k');
   const [zipCode, setZipCode] = useState('90210');
   const [showIncentives, setShowIncentives] = useState(!isStandalone);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);
   const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(initialIsFirstTimeBuyer);
   const [hasCosigner, setHasCosigner] = useState(initialHasCosigner);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isIncentivesModalOpen, setIsIncentivesModalOpen] = useState(false);
   const [isTransparencyOpen, setIsTransparencyOpen] = useState(false);
   const [carDb, setCarDb] = useState<any>(null);
+  const [carDbLoading, setCarDbLoading] = useState(true);
+  const [carDbError, setCarDbError] = useState(false);
   const [lenderOptions, setLenderOptions] = useState<any[]>([]);
   const [isLenderLoading, setIsLenderLoading] = useState(false);
   const isCalculating = isLenderLoading;
@@ -73,7 +79,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
   
 
   const currentCar = useMemo(() => {
-    if (deal?.id) return deal;
+    if (deal) return deal;
     if (!selectedTrim) return null;
     
     const baseMF = Number(selectedTrim.mf) || Number(selectedModel?.mf) || Number(selectedMake?.baseMF) || 0;
@@ -85,8 +91,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
       model: selectedModel?.name,
       trim: selectedTrim?.name,
       msrp: selectedTrim?.msrp,
-      year: 2025, // Default year
-      savings: selectedTrim?.msrp * 0.05, // Default 5% savings for standalone calc
+      year: selectedModel?.years?.[0] || 2025, // Use model year if available
+      savings: 0, // No default savings for standalone calc
+      image: selectedModel?.imageUrl,
       ...selectedTrim,
       mf: baseMF,
       baseAPR: baseAPR,
@@ -102,6 +109,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
     if (!currentCar) return;
     
     const fetchLenderOptions = async () => {
+      console.log('Calculator: fetchLenderOptions called');
       setIsLenderLoading(true);
       try {
         const response = await fetch('/api/v2/quote', {
@@ -114,20 +122,21 @@ export const Calculator: React.FC<CalculatorProps> = ({
             trim: currentCar.trim,
             type: calcType,
             term,
-            mileage: mileage.replace('k', '000'),
+            mileage: mileage === '7.5k' ? 7500 : parseInt(mileage.replace('k', '000')),
             downPaymentCents: down * 100,
             tradeInEquityCents: tradeInEquity * 100,
             tier,
             zipCode,
             selectedIncentives,
             isFirstTimeBuyer,
-            hasCosigner
+            hasCosigner,
+            isStandalone
           })
         });
         const data = await response.json();
         setQuoteData(data);
-        if (data.status) {
-          setQuoteStatus(data.status);
+        if (data.calcStatus) {
+          setQuoteStatus(data.calcStatus);
         } else {
           setQuoteStatus(null);
         }
@@ -136,8 +145,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
           setLenderOptions(data.options);
         }
         
-        if (data.monthlyPayment !== undefined) {
-          setBackendPayment(data.monthlyPayment);
+        if (data.monthlyPaymentCents !== undefined) {
+          setBackendPayment(data.monthlyPaymentCents / 100);
         }
       } catch (err) {
         console.error('Failed to fetch lender options', err);
@@ -153,38 +162,80 @@ export const Calculator: React.FC<CalculatorProps> = ({
   
 
   useEffect(() => {
+    console.log('Calculator: MOUNTED');
+    return () => console.log('Calculator: UNMOUNTED');
+  }, []);
+
+  const [makes, setMakes] = useState<any[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [trims, setTrims] = useState<any[]>([]);
+  
+  const { data: makesData, loading: makesLoading, error: makesError } = useCarData<any[]>('/api/v2/makes');
+  const { data: modelsData } = useCarData<any[]>(selectedMake?.id ? `/api/v2/models?makeId=${selectedMake.id}` : null);
+  const { data: trimsData } = useCarData<any[]>(selectedModel?.id ? `/api/v2/trims?modelId=${selectedModel.id}` : null);
+
+  useEffect(() => {
     fetchSettings();
     if (deal?.availableIncentives) {
       setSelectedIncentives(deal.availableIncentives.filter((inc: any) => inc.isDefault).map((inc: any) => inc.id));
     }
-    fetch('/api/cars')
-      .then(res => res.json())
-      .then(data => {
-        setCarDb(data);
-        if (!deal?.id && data?.makes?.length > 0) {
-          // Initialize with first make/model/trim if no deal
-          const firstMake = data.makes[0];
-          setSelectedMake(firstMake);
-          if (firstMake.models?.length > 0) {
-            const firstModel = firstMake.models[0];
-            setSelectedModel(firstModel);
-            if (firstModel.trims?.length > 0) {
-              setSelectedTrim(firstModel.trims[0]);
-            }
-          }
-        }
-      })
-      .catch(err => console.error('Failed to fetch car db', err));
   }, []);
 
   useEffect(() => {
+    setCarDbLoading(makesLoading);
+    if (makesError) setCarDbError(true);
+    
+    if (makesData) {
+      setMakes(makesData);
+      if (!deal && makesData.length > 0 && !selectedMake) {
+        setSelectedMake(makesData[0]);
+      } else if (!deal && makesData.length === 0) {
+        setCarDbError(true);
+      }
+    }
+  }, [makesData, makesLoading, makesError, deal]);
+
+  useEffect(() => {
+    if (modelsData) {
+      setModels(modelsData);
+      if (!deal && modelsData.length > 0) {
+        // Only auto-select if we don't already have a selected model for this make
+        if (!selectedModel || selectedModel.makeId !== selectedMake?.id) {
+          setSelectedModel(modelsData[0]);
+        }
+      }
+    } else if (!selectedMake?.id) {
+      setModels([]);
+    }
+  }, [modelsData, deal, selectedMake?.id]);
+
+  useEffect(() => {
+    if (trimsData) {
+      setTrims(trimsData);
+      if (!deal && trimsData.length > 0) {
+        // Only auto-select if we don't already have a selected trim for this model
+        if (!selectedTrim || selectedTrim.modelId !== selectedModel?.id) {
+          setSelectedTrim(trimsData[0]);
+        }
+      }
+    } else if (!selectedModel?.id) {
+      setTrims([]);
+    }
+  }, [trimsData, deal, selectedModel?.id]);
+
+  useEffect(() => {
     if (currentCar?.availableIncentives) {
-      const defaultIds = currentCar.availableIncentives.filter((inc: any) => inc.isDefault || inc.type === 'dealer').map((inc: any) => inc.id);
+      const defaultIds = currentCar.availableIncentives
+        .filter((inc: any) => {
+          if (isStandalone && inc.type === 'dealer') return false;
+          return inc.isDefault || inc.type === 'dealer';
+        })
+        .map((inc: any) => inc.id);
       setSelectedIncentives(defaultIds);
     } else {
       setSelectedIncentives([]);
     }
-  }, [currentCar?.id, currentCar?.trim]);
+  }, [currentCar?.id, currentCar?.trim, isStandalone]);
 
   const toggleIncentive = (id: string) => {
     const incentive = currentCar?.availableIncentives?.find((inc: any) => inc.id === id);
@@ -196,10 +247,25 @@ export const Calculator: React.FC<CalculatorProps> = ({
   };
 
   const calculatedPayment = useMemo(() => {
-    if (quoteStatus === 'NO_PROGRAMS_AVAILABLE') return null;
+    if (quoteStatus === 'NO_PROGRAMS') return null;
     if (backendPayment !== null) return backendPayment;
     return 0;
   }, [backendPayment, quoteStatus]);
+
+  useEffect(() => {
+    if (currentCar && calculatedPayment !== null) {
+      onChange?.({
+        ...currentCar,
+        payment: calculatedPayment,
+        type: calcType,
+        down,
+        term: `${term} mo`,
+        tier,
+        mileage,
+        source: isStandalone ? 'custom_calculator' : 'catalog_deal'
+      });
+    }
+  }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, isStandalone, onChange]);
 
   const totalIncentives = useMemo(() => {
     if (quoteData?.totalIncentivesCents !== undefined) {
@@ -224,22 +290,24 @@ export const Calculator: React.FC<CalculatorProps> = ({
     return {
       totalCost: quoteData.tco.totalCostCents / 100,
       monthlyAverage: quoteData.tco.monthlyAverageCents / 100,
-      breakdown: {
+      breakdown: quoteData.tco.breakdownCents ? {
         lease: quoteData.tco.breakdownCents.lease / 100,
         insurance: quoteData.tco.breakdownCents.insurance / 100,
         maintenance: quoteData.tco.breakdownCents.maintenance / 100,
         registration: quoteData.tco.breakdownCents.registration / 100
-      }
+      } : null
     };
   }, [quoteData]);
+
+  console.log('Calculator rendering, carDbLoading:', carDbLoading, 'carDbError:', carDbError, 'makes count:', carDb?.makes?.length);
 
   return (
     <>
     <div className="bg-[var(--s1)] text-[var(--w)] rounded-2xl border border-[var(--b2)] overflow-hidden shadow-2xl">
       {/* Header with Urgency Timer */}
-      <div className="p-4 border-b border-[var(--b2)] bg-[var(--w)]/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="space-y-1 w-full">
-          {!isStandalone ? (
+      {!isStandalone && (
+        <div className="p-4 border-b border-[var(--b2)] bg-[var(--w)]/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="space-y-1 w-full">
             <div className="flex items-center gap-3 mb-1">
               <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
                 <Eye size={12} className="text-[var(--lime)]" />
@@ -251,32 +319,19 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 <span>{translations[language].dealPage.highDemand}</span>
               </div>
             </div>
-          ) : (
-            <div className="flex items-center gap-3 mb-1">
-              <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-                <span className="text-orange-500">{language === 'ru' ? 'Ограниченный сток' : 'Limited Inventory'}</span>
-              </div>
-              <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-              <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                <span>{language === 'ru' ? 'Доступно 3-5 авто в сети' : '3-5 vehicles available in network'}</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="px-1.5 py-0.5 bg-[var(--lime)] text-black text-[10px] font-bold uppercase tracking-tighter rounded">{t.liveDeal}</span>
+              <span className="font-mono text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.id}: {currentCar?.id ? (currentCar.id * 12345 ^ 0xABCDEF).toString(16).padStart(8, '0').toUpperCase() : 'CUSTOM'}</span>
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            {!isStandalone && <span className="px-1.5 py-0.5 bg-[var(--lime)] text-black text-[10px] font-bold uppercase tracking-tighter rounded">{t.liveDeal}</span>}
-            {!isStandalone && <span className="font-mono text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.id}: {currentCar?.id ? (currentCar.id * 12345 ^ 0xABCDEF).toString(16).padStart(8, '0').toUpperCase() : 'CUSTOM'}</span>}
+            <h1 className="text-xl font-display leading-tight uppercase">
+              {currentCar?.make} <span className="text-[var(--mu2)]">{currentCar?.model}</span>
+            </h1>
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+              {t.msrp}: <span className="text-[var(--w)] font-mono">{fmt(currentCar?.msrp)}</span>
+            </div>
           </div>
-          <h1 className="text-xl font-display leading-tight uppercase">
-            {currentCar?.make} <span className="text-[var(--mu2)]">{currentCar?.model}</span>
-          </h1>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-            {t.msrp}: <span className="text-[var(--w)] font-mono">{fmt(currentCar?.msrp)}</span>
-          </div>
-        </div>
 
-        {/* Circular Timer */}
-        {!isStandalone && (
+          {/* Circular Timer */}
           <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-[var(--b2)] pt-3 sm:pt-0">
             <div className="text-left sm:text-right">
               <div className="text-[8px] font-bold text-[var(--lime)] uppercase tracking-widest">{translations[language].dealPage.verifiedDeal}</div>
@@ -310,81 +365,96 @@ export const Calculator: React.FC<CalculatorProps> = ({
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="p-0">
         {/* Car Selection - Only if no specific deal */}
-        {!deal?.id && carDb && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-[var(--b2)] bg-[var(--w)]/[0.01]">
-            <div className="p-4 border-r border-b sm:border-b-0 border-[var(--b2)] space-y-2">
-              <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.make}</label>
-              <div className="relative">
-                <select 
-                  value={selectedMake?.name || ''}
-                  onChange={(e) => {
-                    const make = carDb?.makes?.find((m: any) => m.name === e.target.value);
-                    setSelectedMake(make);
-                    if (make?.models?.length > 0) {
-                      const model = make.models[0];
+        {!deal && (
+          <div className="p-4 sm:p-5 bg-[var(--s1)] border-b border-[var(--b2)]">
+            <div className="mb-3">
+              <h2 className="text-lg font-display uppercase tracking-tight">{language === 'ru' ? 'Выберите автомобиль' : 'Select Vehicle'}</h2>
+            </div>
+            {carDbLoading ? (
+              <div className="flex items-center justify-center p-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--lime)]"></div>
+              </div>
+            ) : carDbError ? (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs">
+                {language === 'ru' ? 'Не удалось загрузить базу автомобилей. Пожалуйста, обновите страницу.' : 'Failed to load car database. Please refresh the page.'}
+              </div>
+            ) : makes && makes.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3">
+              <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+                <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.make}</label>
+                <div className="relative">
+                  <select 
+                    value={selectedMake?.id || ''}
+                    onChange={(e) => {
+                      const make = makes.find((m: any) => m.id === e.target.value);
+                      setSelectedMake(make);
+                      setSelectedModel(null);
+                      setSelectedTrim(null);
+                    }}
+                    className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate"
+                  >
+                    {makes.map((m: any) => (
+                      <option key={m.id} value={m.id} className="bg-[var(--s1)] text-[var(--w)]">{m.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+                <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.model}</label>
+                <div className="relative">
+                  <select 
+                    value={selectedModel?.id || ''}
+                    onChange={(e) => {
+                      const model = models.find((m: any) => m.id === e.target.value);
                       setSelectedModel(model);
-                      if (model.trims?.length > 0) {
-                        setSelectedTrim(model.trims[0]);
-                      }
-                    }
-                  }}
-                  className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-                >
-                  {carDb?.makes?.map((m: any, idx: number) => (
-                    <option key={`${m.name}-${idx}`} value={m.name}>{m.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
+                      setSelectedTrim(null);
+                    }}
+                    disabled={!selectedMake || models.length === 0}
+                    className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate disabled:opacity-50"
+                  >
+                    <option value="" disabled>{language === 'ru' ? 'Выберите модель' : 'Select Model'}</option>
+                    {models.map((m: any) => (
+                      <option key={m.id} value={m.id} className="bg-[var(--s1)] text-[var(--w)]">{m.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
+                </div>
               </div>
-            </div>
 
-            <div className="p-4 border-r border-b sm:border-b-0 border-[var(--b2)] space-y-2">
-              <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.model}</label>
-              <div className="relative">
-                <select 
-                  value={selectedModel?.name || ''}
-                  onChange={(e) => {
-                    const model = selectedMake?.models?.find((m: any) => m.name === e.target.value);
-                    setSelectedModel(model);
-                    if (model?.trims?.length > 0) {
-                      setSelectedTrim(model.trims[0]);
-                    }
-                  }}
-                  className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-                >
-                  {selectedMake?.models?.map((m: any, idx: number) => (
-                    <option key={`${m.name}-${idx}`} value={m.name}>{m.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
+              <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+                <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.trimMsrp}</label>
+                <div className="relative">
+                  <select 
+                    value={selectedTrim?.id || ''}
+                    onChange={(e) => {
+                      const trim = trims.find((t: any) => t.id === e.target.value);
+                      setSelectedTrim(trim);
+                    }}
+                    disabled={!selectedModel || trims.length === 0}
+                    className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate disabled:opacity-50"
+                  >
+                    <option value="" disabled>{language === 'ru' ? 'Выберите комплектацию' : 'Select Trim'}</option>
+                    {trims.map((tr: any) => {
+                      const displayName = tr.name.length > 40 ? tr.name.substring(0, 40) + '...' : tr.name;
+                      return (
+                        <option key={tr.id} value={tr.id} className="bg-[var(--s1)] text-[var(--w)]">{displayName} ({fmt(tr.msrp)})</option>
+                      );
+                    })}
+                  </select>
+                  <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
+                </div>
               </div>
             </div>
-
-            <div className="p-4 space-y-2">
-              <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.trimMsrp}</label>
-              <div className="relative">
-                <select 
-                  value={selectedTrim?.name || ''}
-                  onChange={(e) => {
-                    const trim = selectedModel?.trims?.find((t: any) => t.name === e.target.value);
-                    setSelectedTrim(trim);
-                  }}
-                  className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-                >
-                  {selectedModel?.trims?.map((tr: any, idx: number) => (
-                    <option key={`${tr.name}-${idx}`} value={tr.name}>{tr.name} ({fmt(tr.msrp)})</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
-              </div>
-            </div>
-          </div>
-        )}
+          ) : null}
+        </div>
+      )}
 
         {/* Lease/Finance Toggle - Full Width */}
         <div className="flex border-b border-[var(--b2)]">
@@ -393,12 +463,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
               key={m}
               onClick={() => {
                 setCalcType(m);
-                setTerm(m === 'finance' ? 72 : 36);
+                setTerm(m === 'finance' ? 60 : 36);
               }}
               className={cn(
-                "flex-1 py-4 text-xs font-bold tracking-widest transition-all uppercase border-r last:border-r-0 border-[var(--b2)]",
+                "flex-1 py-3 text-[10px] font-bold tracking-widest transition-all uppercase border-r last:border-r-0 border-[var(--b2)]",
                 calcType === m 
-                  ? "bg-[var(--lime)] text-white" 
+                  ? "bg-[var(--lime)] text-black" 
                   : "text-[var(--mu2)] hover:text-[var(--w)] bg-[var(--s2)]"
               )}
             >
@@ -407,106 +477,166 @@ export const Calculator: React.FC<CalculatorProps> = ({
           ))}
         </div>
 
-        {/* Parameters Grid - Competitor Style */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 border-b border-[var(--b2)]">
-          <div className="p-4 border-r border-b border-[var(--b2)] space-y-2">
-            <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.term}</label>
-            <div className="relative">
-              <select 
-                value={term}
-                onChange={(e) => setTerm(parseInt(e.target.value))}
-                className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-              >
-                {(calcType === 'lease' ? [24, 36, 48] : [48, 60, 72, 84, 96]).map(v => (
-                  <option key={v} value={v}>{v} {t.moShort}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
+        {/* Parameters Grid - Compact Style */}
+        <div className="p-4 sm:p-5 flex flex-col gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 order-2 sm:order-1">
+            <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+              <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.term}</label>
+              <div className="relative">
+                <select 
+                  value={term}
+                  onChange={(e) => setTerm(parseInt(e.target.value))}
+                  className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)]"
+                >
+                  {(calcType === 'lease' ? [24, 36, 48] : [48, 60, 72, 84, 96]).map(v => (
+                    <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{v} {t.moShort}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
+              </div>
             </div>
-          </div>
 
-          <div className="p-4 border-b border-[var(--b2)] space-y-2">
-            <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.dueAtSigning}</label>
-            <div className="relative">
-              <select 
-                value={down}
-                onChange={(e) => setDown(parseInt(e.target.value))}
-                className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-              >
-                {[0, 1000, 2000, 3000, 4000, 5000].map(v => (
-                  <option key={v} value={v}>{fmt(v)}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
+            <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+              <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.dueAtSigning}</label>
+              <div className="relative">
+                <select 
+                  value={down}
+                  onChange={(e) => setDown(parseInt(e.target.value))}
+                  className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)]"
+                >
+                  {[0, 1000, 2000, 3000, 4000, 5000].map(v => (
+                    <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{fmt(v)}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
+              </div>
             </div>
-          </div>
-        </div>
-
-        
-                <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-[var(--b2)]">
-                  
-
-                  <div className="p-4 border-r border-b border-[var(--b2)] space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.creditTier}</label>
-                    <div className="relative">
-                        <select 
-                          value={tier}
-                          onChange={(e) => setTier(e.target.value)}
-                          className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-                        >
-                          <option value="t1">{t.tier1}</option>
-                          <option value="t2">{t.tier2}</option>
-                          <option value="t3">{t.tier3}</option>
-                          <option value="t4">{t.tier4}</option>
-                          <option value="t5">{t.tier5}</option>
-                          <option value="t6">{t.tier6}</option>
-                        </select>
-                      <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
-                    </div>
-                  </div>
-
-                  <div className="p-4 border-r border-b border-[var(--b2)] space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.zipCode}</label>
-                    <input 
-                      type="text"
-                      value={zipCode}
-                      onChange={(e) => setZipCode(e.target.value)}
-                      className="w-full h-6 bg-transparent text-sm font-bold outline-none"
-                      placeholder="90210"
-                    />
-                  </div>
-
-                  {calcType === 'lease' && (
-                    <div className="p-4 border-b border-[var(--b2)] space-y-2">
-                      <label className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest block">{t.annualMileage}</label>
-                      <div className="relative">
-                        <select 
-                          value={mileage}
-                          onChange={(e) => {
-                            setMileage(e.target.value);
-                            onMileageChange?.(e.target.value);
-                          }}
-                          className="w-full h-6 bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6"
-                        >
-                          <option value="7.5k">{t.mileageOptions['7.5k']} {t.miles}</option>
-                          <option value="10k">{t.mileageOptions['10k']} {t.miles}</option>
-                          <option value="12k">{t.mileageOptions['12k']} {t.miles}</option>
-                          <option value="15k">{t.mileageOptions['15k']} {t.miles}</option>
-                          <option value="20k">{t.mileageOptions['20k']} {t.miles}</option>
-                        </select>
-                        <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] pointer-events-none" />
-                      </div>
-                    </div>
-                  )}
-
-                  
+            
+            {calcType === 'lease' && (
+              <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+                <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.annualMileage}</label>
+                <div className="relative">
+                  <select 
+                    value={mileage}
+                    onChange={(e) => {
+                      setMileage(e.target.value);
+                      onMileageChange?.(e.target.value);
+                    }}
+                    className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)]"
+                  >
+                    <option value="7.5k" className="bg-[var(--s1)] text-[var(--w)]">{t.mileageOptions['7.5k']} {t.miles}</option>
+                    <option value="10k" className="bg-[var(--s1)] text-[var(--w)]">{t.mileageOptions['10k']} {t.miles}</option>
+                    <option value="12k" className="bg-[var(--s1)] text-[var(--w)]">{t.mileageOptions['12k']} {t.miles}</option>
+                    <option value="15k" className="bg-[var(--s1)] text-[var(--w)]">{t.mileageOptions['15k']} {t.miles}</option>
+                    <option value="20k" className="bg-[var(--s1)] text-[var(--w)]">{t.mileageOptions['20k']} {t.miles}</option>
+                  </select>
+                  <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
                 </div>
-              
+              </div>
+            )}
+
+            <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+              <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.creditTier}</label>
+              <div className="relative">
+                  <select 
+                    value={tier}
+                    onChange={(e) => setTier(e.target.value)}
+                    className="w-full bg-transparent text-base font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)]"
+                  >
+                    <option value="t1" className="bg-[var(--s1)] text-[var(--w)]">{t.tier1}</option>
+                    <option value="t2" className="bg-[var(--s1)] text-[var(--w)]">{t.tier2}</option>
+                    <option value="t3" className="bg-[var(--s1)] text-[var(--w)]">{t.tier3}</option>
+                    <option value="t4" className="bg-[var(--s1)] text-[var(--w)]">{t.tier4}</option>
+                    <option value="t5" className="bg-[var(--s1)] text-[var(--w)]">{t.tier5}</option>
+                    <option value="t6" className="bg-[var(--s1)] text-[var(--w)]">{t.tier6}</option>
+                  </select>
+                <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
+              <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.zipCode}</label>
+              <input 
+                type="text"
+                value={zipCode}
+                onChange={(e) => setZipCode(e.target.value)}
+                className="w-full bg-transparent text-base font-bold outline-none placeholder-[var(--mu2)] text-[var(--w)]"
+                placeholder="90210"
+                maxLength={5}
+              />
+            </div>
+          </div>
+
+          {/* Results Block & CTA */}
+          <div className="p-4 sm:p-5 bg-[var(--s2)] rounded-xl border border-[var(--lime)]/30 shadow-[0_0_20px_rgba(204,255,0,0.05)] order-1 sm:order-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-[var(--w)]">
+                  <Zap size={16} className="text-[var(--lime)]" />
+                  <span className="text-sm font-display uppercase tracking-widest">{t.lockIn}</span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                {quoteStatus === 'NO_PROGRAMS' ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-lg font-display text-[var(--mu1)] leading-none">Estimate Unavailable</span>
+                    <span className="text-[10px] text-[var(--mu2)] max-w-[150px] text-right">No lender programs found for this configuration.</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-end gap-1.5">
+                      <span className={cn(
+                        "text-4xl sm:text-5xl font-display text-[var(--lime)] leading-none transition-opacity duration-300",
+                        isCalculating ? "opacity-50" : "opacity-100"
+                      )}>
+                        {fmt(calculatedPayment)}
+                      </span>
+                      <span className="text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest">/mo</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 mt-1">
+                      <div className="text-[10px] text-[var(--mu2)]">
+                        (+{fmt(down)} due)
+                      </div>
+                      <button 
+                        onClick={() => setIsTransparencyOpen(true)}
+                        className="flex items-center gap-1 text-[9px] font-bold text-[var(--lime)] uppercase tracking-widest hover:underline"
+                      >
+                        <Eye size={10} />
+                        {translations[language].transparency.btnTransparency}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <button 
+              onClick={() => currentCar && onProceed?.({ 
+                ...currentCar, 
+                payment: calculatedPayment, 
+                type: calcType, 
+                down, 
+                term: `${term} mo`, 
+                tier, 
+                mileage,
+                source: isStandalone ? 'custom_calculator' : 'catalog_deal'
+              })}
+              className="w-full bg-[var(--lime)] hover:bg-[var(--lime2)] text-black py-3 sm:py-4 rounded-xl text-base font-display tracking-widest uppercase transition-all flex items-center justify-center gap-2 group relative overflow-hidden shadow-[0_0_20px_rgba(204,255,0,0.2)] hover:shadow-[0_0_40px_rgba(204,255,0,0.4)]"
+            >
+              <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
+              <span className="relative z-10">{isStandalone ? (language === 'ru' ? 'Оформить заявку' : 'Submit Request') : t.lockIn}</span>
+              <Zap size={18} fill="currentColor" className="relative z-10" />
+            </button>
+          </div>
         </div>
+      </div>
+
+
         
         <TradeInEstimator onEquityCalculated={setTradeInEquity} />
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-4">
           {/* Incentives Toggle - Competitor Style */}
           {!isStandalone && (
             <div className="space-y-4">
@@ -541,7 +671,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     </div>
                     <button 
                       type="button"
-                      onClick={() => setIsModalOpen(true)}
+                      onClick={() => setIsIncentivesModalOpen(true)}
                       className="px-3 py-1.5 bg-[var(--s2)] border border-[var(--b2)] rounded-lg text-[9px] font-bold uppercase tracking-widest hover:bg-[var(--b1)] transition-all flex items-center gap-2"
                     >
                       <span className="flex items-center gap-2">
@@ -599,178 +729,16 @@ export const Calculator: React.FC<CalculatorProps> = ({
           )}
 
           {/* Incentive Modal */}
-          {createPortal(
-            <AnimatePresence>
-              {isModalOpen && (
-                <div className="fixed inset-0 z-[9999] flex flex-col justify-end md:justify-center p-0 md:p-6">
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setIsModalOpen(false)}
-                    className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-                  />
-                  <motion.div
-                  initial={{ opacity: 0, y: 100 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 100 }}
-                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  className="relative w-full max-w-4xl bg-[var(--s1)] border border-[var(--b2)] rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh] md:max-h-[85vh]"
-                >
-                  {/* Left Side: Selection */}
-                  <div className="flex-1 p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-[var(--b2)] overflow-y-auto">
-                    <div className="flex justify-between items-start mb-6">
-                      <div className="space-y-1">
-                        <h2 className="text-2xl font-display uppercase tracking-tight">{translations[language].calc.incentiveModal.title}</h2>
-                        <p className="text-xs text-[var(--mu2)] leading-relaxed max-w-md">
-                          {translations[language].calc.incentiveModal.desc}
-                        </p>
-                      </div>
-                      <button 
-                        onClick={() => setIsModalOpen(false)}
-                        className="p-2 hover:bg-[var(--s2)] rounded-full transition-colors"
-                      >
-                        <X size={20} className="text-[var(--mu2)]" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      {currentCar?.availableIncentives?.map((inc: any) => {
-                        const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
-                        const isSelected = selectedIncentives.includes(inc.id) || (isFtbIncentive && isFirstTimeBuyer);
-                        const isDefault = inc.isDefault || inc.type === 'dealer' || isFtbIncentive;
-                        
-                        return (
-                        <div 
-                          key={inc.id}
-                          onClick={() => {
-                            if (isDefault && role !== 'admin') return;
-                            toggleIncentive(inc.id);
-                          }}
-                          className={cn(
-                            "group p-4 rounded-2xl border transition-all flex items-center gap-4",
-                            isSelected
-                              ? "bg-[var(--lime)]/5 border-[var(--lime)]/30"
-                              : "bg-[var(--s2)] border-[var(--b2)] hover:border-[var(--b3)]",
-                            isDefault && role !== 'admin' ? "cursor-default opacity-80" : "cursor-pointer"
-                          )}
-                        >
-                          <div className={cn(
-                            "w-5 h-5 rounded border flex items-center justify-center transition-all",
-                            isSelected
-                              ? "bg-[var(--lime)] border-[var(--lime)]"
-                              : "border-[var(--b3)] group-hover:border-[var(--mu2)]",
-                            isDefault && role !== 'admin' && "opacity-50"
-                          )}>
-                            {isSelected && <X size={14} className="text-black" />}
-                          </div>
-                          
-                          <div className="flex-1 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold uppercase tracking-tight">
-                                {language === 'ru' && inc.nameRu ? inc.nameRu : inc.name}
-                              </span>
-                              <div className="group/info relative">
-                                <Info size={14} className="text-[var(--mu2)] cursor-help" />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black/90 border border-white/10 rounded text-[10px] uppercase tracking-widest leading-relaxed opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-50">
-                                  {language === 'ru' 
-                                    ? (inc.descriptionRu || 'Детали этого предложения уточняются.') 
-                                    : (inc.description || 'Details for this incentive are being finalized.')}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-1.5">
-                                <CheckCircle2 size={12} className={cn(
-                                  isDefault ? "text-blue-400" : "text-[var(--lime)]"
-                                )} />
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
-                                  {isDefault ? translations[language].calc.incentiveModal.autoApplied : translations[language].calc.incentiveModal.autoSelected}
-                                </span>
-                              </div>
-                              {inc.expiresAt && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[9px] font-bold text-red-400 uppercase tracking-widest">
-                                  {translations[language].calc.incentiveModal.expires} {inc.expiresAt}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="text-lg font-display tracking-tight">
-                            {fmt(inc.amount)}
-                          </div>
-                        </div>
-                      )})}
-                    </div>
-                  </div>
-
-                  {/* Right Side: Summary */}
-                  <div className="w-full lg:w-[380px] bg-[var(--s2)] p-6 sm:p-8 flex flex-col">
-                    <div className="space-y-4 flex-1">
-                      <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--mu2)]">
-                        {translations[language].calc.incentiveModal.summaryTitle}
-                      </h3>
-
-                      <div className="space-y-1">
-                        <div className="text-xl font-display uppercase">{currentCar?.make} {currentCar?.model}</div>
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                          {currentCar?.trim} • {term} {translations[language].calc.moShort}, {translations[language].calc.mileageOptions[mileage as keyof typeof translations.en.calc.mileageOptions]} {translations[language].calc.miles}
-                        </div>
-                      </div>
-
-                      <div className="relative aspect-[16/9] rounded-2xl overflow-hidden border border-[var(--b2)] bg-[var(--s1)]">
-                        <img 
-                          src={currentCar?.image || "https://picsum.photos/seed/car/800/450"} 
-                          alt={currentCar?.model}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-
-                      <div className="space-y-3 pt-4">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-[var(--mu2)] uppercase tracking-widest font-bold">{translations[language].calc.incentiveModal.basePayment}</span>
-                          <span className="font-mono font-bold">{quoteStatus === 'NO_PROGRAMS_AVAILABLE' ? 'N/A' : fmt(calculatedPayment + totalIncentives / term)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-[var(--mu2)] uppercase tracking-widest font-bold">{translations[language].calc.incentiveModal.withIncentivesPayment}</span>
-                          <span className="font-mono font-bold text-[var(--lime)]">{quoteStatus === 'NO_PROGRAMS_AVAILABLE' ? 'N/A' : fmt(calculatedPayment)}</span>
-                        </div>
-                        <div className="h-px bg-[var(--b2)]" />
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-[var(--mu2)] uppercase tracking-widest font-bold">{translations[language].calc.incentiveModal.savedOnPayment}</span>
-                          <span className="font-mono font-bold text-blue-400">{fmt(totalIncentives / term)}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2">
-                          <span className="text-sm font-bold uppercase tracking-widest text-[var(--w)]">{translations[language].calc.incentiveModal.totalSaved}</span>
-                          <span className="text-2xl font-display text-[var(--lime)]">
-                            {fmt(totalIncentives)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 pt-8 mt-auto">
-                        <button 
-                          onClick={() => setIsModalOpen(false)}
-                          className="flex-1 py-3 border border-[var(--b2)] rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[var(--b1)] transition-all"
-                        >
-                          {translations[language].calc.incentiveModal.close}
-                        </button>
-                        <button 
-                          onClick={() => setIsModalOpen(false)}
-                          className="flex-1 py-3 bg-[var(--lime)] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[var(--lime2)] transition-all"
-                        >
-                          {translations[language].calc.incentiveModal.save}
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                </div>
-              )}
-            </AnimatePresence>,
-            document.body
-          )}
+          <IncentivesModal
+            isOpen={isIncentivesModalOpen}
+            onClose={() => setIsIncentivesModalOpen(false)}
+            deal={currentCar}
+            selectedIncentives={selectedIncentives}
+            toggleIncentive={toggleIncentive}
+            isFirstTimeBuyer={isFirstTimeBuyer}
+            quoteResult={quoteData}
+            role={role}
+          />
 
         {/* Price Breakdown */}
           {!isStandalone && (
@@ -814,44 +782,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
             </div>
           )}
 
-          {/* Standard Options & Specs */}
-          {!isStandalone && (currentCar?.features || currentCar?.specs) && (
-            <div className="pt-6 border-t border-[var(--b2)] space-y-6">
-              {currentCar?.features && (
-                <div>
-                  <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <Info size={14} className="text-[var(--lime)]" />
-                    {translations[language].deals.standardOptionsTitle}
-                  </h4>
-                  <div className="grid grid-cols-1 gap-y-1.5">
-                    {currentCar?.features?.map((feature: string, i: number) => (
-                      <div key={i} className="flex items-center gap-2 text-[10px] text-[var(--mu2)] uppercase tracking-wider">
-                        <div className="w-1 h-1 rounded-full bg-[var(--lime)]" />
-                        {feature}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {currentCar?.specs && (
-                <div>
-                  <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <ShieldCheck size={14} className="text-[var(--lime)]" />
-                    {translations[language].deals.specsTitle}
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {currentCar?.specs && Object.entries(currentCar.specs).map(([key, value]) => (
-                      <div key={key} className="bg-[var(--s2)]/50 p-2 rounded-lg border border-[var(--b2)]">
-                        <div className="text-[7px] text-[var(--mu2)] uppercase tracking-widest mb-0.5">{key}</div>
-                        <div className="text-[10px] font-bold text-[var(--w)] uppercase">{value as string}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Lender Comparison */}
           {!isStandalone && lenderOptions.length > 0 && (
@@ -901,71 +832,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
               </p>
             </div>
           )}
-
-          {/* Results Block */}
-          <div className="pt-6 border-t border-[var(--b2)] space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-[var(--w)]">
-                  <Zap size={20} className="text-[var(--lime)]" />
-                  <span className="text-xl font-display uppercase tracking-widest">{t.lockIn}</span>
-                </div>
-              </div>
-
-              <div className="text-right">
-                {quoteStatus === 'NO_PROGRAMS_AVAILABLE' ? (
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-2xl font-display text-[var(--mu1)] leading-none">Estimate Unavailable</span>
-                    <span className="text-xs text-[var(--mu2)] max-w-[200px] text-right">No lender programs found for this configuration.</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-baseline justify-end gap-2">
-                      <span className={cn(
-                        "text-6xl font-display text-[var(--lime)] leading-none transition-opacity duration-300",
-                        isCalculating ? "opacity-50" : "opacity-100"
-                      )}>
-                        {fmt(calculatedPayment)}
-                      </span>
-                      <span className="text-sm text-[var(--mu2)] font-bold uppercase tracking-widest">per month</span>
-                    </div>
-                    <div className="flex items-center justify-end gap-2 mt-2">
-                      <div className="text-xs text-[var(--mu2)]">
-                        (+{fmt(down)} due at signing)
-                      </div>
-                      <button 
-                        onClick={() => setIsTransparencyOpen(true)}
-                        className="flex items-center gap-1 text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest hover:underline"
-                      >
-                        <Eye size={12} />
-                        {translations[language].transparency.btnTransparency}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
-
-      {/* CTA */}
-      <button 
-        onClick={() => currentCar && onProceed?.({ 
-          ...currentCar, 
-          payment: calculatedPayment, 
-          type: calcType, 
-          down, 
-          term: `${term} mo`, 
-          tier, 
-          mileage 
-        })}
-        className="w-full bg-[var(--lime)] hover:bg-[var(--lime2)] text-black py-3 text-base font-display tracking-widest uppercase transition-all flex items-center justify-center gap-2.5 group relative overflow-hidden"
-      >
-        <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
-        <span className="relative z-10">{isStandalone ? translations[language].nav.deals : t.lockIn}</span>
-        <Zap size={18} fill="currentColor" className="relative z-10" />
-      </button>
 
       {/* Transparency Modal */}
       <TransparencyModal 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Check, X, Clock } from 'lucide-react';
+import { getAuthToken } from '../utils/auth';
 
 export const FeedbackAdmin = () => {
   const [feedback, setFeedback] = useState<any[]>([]);
@@ -7,11 +8,17 @@ export const FeedbackAdmin = () => {
 
   const fetchFeedback = async () => {
     try {
-      const res = await fetch('/api/admin/feedback');
+      const res = await fetch('/api/admin/feedback', {
+        headers: {
+          'Authorization': `Bearer ${await getAuthToken()}`
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch feedback');
       const data = await res.json();
       setFeedback(data);
     } catch (error) {
       console.error('Failed to fetch feedback:', error);
+      setFeedback([]);
     } finally {
       setLoading(false);
     }
@@ -25,7 +32,10 @@ export const FeedbackAdmin = () => {
     try {
       await fetch(`/api/admin/feedback/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
         body: JSON.stringify({ status })
       });
       fetchFeedback();

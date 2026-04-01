@@ -4,6 +4,7 @@ import { Car, Users, Zap, Shield, DollarSign, CheckCircle2, RefreshCw, ChevronRi
 import { useLanguageStore } from '../store/languageStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 interface CarQuizProps {
   onSelect: (deal: any) => void;
@@ -24,9 +25,8 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/api/deals?limit=100')
-      .then(res => res.json())
-      .then(data => {
+    fetchWithCache('/api/deals?limit=100')
+      .then((data: any) => {
         // Deduplicate deals by make + model + trim
         const uniqueDealsMap = new Map();
         data.forEach((deal: any) => {
