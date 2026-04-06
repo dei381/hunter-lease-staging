@@ -7,16 +7,20 @@ import db from '../lib/db';
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
   try {
-    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      admin.initializeApp({
-        projectId: config.projectId,
-      });
-      console.log('Firebase Admin initialized with projectId:', config.projectId);
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      console.log('Firebase Admin initialized with service account, projectId:', serviceAccount.project_id);
     } else {
-      console.warn('firebase-applet-config.json not found, attempting default initialization');
-      admin.initializeApp();
+      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        admin.initializeApp({ projectId: config.projectId });
+        console.log('Firebase Admin initialized with projectId:', config.projectId);
+      } else {
+        console.warn('firebase-applet-config.json not found, attempting default initialization');
+        admin.initializeApp();
+      }
     }
   } catch (error) {
     console.error('Error initializing Firebase Admin:', error);
