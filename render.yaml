@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: hunter-lease-demo
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npx prisma db push --skip-generate && npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: CREDIT_700_SANDBOX
+        value: "true"
+      - key: FRONTEND_URL
+        sync: false

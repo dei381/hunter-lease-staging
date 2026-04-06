@@ -26,8 +26,8 @@ DATABASE_URL=postgresql://neondb_owner:PASSWORD@ep-xxx.us-east-2.aws.neon.tech/n
 ADMIN_SECRET=demo-secret-2024
 
 # ── STRIPE (тестовые ключи клиента) ──────────────────────
-STRIPE_SECRET_KEY=sk_test_51TGPpdRX5ezxkpOBP1aHekFgWp2t1GCSdVi78pcGswyJHvqI4dB9GnU6rlLYbbD6QLDPGGUMTOZr96uF6f6dB9F100ZLX3hZT9
-STRIPE_PUBLISHABLE_KEY=pk_test_51TGPpdRX5ezxkpOBQadegHvaaSqWHQBUTQElaP1BTfrUICpEHraNA0XhLgeolYel6JUvsnLsQ01ouOpgg1TqbDpL00ud6HyHtW
+STRIPE_SECRET_KEY=sk_test_YOUR_KEY_HERE
+STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_KEY_HERE
 STRIPE_WEBHOOK_SECRET=whsec_test_placeholder
 
 # ── 700CREDIT (sandbox — реальный ключ не нужен) ──────────
