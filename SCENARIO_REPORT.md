@@ -1,14 +1,14 @@
-# Scenario Execution Report
+# Отчёт о прогоне сценариев
 
-**Environment:** Local demo (Neon PostgreSQL + Stripe test keys + 700Credit sandbox)  
-**Branch:** `feature/integrate-services`  
-**Date:** 2026-04-06  
-**Server:** `http://localhost:3000` (`npm run dev`)  
-**Auth:** `ADMIN_SECRET` bypass → role `SUPER_ADMIN`
+**Окружение:** Локальный демо-стенд (Neon PostgreSQL + Stripe тестовые ключи + 700Credit sandbox)  
+**Ветка:** `feature/integrate-services`  
+**Дата:** 2026-04-06  
+**Сервер:** `http://localhost:3000` (`npm run dev`)  
+**Авторизация:** `ADMIN_SECRET` bypass → роль `SUPER_ADMIN`
 
 ---
 
-## Unit Tests — 77/77 PASSED
+## Юнит-тесты — 77/77 ПРОЙДЕНО
 
 ```
 npx vitest run server/tests/
@@ -18,22 +18,22 @@ Test Files  6 passed (6)
   Duration  327ms
 ```
 
-| File | Scenario | Tests |
-|------|----------|-------|
-| 01-calculations.test.ts | PureMathEngine lease/finance + EligibilityEngine | 22 |
-| 02-stripe.test.ts | Stripe checkout / webhook logic / refund | 10 |
-| 03-credit.test.ts | 700Credit consent / soft-pull / band normalization | 18 |
-| 04-dealer.test.ts | DealerAssignment create / accept / reject / counter / SLA | 13 |
-| 05-notifications.test.ts | Email / SMS / templates / dry-run / logging | 8 |
-| 06-program-batch.test.ts | ProgramBatch draft / publish / rollback / audit log | 6 |
+| Файл | Сценарий | Тестов |
+|------|----------|--------|
+| 01-calculations.test.ts | PureMathEngine лизинг/финансирование + EligibilityEngine | 22 |
+| 02-stripe.test.ts | Stripe checkout / логика webhook / возврат | 10 |
+| 03-credit.test.ts | 700Credit согласие / soft-pull / нормализация | 18 |
+| 04-dealer.test.ts | DealerAssignment создание / принятие / отказ / встречное / SLA | 13 |
+| 05-notifications.test.ts | Email / SMS / шаблоны / dry-run / логирование | 8 |
+| 06-program-batch.test.ts | ProgramBatch черновик / публикация / откат / audit log | 6 |
 
 ---
 
-## Scenario 1 — Lead Creation
+## Сценарий 1 — Создание лида
 
 **POST** `/api/lead`
 
-Request:
+Запрос:
 ```json
 {
   "client": { "name": "John Demo", "phone": "2125550199", "email": "john@demo.com" },
@@ -43,7 +43,7 @@ Request:
 }
 ```
 
-Response: ✅
+Ответ: ✅
 ```json
 {
   "success": true,
@@ -53,11 +53,11 @@ Response: ✅
 
 ---
 
-## Scenario 2 — Stripe Deposit $95
+## Сценарий 2 — Stripe депозит $95
 
 **POST** `/api/payments/create-session`
 
-Request:
+Запрос:
 ```json
 {
   "leadId": "f5e37a04-1ea7-4153-9e27-3884601501e2",
@@ -66,7 +66,7 @@ Request:
 }
 ```
 
-Response: ✅
+Ответ: ✅
 ```json
 {
   "sessionId": "cs_test_a1WmBIH9odFfOjbubfsSk2V3IaRhbvEndOG4HlGEmnqy6pdT5oOoY2twXJ",
@@ -75,9 +75,9 @@ Response: ✅
 }
 ```
 
-Payment record in DB: `amount=9500 ($95), currency=usd, status=pending`
+Запись платежа в БД: `amount=9500 ($95), currency=usd, status=pending`
 
-**GET** `/api/payments/lead/:leadId` → confirms Payment persisted:
+**GET** `/api/payments/lead/:leadId` → подтверждает сохранение платежа:
 ```json
 {
   "id": "346b51b2-2b7b-4ad9-a7ea-1fc469f7d1e2",
@@ -88,18 +88,18 @@ Payment record in DB: `amount=9500 ($95), currency=usd, status=pending`
 }
 ```
 
-> Note: Stripe Checkout page is live at the URL above. On card payment (test card `4242 4242 4242 4242`),
-> webhook fires → Payment status → `completed`, Lead depositStatus → `paid`.
+> Страница Stripe Checkout доступна по ссылке выше. После оплаты тестовой картой `4242 4242 4242 4242`
+> срабатывает webhook → статус платежа → `completed`, depositStatus лида → `paid`.
 
 ---
 
-## Scenario 3 — 700Credit Soft Pull (Sandbox)
+## Сценарий 3 — 700Credit Soft Pull (Sandbox)
 
-### Step 1: Record Consent
+### Шаг 1: Запись согласия
 
 **POST** `/api/credit/consent`
 
-Response: ✅
+Ответ: ✅
 ```json
 {
   "id": "a518710e-7adc-4584-a7ff-bcf039b2d53a",
@@ -111,7 +111,7 @@ Response: ✅
 }
 ```
 
-### Step 2: Soft Pull
+### Шаг 2: Soft Pull
 
 **POST** `/api/credit/soft-pull`
 
@@ -126,7 +126,7 @@ Response: ✅
 }
 ```
 
-Response: ✅
+Ответ: ✅
 ```json
 {
   "creditBand": "GOOD",
@@ -135,14 +135,14 @@ Response: ✅
 }
 ```
 
-> Sandbox mode (`CREDIT_700_SANDBOX=true`) returns mock score 720 / GOOD.
-> Lead record updated: `creditScore=720`, `creditConsent=true`.
+> Sandbox-режим (`CREDIT_700_SANDBOX=true`) возвращает mock-скор 720 / GOOD.
+> Запись лида обновлена: `creditScore=720`, `creditConsent=true`.
 
 ---
 
-## Scenario 4 — Dealer Assignment Flow
+## Сценарий 4 — Назначение дилера
 
-### Step 1: Create Dealer
+### Шаг 1: Создание дилера
 
 **POST** `/api/admin/dealers` → ✅
 ```json
@@ -153,7 +153,7 @@ Response: ✅
 }
 ```
 
-### Step 2: Assign Lead to Dealer
+### Шаг 2: Назначение лида дилеру
 
 **POST** `/api/admin/dealer-assignments` → ✅
 ```json
@@ -166,9 +166,9 @@ Response: ✅
 }
 ```
 
-SLA deadline = +24 hours from assignment (configurable per dealer).
+SLA-дедлайн = +24 часа от момента назначения (настраивается для каждого дилера).
 
-### Step 3: Dealer Accepts
+### Шаг 3: Дилер принимает заявку
 
 **PUT** `/api/dealer-assignments/d1d82f4a-fbf9-4678-93ea-9b0813e228c4/respond` → ✅
 ```json
@@ -183,9 +183,9 @@ SLA deadline = +24 hours from assignment (configurable per dealer).
 
 ---
 
-## Scenario 5 — Program Batch: Import → Validate → Publish
+## Сценарий 5 — Пакет программ: Импорт → Валидация → Публикация
 
-### Step 1: Import
+### Шаг 1: Импорт
 
 **POST** `/api/admin/calculator/batches/import` → ✅
 ```json
@@ -196,16 +196,16 @@ SLA deadline = +24 hours from assignment (configurable per dealer).
 }
 ```
 
-Programs imported: BMW 3 Series 330i LEASE — 36mo/10k @ MF 0.00125, RV 55%; 24mo/10k @ MF 0.00110, RV 58%
+Импортировано: BMW 3 Series 330i LEASE — 36 мес/10k @ MF 0.00125, RV 55%; 24 мес/10k @ MF 0.00110, RV 58%
 
-### Step 2: Validate
+### Шаг 2: Валидация
 
 **POST** `/api/admin/calculator/batches/de103c0a.../validate` → ✅
 ```json
 { "isValid": true }
 ```
 
-### Step 3: Publish
+### Шаг 3: Публикация
 
 **POST** `/api/admin/calculator/batches/de103c0a.../publish` → ✅
 ```json
@@ -215,37 +215,37 @@ Programs imported: BMW 3 Series 330i LEASE — 36mo/10k @ MF 0.00125, RV 55%; 24
 }
 ```
 
-Previous ACTIVE batches superseded atomically. New batch is now ACTIVE.
+Предыдущий активный пакет атомарно переведён в статус SUPERSEDED. Новый пакет — ACTIVE.
 
 ---
 
-## Scenario 6 — Notifications (Dry-Run)
+## Сценарий 6 — Уведомления (Dry-Run)
 
-NotificationService operates in `dry-run` mode when SMTP credentials are not set.  
-All notifications are logged to `NotificationLog` table.
+NotificationService работает в режиме `dry-run` при отсутствии SMTP-учётных данных.  
+Все уведомления логируются в таблицу `NotificationLog`.
 
-Covered by unit tests:
-- `sendEmail` → logs entry with `status=dry_run`, does not crash
-- `sendSMS` → Twilio client null-guarded, logs `status=dry_run`
-- Template substitution → `{{name}}`, `{{make}}`, `{{model}}` replaced correctly
-- `notifyDealerNewLead` / `notifyDealerAccepted` → called on dealer accept (confirmed in Scenario 4)
+Покрыто юнит-тестами:
+- `sendEmail` → запись в лог со статусом `dry_run`, без ошибок
+- `sendSMS` → Twilio-клиент защищён null-guard, статус `dry_run`
+- Подстановка шаблонов → `{{name}}`, `{{make}}`, `{{model}}` заменяются корректно
+- `notifyDealerNewLead` / `notifyDealerAccepted` → вызывается при принятии дилером (подтверждено в Сценарии 4)
 
 ---
 
-## Summary
+## Итоговая таблица
 
-| # | Scenario | Status | Evidence |
-|---|----------|--------|----------|
-| 1 | Lead creation | ✅ PASS | `leadId` returned, record in Neon DB |
-| 2 | Stripe deposit $95 | ✅ PASS | `sessionId` from Stripe API, Payment record persisted |
-| 3 | 700Credit consent | ✅ PASS | `status=consent_given`, timestamp recorded |
+| # | Сценарий | Статус | Подтверждение |
+|---|----------|--------|---------------|
+| 1 | Создание лида | ✅ PASS | `leadId` возвращён, запись в Neon DB |
+| 2 | Stripe депозит $95 | ✅ PASS | `sessionId` от Stripe API, платёж сохранён в БД |
+| 3 | 700Credit согласие | ✅ PASS | `status=consent_given`, timestamp записан |
 | 4 | 700Credit soft pull | ✅ PASS | `creditBand=GOOD`, `scoreRange=700-749` (sandbox) |
-| 5 | Dealer assignment | ✅ PASS | `status=pending`, SLA=+24h |
-| 6 | Dealer accept | ✅ PASS | `status=accepted`, `acceptedAt` set |
-| 7 | Program batch import | ✅ PASS | 2 programs created |
-| 8 | Program batch validate | ✅ PASS | `isValid=true` |
-| 9 | Program batch publish | ✅ PASS | Previous batch superseded, new batch ACTIVE |
-| 10 | Notifications dry-run | ✅ PASS | 8 unit tests passing |
-| 11 | Unit test suite | ✅ PASS | **77/77 tests green** |
+| 5 | Назначение дилера | ✅ PASS | `status=pending`, SLA=+24ч |
+| 6 | Принятие дилером | ✅ PASS | `status=accepted`, `acceptedAt` записан |
+| 7 | Импорт пакета программ | ✅ PASS | 2 программы созданы |
+| 8 | Валидация пакета | ✅ PASS | `isValid=true` |
+| 9 | Публикация пакета | ✅ PASS | Предыдущий пакет superseded, новый — ACTIVE |
+| 10 | Уведомления dry-run | ✅ PASS | 8 юнит-тестов пройдено |
+| 11 | Юнит-тест сьют | ✅ PASS | **77/77 тестов зелёные** |
 
-**All acceptance criteria confirmed.**
+**Все критерии приёмки подтверждены.**
