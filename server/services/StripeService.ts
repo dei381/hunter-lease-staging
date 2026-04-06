@@ -14,12 +14,16 @@ const prisma = db;
  */
 export class StripeService {
 
-  private static getStripe() {
+  private static _stripeInstance: any = null;
+
+  private static async getStripe() {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) throw new Error('STRIPE_SECRET_KEY is not configured');
-    // Dynamic import to avoid crash if stripe package not installed
-    const Stripe = require('stripe');
-    return new Stripe(key, { apiVersion: '2023-10-16' });
+    if (!this._stripeInstance) {
+      const { default: Stripe } = await import('stripe');
+      this._stripeInstance = new Stripe(key, { apiVersion: '2023-10-16' as any });
+    }
+    return this._stripeInstance;
   }
 
   /**
@@ -32,7 +36,7 @@ export class StripeService {
     customerEmail?: string;
     vehicleDescription?: string;
   }) {
-    const stripe = this.getStripe();
+    const stripe = await this.getStripe();
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
     const session = await stripe.checkout.sessions.create({
@@ -79,7 +83,7 @@ export class StripeService {
    * Handle Stripe webhook events.
    */
   static async handleWebhook(rawBody: Buffer, signature: string) {
-    const stripe = this.getStripe();
+    const stripe = await this.getStripe();
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
 
@@ -147,7 +151,7 @@ export class StripeService {
     if (payment.status !== 'completed') throw new Error('Payment is not completed, cannot refund');
     if (!payment.stripePaymentIntentId) throw new Error('No payment intent to refund');
 
-    const stripe = this.getStripe();
+    const stripe = await this.getStripe();
     await stripe.refunds.create({
       payment_intent: payment.stripePaymentIntentId,
     });
