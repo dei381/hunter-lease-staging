@@ -158,8 +158,8 @@ const ingestLimiter = rateLimit({
 // Validation Schemas
 const leadSchema = z.object({
   client: z.object({
-    name: z.string().min(2).max(100),
-    phone: z.string().min(10).max(20),
+    name: z.string().min(1).max(100),
+    phone: z.string().min(1).max(20).optional().or(z.literal('')),
     email: z.string().email().optional().or(z.literal('')),
     payMethod: z.string().max(50).optional(),
     paymentName: z.string().max(100).optional(),
@@ -177,16 +177,16 @@ const leadSchema = z.object({
   car: z.object({
     make: z.string().max(50),
     model: z.string().max(50),
-    year: z.union([z.string(), z.number()]),
+    year: z.union([z.string(), z.number()]).optional(),
     trim: z.string().max(100).optional(),
-    msrp: z.union([z.string(), z.number()]),
+    msrp: z.union([z.string(), z.number()]).optional(),
   }),
   calc: z.object({
-    type: z.string().max(20),
-    payment: z.union([z.string(), z.number()]),
-    down: z.union([z.string(), z.number()]),
+    type: z.string().max(20).optional(),
+    payment: z.union([z.string(), z.number()]).optional(),
+    down: z.union([z.string(), z.number()]).optional(),
     tier: z.string().max(20).optional(),
-  }),
+  }).optional(),
   userId: z.string().optional().nullable(),
   dealId: z.string().optional().nullable(),
   source: z.string().optional().nullable(),
