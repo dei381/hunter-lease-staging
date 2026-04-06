@@ -1,9 +1,9 @@
-# Demo Environment Setup
+# Инструкция по запуску тестовой среды
 
-## 1. Создать базу данных (Neon — бесплатно, 2 минуты)
+## 1. Создать базу данных (Neon - бесплатно, 2 минуты)
 
-1. Зайди на https://neon.tech → Sign up → New Project → имя: `hunter-lease-demo`
-2. Скопируй строку подключения вида:
+1. Зайдите на https://neon.tech - Sign up - New Project - имя: `hunter-lease-demo`
+2. Скопируйте строку подключения вида:
    ```
    postgresql://neondb_owner:PASSWORD@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require
    ```
@@ -12,31 +12,31 @@
 
 ## 2. Создать `.env` файл в корне проекта
 
-Создай файл `.env` рядом с `package.json` и вставь:
+Создайте файл `.env` рядом с `package.json` и вставьте:
 
 ```env
-# ── SERVER ────────────────────────────────────────────────
+# -- SERVER
 PORT=3000
 NODE_ENV=development
 
-# ── DATABASE (вставь строку из Neon) ──────────────────────
+# -- DATABASE (вставьте строку из Neon)
 DATABASE_URL=postgresql://neondb_owner:PASSWORD@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require
 
-# ── ADMIN BYPASS (Firebase не нужен для demo) ─────────────
+# -- ADMIN BYPASS (Firebase не нужен для demo)
 ADMIN_SECRET=demo-secret-2024
 
-# ── STRIPE (тестовые ключи клиента) ──────────────────────
+# -- STRIPE (тестовые ключи)
 STRIPE_SECRET_KEY=sk_test_YOUR_KEY_HERE
 STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_KEY_HERE
 STRIPE_WEBHOOK_SECRET=whsec_test_placeholder
 
-# ── 700CREDIT (sandbox — реальный ключ не нужен) ──────────
+# -- 700CREDIT (sandbox - реальный ключ не нужен)
 CREDIT_700_SANDBOX=true
 
-# ── EMAIL (dry-run без credentials) ──────────────────────
-# Оставь пустым — сервис будет работать в dry-run режиме
+# -- EMAIL (dry-run без credentials)
+# Оставьте пустым - сервис будет работать в dry-run режиме
 
-# ── FRONTEND ──────────────────────────────────────────────
+# -- FRONTEND
 FRONTEND_URL=http://localhost:3000
 VITE_API_URL=http://localhost:3000
 ```
@@ -50,20 +50,20 @@ npm install
 npm run dev
 ```
 
-При старте автоматически: `prisma db push` (создаст все таблицы) + `prisma generate`.
+При старте автоматически выполнится `prisma db push` (создаст все таблицы) и `prisma generate`.
 
 ---
 
 ## 4. Прогон сценариев (curl)
 
-### Авторизация: используй везде заголовок
+### Авторизация: используйте везде заголовок
 ```
 Authorization: Bearer demo-secret-2024
 ```
 
 ---
 
-### Сценарий 1 — Quote Flow (единый серверный расчёт)
+### Сценарий 1 - Quote Flow (серверный расчёт)
 ```bash
 curl -X POST http://localhost:3000/api/v2/quote \
   -H "Content-Type: application/json" \
@@ -82,7 +82,7 @@ curl -X POST http://localhost:3000/api/v2/quote \
 
 ---
 
-### Сценарий 2 — Stripe: создать сессию депозита $95
+### Сценарий 2 - Stripe: создать сессию депозита $95
 ```bash
 curl -X POST http://localhost:3000/api/stripe/checkout \
   -H "Content-Type: application/json" \
@@ -97,7 +97,7 @@ curl -X POST http://localhost:3000/api/stripe/checkout \
 
 ---
 
-### Сценарий 3 — 700Credit: consent + soft pull (sandbox)
+### Сценарий 3 - 700Credit: consent + soft pull (sandbox)
 ```bash
 # Шаг 1: Записать согласие
 curl -X POST http://localhost:3000/api/credit/consent \
@@ -110,7 +110,7 @@ curl -X POST http://localhost:3000/api/credit/soft-pull \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer demo-secret-2024" \
   -d '{
-    "creditCheckId": "<id из шага 1>",
+    "creditCheckId": "<id из шага 1 (поле id в ответе)>",
     "firstName": "John",
     "lastName": "Doe",
     "ssn": "000-00-0000",
@@ -125,7 +125,7 @@ curl -X POST http://localhost:3000/api/credit/soft-pull \
 
 ---
 
-### Сценарий 4 — Dealer Assignment
+### Сценарий 4 - Dealer Assignment
 ```bash
 # Назначить дилера на лид
 curl -X POST http://localhost:3000/api/dealer/assign \
@@ -133,7 +133,7 @@ curl -X POST http://localhost:3000/api/dealer/assign \
   -H "Authorization: Bearer demo-secret-2024" \
   -d '{
     "leadId": "lead-demo-001",
-    "dealerPartnerId": "<id дилера из БД>"
+    "dealerPartnerId": "<id дилера из БД (GET /api/admin/dealers)>"
   }'
 
 # Дилер принимает
@@ -141,14 +141,14 @@ curl -X POST http://localhost:3000/api/dealer/respond \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer demo-secret-2024" \
   -d '{
-    "assignmentId": "<id из предыдущего запроса>",
+    "assignmentId": "<id из ответа предыдущего запроса>",
     "action": "accept"
   }'
 ```
 
 ---
 
-### Сценарий 5 — Program Batch: publish + rollback
+### Сценарий 5 - Program Batch: publish + rollback
 ```bash
 # Publish batch
 curl -X POST http://localhost:3000/api/admin/programs/batches/:id/publish \
@@ -182,7 +182,7 @@ npm test
 
 ## Важно
 
-- **Firebase**: не нужен для demo — `ADMIN_SECRET` bypass авторизует как `SUPER_ADMIN`
+- **Firebase**: не нужен - `ADMIN_SECRET` bypass авторизует как `SUPER_ADMIN`
 - **700Credit**: работает в sandbox (`CREDIT_700_SANDBOX=true`), возвращает mock score 720
-- **Email/SMS**: dry-run режим — логируется в таблицу `NotificationLog`, реальная отправка не происходит
-- **Stripe**: тестовые ключи клиента, карта для теста: `4242 4242 4242 4242`, любой CVC и дата
+- **Email/SMS**: dry-run режим - логируется в таблицу `NotificationLog`, реальная отправка не происходит
+- **Stripe**: тестовая карта `4242 4242 4242 4242`, любой CVC и дата
