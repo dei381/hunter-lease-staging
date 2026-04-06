@@ -70,7 +70,7 @@ Test Files  6 passed (6)
 ```json
 {
   "sessionId": "cs_test_a1WmBIH9odFfOjbubfsSk2V3IaRhbvEndOG4HlGEmnqy6pdT5oOoY2twXJ",
-  "sessionUrl": "https://checkout.stripe.com/c/pay/cs_test_a1WmBIH9...",
+  "sessionUrl": "https://checkout.stripe.com/c/pay/cs_test_a1WmBIH9odFfOjbubfsSk2V3IaRhbvEndOG4HlGEmnqy6pdT5oOoY2twXJ#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0UUJVdWFXXTBgf31udUpHVGRhYGJNc2RkVnRSTVRHUFFUQGlkVTRHUWN3UExGdUBNd2RLRDVdbUliYGppXGBpM09Qc3ZrSXZUNTRqcEp1YmI0UXRnQXVJNTVwYTNNfE1xUicpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl",
   "paymentId": "346b51b2-2b7b-4ad9-a7ea-1fc469f7d1e2"
 }
 ```
