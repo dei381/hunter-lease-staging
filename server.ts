@@ -158,8 +158,8 @@ const ingestLimiter = rateLimit({
 // Validation Schemas
 const leadSchema = z.object({
   client: z.object({
-    name: z.string().min(1).max(100),
-    phone: z.string().min(1).max(20).optional().or(z.literal('')),
+    name: z.string().max(100).optional().default(''),
+    phone: z.string().max(20).optional().or(z.literal('')),
     email: z.string().email().optional().or(z.literal('')),
     payMethod: z.string().max(50).optional(),
     paymentName: z.string().max(100).optional(),
