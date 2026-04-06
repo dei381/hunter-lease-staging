@@ -175,12 +175,12 @@ const leadSchema = z.object({
     payoff: z.string().max(50).optional(),
   }).nullable().optional(),
   car: z.object({
-    make: z.string().max(50),
-    model: z.string().max(50),
+    make: z.string().max(50).optional().default(''),
+    model: z.string().max(50).optional().default(''),
     year: z.union([z.string(), z.number()]).optional(),
     trim: z.string().max(100).optional(),
     msrp: z.union([z.string(), z.number()]).optional(),
-  }),
+  }).optional(),
   calc: z.object({
     type: z.string().max(20).optional(),
     payment: z.union([z.string(), z.number()]).optional(),
