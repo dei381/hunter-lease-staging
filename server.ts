@@ -2260,14 +2260,14 @@ You must return the response as a JSON array of objects. Each object must have t
   app.post("/api/lead", standardLimiter, async (req, res) => {
     try {
       // Security: Validate input
-      const validatedData = leadSchema.parse(req.body);
+      const validatedData = leadSchema.passthrough().parse(req.body);
       const { client, tradeIn, car, calc, source } = validatedData;
 
       const lead = await prisma.lead.create({
         data: {
           source: source || 'catalog_deal',
-          clientName: client.name,
-          clientPhone: client.phone,
+          clientName: client.name || '',
+          clientPhone: client.phone || '',
           clientEmail: client.email || '',
           payMethod: client.payMethod || '',
           paymentName: client.paymentName || '',
@@ -2281,16 +2281,16 @@ You must return the response as a JSON array of objects. Each object must have t
           tradeInHasLoan: tradeIn?.hasLoan || false,
           tradeInPayoff: tradeIn?.payoff ? Number(tradeIn.payoff) : undefined,
 
-          carMake: car.make,
-          carModel: car.model,
-          carYear: Number(car.year),
-          carTrim: car.trim,
-          carMsrp: Number(car.msrp),
+          carMake: car?.make || '',
+          carModel: car?.model || '',
+          carYear: car?.year ? Number(car.year) : 0,
+          carTrim: car?.trim,
+          carMsrp: car?.msrp ? Number(car.msrp) : 0,
 
-          calcType: calc.type,
-          calcPayment: Number(calc.payment),
-          calcDown: Number(calc.down),
-          calcTier: calc.tier || '',
+          calcType: calc?.type || 'lease',
+          calcPayment: calc?.payment ? Number(calc.payment) : 0,
+          calcDown: calc?.down ? Number(calc.down) : 0,
+          calcTier: calc?.tier || '',
           isFirstTimeBuyer: client.isFirstTimeBuyer || false,
           userId: validatedData.userId || null,
           dealId: validatedData.dealId || null,
