@@ -160,7 +160,7 @@ const leadSchema = z.object({
   client: z.object({
     name: z.string().max(100).optional().default(''),
     phone: z.string().max(20).optional().or(z.literal('')),
-    email: z.string().email().optional().or(z.literal('')),
+    email: z.string().max(200).optional().or(z.literal('')),
     payMethod: z.string().max(50).optional(),
     paymentName: z.string().max(100).optional(),
     isFirstTimeBuyer: z.boolean().optional().default(false),
