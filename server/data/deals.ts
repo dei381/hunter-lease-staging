@@ -87,6 +87,19 @@ export const getCategorizedFeatures = (make: string, model: string, trim: string
 };
 
 export const getOwnerVerdict = (make: string, model: string, trim: string, isLuxury: boolean) => {
-  const en = `The ${make} ${model} offers a compelling blend of value, features, and reliability. It stands out in its class with excellent build quality and a comfortable ride, making it a strong choice for most buyers.`;
+  const en = {
+    pros: [
+      isLuxury ? 'Premium build quality and materials' : 'Excellent value for money',
+      'Strong reliability track record',
+      isLuxury ? 'Advanced technology features' : 'Practical and spacious interior',
+      'Competitive lease incentives available'
+    ],
+    cons: [
+      isLuxury ? 'Higher insurance and maintenance costs' : 'Some premium features cost extra',
+      'High demand may limit availability',
+      isLuxury ? 'Steep depreciation on purchase' : 'Base trim lacks some tech features'
+    ],
+    summary: `The ${make} ${model} offers a compelling blend of value, features, and reliability. It stands out in its class with excellent build quality and a comfortable ride, making it a strong choice for most buyers.`
+  };
   return { en, ru: en };
 };

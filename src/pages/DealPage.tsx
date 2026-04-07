@@ -448,7 +448,7 @@ export const DealPage = () => {
                           {(td[category as keyof typeof td] as string) || category}
                         </div>
                         <ul className="space-y-3">
-                          {items.map((item: string, i: number) => (
+                          {(Array.isArray(items) ? items : []).map((item: string, i: number) => (
                             <li key={i} className="flex items-start gap-2 group">
                               <Check size={12} className="text-[var(--lime)] mt-0.5 shrink-0" />
                               <span className="text-xs text-[var(--mu)] group-hover:text-[var(--w)] transition-colors">{item}</span>
@@ -520,7 +520,7 @@ export const DealPage = () => {
                         {td.pros}
                       </div>
                       <ul className="space-y-2">
-                        {currentVerdict.pros.map((pro: string, i: number) => (
+                        {(currentVerdict.pros || []).map((pro: string, i: number) => (
                           <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
                             <span className="text-[var(--lime)]">•</span>
                             {pro}
@@ -534,7 +534,7 @@ export const DealPage = () => {
                         {td.cons}
                       </div>
                       <ul className="space-y-2">
-                        {currentVerdict.cons.map((con: string, i: number) => (
+                        {(currentVerdict.cons || []).map((con: string, i: number) => (
                           <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
                             <span className="text-red-500">•</span>
                             {con}
@@ -547,7 +547,7 @@ export const DealPage = () => {
                   <div className="pt-6 border-t border-[var(--b2)]">
                     <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-2">{td.summary}</div>
                     <p className="text-sm text-[var(--w)] leading-relaxed italic">
-                      "{currentVerdict.summary}"
+                      "{currentVerdict.summary || currentVerdict}"
                     </p>
                   </div>
                 </div>
