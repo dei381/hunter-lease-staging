@@ -4,18 +4,25 @@ import { getAuthToken } from '../utils/auth';
 
 export const FeedbackAdmin = () => {
   const [feedback, setFeedback] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  const fetchFeedback = async () => {
+  const fetchFeedback = async (pageNum: number) => {
     try {
-      const res = await fetch('/api/admin/feedback', {
+      const res = await fetch(`/api/admin/feedback?page=${pageNum}&limit=50`, {
         headers: {
           'Authorization': `Bearer ${await getAuthToken()}`
         }
       });
       if (!res.ok) throw new Error('Failed to fetch feedback');
       const data = await res.json();
-      setFeedback(data);
+      if (data.data) {
+        setFeedback(data.data);
+        setTotalPages(Math.ceil(data.total / data.limit));
+      } else {
+        setFeedback(data);
+      }
     } catch (error) {
       console.error('Failed to fetch feedback:', error);
       setFeedback([]);
@@ -25,8 +32,8 @@ export const FeedbackAdmin = () => {
   };
 
   useEffect(() => {
-    fetchFeedback();
-  }, []);
+    fetchFeedback(page);
+  }, [page]);
 
   const updateStatus = async (id: string, status: string) => {
     try {
@@ -38,7 +45,7 @@ export const FeedbackAdmin = () => {
         },
         body: JSON.stringify({ status })
       });
-      fetchFeedback();
+      fetchFeedback(page);
     } catch (error) {
       console.error('Failed to update status:', error);
     }
@@ -117,6 +124,28 @@ export const FeedbackAdmin = () => {
             )}
           </tbody>
         </table>
+        
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 p-4 border-t border-slate-200">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2 text-sm text-slate-500 flex items-center">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

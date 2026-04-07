@@ -89,3 +89,26 @@ export const salesAgentAuth = async (req: Request, res: Response, next: NextFunc
 export const generalAdminAuth = async (req: Request, res: Response, next: NextFunction) => {
   return verifyRole(req, res, next, ['SUPER_ADMIN', 'SALES_AGENT', 'CONTENT_MANAGER']);
 };
+
+export const dealerAuth = async (req: Request, res: Response, next: NextFunction) => {
+  return verifyRole(req, res, next, ['SUPER_ADMIN', 'DEALER']);
+};
+
+export const userAuth = async (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized access: No token provided' });
+  }
+
+  const token = authHeader.split('Bearer ')[1];
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    (req as any).user = decodedToken;
+    next();
+  } catch (error) {
+    console.error('Error verifying Firebase token:', error);
+    return res.status(401).json({ error: 'Unauthorized access: Invalid token' });
+  }
+};

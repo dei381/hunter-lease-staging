@@ -16,25 +16,32 @@ interface Review {
 
 export function ReviewsAdmin() {
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Review>>({});
   const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
-    fetchReviews();
-  }, []);
+    fetchReviews(page);
+  }, [page]);
 
-  const fetchReviews = async () => {
+  const fetchReviews = async (pageNum: number) => {
     try {
-      const res = await fetch('/api/admin/reviews', {
+      const res = await fetch(`/api/admin/reviews?page=${pageNum}&limit=50`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
         }
       });
       if (res.ok) {
         const data = await res.json();
-        setReviews(data);
+        if (data.data) {
+          setReviews(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setReviews(data);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch reviews:', error);
@@ -58,7 +65,7 @@ export function ReviewsAdmin() {
       });
       
       if (res.ok) {
-        fetchReviews();
+        fetchReviews(page);
         setEditingId(null);
         setIsAdding(false);
         setEditForm({});
@@ -78,7 +85,7 @@ export function ReviewsAdmin() {
       });
       
       if (res.ok) {
-        fetchReviews();
+        fetchReviews(page);
       }
     } catch (error) {
       console.error('Failed to delete review:', error);
@@ -333,6 +340,28 @@ export function ReviewsAdmin() {
               )}
             </tbody>
           </table>
+          
+          {totalPages > 1 && (
+            <div className="flex justify-center gap-2 p-4 border-t border-slate-200">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-sm text-slate-500 flex items-center">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages || loading}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { PureMathEngine } from './PureMathEngine';
 import { Formatter } from './Formatter';
 import { FinancialData, CalcMode } from '../../../src/types/engine';
 import prisma from '../../lib/db';
+import { getTaxRateByZip } from '../../utils/taxRates';
 
 export class DealEngineFacade {
   static async calculateForConsumer(rawBody: any): Promise<PaymentBreakdown> {
@@ -85,9 +86,7 @@ export class DealEngineFacade {
     const term = data.term.value || 36;
     const acqFee = data.acquisitionFee.value || 0;
     const rebates = (data.rebates.value || 0) + manufacturerRebate;
-    const msdCount = data.msdCount || 0;
 
-    mf = ModifierEngine.applyMsd(mf, msdCount);
     const residualValueCents = rvPercent > 1 ? rvPercent * 100 : msrp * rvPercent * 100;
 
     try {
@@ -132,7 +131,17 @@ export class DealEngineFacade {
     const settings = await DataResolver.resolveSettings();
     const programs = await DataResolver.resolvePrograms(context, vehicle);
     const dealerDiscountCents = await DataResolver.resolveDealerDiscount(context, vehicle);
-    const totalIncentivesCents = await DataResolver.resolveIncentives(context, vehicle);
+    const incentivesData = await DataResolver.resolveIncentives(context, vehicle);
+    
+    const totalIncentivesCents = incentivesData.totalRebateCents || 0;
+    const taxableIncentivesCents = incentivesData.taxableRebateCents || 0;
+    const nonTaxableIncentivesCents = incentivesData.nonTaxableRebateCents || 0;
+
+    // Dynamic CA DMV Fee: ~0.65% of MSRP + $150 base fees
+    settings.dmvFeeCents = Math.round(vehicle.msrpCents * 0.0065) + 15000;
+
+    // Dynamic Tax Rate by ZIP
+    settings.taxRate = getTaxRateByZip(context.zipCode || '');
 
     if (programs.length === 0) {
       const err = this.createErrorResponse('NO_PROGRAMS');
@@ -145,7 +154,15 @@ export class DealEngineFacade {
     const allResults: PaymentBreakdown[] = [];
 
     for (const program of programs) {
-      const resolvedData = { vehicle, settings, program, dealerDiscountCents, totalIncentivesCents };
+      const resolvedData = { 
+        vehicle, 
+        settings, 
+        program, 
+        dealerDiscountCents, 
+        totalIncentivesCents,
+        taxableIncentivesCents,
+        nonTaxableIncentivesCents
+      };
       
       // 3. Apply Modifiers
       let appliedMf = program.mf || 0;
@@ -153,7 +170,6 @@ export class DealEngineFacade {
       let appliedRvPercent = program.rv || 0; 
 
       if (context.quoteType === 'LEASE') {
-        appliedMf = ModifierEngine.applyMsd(appliedMf, context.msdCount);
         appliedRvPercent = ModifierEngine.applyMileageAdjustment(appliedRvPercent, context.mileage);
       }
       
@@ -164,70 +180,96 @@ export class DealEngineFacade {
       const modifiers = { mf: appliedMf, apr: appliedApr, rv: appliedRvPercent };
 
       // 4. Pure Math
-      const sellingPriceCents = vehicle.msrpCents - dealerDiscountCents - totalIncentivesCents;
+      const sellingPriceCents = vehicle.msrpCents - dealerDiscountCents - nonTaxableIncentivesCents;
       const targetDasCents = context.downPaymentCents;
 
       try {
         let bestCashDownCents = targetDasCents;
-        let low = -5000000; // -$50,000
-        let high = targetDasCents;
         let mathResult;
         let formattedResult: PaymentBreakdown | undefined;
 
-        // Binary search for cashDownCents to match targetDasCents
-        for (let i = 0; i < 50; i++) {
-          const mid = Math.round((low + high) / 2);
-          const downPaymentCents = mid + context.tradeInEquityCents;
-          const searchContext = { ...context, downPaymentCents: mid };
+        if (context.quoteType === 'FINANCE') {
+          // For finance, DAS is exactly cash down. No search needed.
+          bestCashDownCents = targetDasCents;
+          const downPaymentCents = bestCashDownCents + context.tradeInEquityCents;
+          mathResult = PureMathEngine.calculateFinance({
+            sellingPriceCents,
+            totalIncentivesCents: taxableIncentivesCents, // Only apply taxable incentives as down payment equivalent in finance
+            apr: appliedApr,
+            term: context.term,
+            downPaymentCents,
+            docFeeCents: settings.docFeeCents,
+            dmvFeeCents: settings.dmvFeeCents,
+            brokerFeeCents: settings.brokerFeeCents,
+            taxRate: settings.taxRate
+          });
+          formattedResult = Formatter.formatFinance(context, mathResult, resolvedData, modifiers);
+        } else {
+          // LEASE: Algebraic calculation of Cash Down from target DAS
+          const S = sellingPriceCents + settings.acqFeeCents;
+          const R = Math.round(vehicle.msrpCents * appliedRvPercent);
+          const N = context.term;
+          const M = appliedMf;
+          const t = settings.taxRate;
+          const I_t = taxableIncentivesCents;
+          const I_n = nonTaxableIncentivesCents;
+          const I = I_t + I_n;
+          const Fu = settings.docFeeCents + settings.dmvFeeCents + settings.brokerFeeCents;
+          const Te = context.tradeInEquityCents;
+          const DAS = targetDasCents;
 
-          try {
-            if (context.quoteType === 'LEASE') {
-              mathResult = PureMathEngine.calculateLease({
+          const k = 1 / N + M;
+          const B0 = (S - R) / N + (S + R) * M;
+          const P0 = B0 * (1 + t);
+
+          let D_approx = (DAS + Te - P0 - Fu + k * (1 + t) * I - I_t * t) / ((1 + t) * (1 - k));
+          if (D_approx + I_t < 0) {
+            D_approx = (DAS + Te - P0 - Fu + k * (1 + t) * I) / (1 - k * (1 + t));
+          }
+
+          const baseCashDown = Math.round(D_approx - Te);
+          
+          let bestDiff = Infinity;
+          let bestC = baseCashDown;
+
+          // Test a small window around our algebraic guess to account for rounding cascades
+          for (let offset = -100; offset <= 100; offset++) {
+            const testCashDown = baseCashDown + offset;
+            const testDownPayment = testCashDown + Te + taxableIncentivesCents;
+            const testContext = { ...context, downPaymentCents: testCashDown };
+            
+            try {
+              const testMath = PureMathEngine.calculateLease({
                 msrpCents: vehicle.msrpCents,
                 sellingPriceCents,
                 residualValuePercent: appliedRvPercent,
                 moneyFactor: appliedMf,
                 term: context.term,
-                downPaymentCents,
+                downPaymentCents: testDownPayment,
                 acqFeeCents: settings.acqFeeCents,
                 docFeeCents: settings.docFeeCents,
                 dmvFeeCents: settings.dmvFeeCents,
                 brokerFeeCents: settings.brokerFeeCents,
                 taxRate: settings.taxRate
               });
-              formattedResult = Formatter.formatLease(searchContext, mathResult, resolvedData, modifiers);
-            } else {
-              mathResult = PureMathEngine.calculateFinance({
-                sellingPriceCents,
-                totalIncentivesCents,
-                apr: appliedApr,
-                term: context.term,
-                downPaymentCents,
-                docFeeCents: settings.docFeeCents,
-                dmvFeeCents: settings.dmvFeeCents,
-                brokerFeeCents: settings.brokerFeeCents,
-                taxRate: settings.taxRate
-              });
-              formattedResult = Formatter.formatFinance(searchContext, mathResult, resolvedData, modifiers);
+              const testFormatted = Formatter.formatLease(testContext, testMath, resolvedData, modifiers);
+              
+              const diff = Math.abs(testFormatted.dueAtSigningCents - targetDasCents);
+              if (diff < bestDiff) {
+                bestDiff = diff;
+                bestC = testCashDown;
+                mathResult = testMath;
+                formattedResult = testFormatted;
+              }
+              
+              if (diff <= 1) {
+                break; // Perfect match found
+              }
+            } catch (e) {
+              // Ignore math errors for invalid offsets
             }
-
-            const calculatedDas = formattedResult.dueAtSigningCents;
-            
-            if (Math.abs(calculatedDas - targetDasCents) <= 1) {
-              bestCashDownCents = mid;
-              break;
-            }
-
-            if (calculatedDas < targetDasCents) {
-              low = mid + 1;
-            } else {
-              high = mid - 1;
-            }
-            bestCashDownCents = mid; // Keep track of the closest
-          } catch (e) {
-            // If math fails (e.g. negative payment), it means cash down is too high
-            high = mid - 1;
           }
+          bestCashDownCents = bestC;
         }
 
         if (!formattedResult) {
@@ -300,13 +342,26 @@ export class DealEngineFacade {
       return this.createErrorResponse('MATH_ERROR');
     }
 
-    // Populate options
-    bestResult.options = allResults.map(r => ({
-      lenderType: 'Unknown',
+    // Populate options - group by lender and pick the best one for each
+    const lenderBestResults = new Map<string, typeof allResults[0]>();
+    for (const r of allResults) {
+      const lenderName = r.sourceMetadata.lenderName || 'Unknown';
+      const existing = lenderBestResults.get(lenderName);
+      if (!existing || r.monthlyPaymentCents < existing.monthlyPaymentCents) {
+        lenderBestResults.set(lenderName, r);
+      }
+    }
+
+    bestResult.options = Array.from(lenderBestResults.values()).map(r => ({
+      lenderType: r.sourceMetadata.lenderType,
       lenderName: r.sourceMetadata.lenderName,
       monthlyPaymentCents: r.monthlyPaymentCents,
       isBest: r === bestResult
     }));
+
+    if (vehicle.availableIncentives) {
+      bestResult.availableIncentives = vehicle.availableIncentives;
+    }
 
     // Save QuoteSnapshot
     if (context.saveSnapshot && vehicle.id) {
@@ -352,7 +407,7 @@ export class DealEngineFacade {
       taxes: { rate: 0, monthlyTaxCents: 0, upfrontTaxCents: 0 },
       fees: { acqFeeCents: 0, docFeeCents: 0, dmvFeeCents: 0, brokerFeeCents: 0, capitalizedFeesCents: 0, upfrontFeesCents: 0 },
       tco: { totalCostCents: 0, monthlyAverageCents: 0 },
-      sourceMetadata: { lenderId: null, lenderName: 'Unknown', msrpSource: 'DB', ratesSource: 'BANK_PROGRAM' }
+      sourceMetadata: { lenderId: null, lenderName: 'Unknown', lenderType: 'Unknown', msrpSource: 'DB', ratesSource: 'BANK_PROGRAM' }
     };
   }
 }

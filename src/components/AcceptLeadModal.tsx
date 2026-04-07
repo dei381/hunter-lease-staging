@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { auth } from '../firebase';
 
 interface AcceptLeadModalProps {
   isOpen: boolean;
@@ -21,11 +22,12 @@ export const AcceptLeadModal: React.FC<AcceptLeadModalProps> = ({ isOpen, onClos
     
     setLoading(true);
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/dealer/leads/${leadId}/accept`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-uid': user?.uid || ''
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ vin })
       });
@@ -110,7 +112,7 @@ export const AcceptLeadModal: React.FC<AcceptLeadModalProps> = ({ isOpen, onClos
 
               <button
                 onClick={handleAccept}
-                disabled={loading || !agreed || vin.length < 11}
+                disabled={loading || !agreed || vin.length !== 17}
                 className="w-full bg-[var(--lime)] text-black font-bold uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (

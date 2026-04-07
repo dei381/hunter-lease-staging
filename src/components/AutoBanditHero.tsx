@@ -63,11 +63,9 @@ export const AutoBanditHero = () => {
 
   const displayPayment = useMemo(() => {
     if (isCalculating) return '...';
-    if (!quoteResult) return '---';
-    return activeTab === 'lease' 
-      ? Math.round(quoteResult.leasePaymentCents / 100)
-      : Math.round(quoteResult.financePaymentCents / 100);
-  }, [quoteResult, isCalculating, activeTab]);
+    if (!quoteResult || quoteResult.calcStatus === 'NO_PROGRAMS' || quoteResult.calcStatus === 'MISSING_MSRP') return '---';
+    return Math.round((quoteResult.monthlyPaymentCents || 0) / 100);
+  }, [quoteResult, isCalculating]);
 
   return (
     <div className="bg-white min-h-screen font-sans text-[#1A1A1A]">

@@ -7,6 +7,7 @@ export interface Incentive {
   description?: string;
   exclusiveGroupId?: string | null;
   stackable?: boolean;
+  isTaxableCa?: boolean;
 }
 
 export interface EvaluatedIncentive extends Incentive {
@@ -31,10 +32,14 @@ export class IncentiveResolver {
     appliedIncentives: Incentive[];
     evaluatedIncentives: EvaluatedIncentive[];
     totalRebateCents: number;
+    taxableRebateCents: number;
+    nonTaxableRebateCents: number;
   } {
     const appliedIncentives: Incentive[] = [];
     const evaluatedIncentives: EvaluatedIncentive[] = [];
     let totalRebateCents = 0;
+    let taxableRebateCents = 0;
+    let nonTaxableRebateCents = 0;
     
     // Temporary array to hold eligible incentives before applying stackability rules
     const eligibleIncentives: Incentive[] = [];
@@ -48,7 +53,8 @@ export class IncentiveResolver {
         isDefault: !!inc.isDefault,
         description: inc.description,
         exclusiveGroupId: inc.exclusiveGroupId,
-        stackable: inc.stackable !== undefined ? inc.stackable : true
+        stackable: inc.stackable !== undefined ? inc.stackable : true,
+        isTaxableCa: inc.isTaxableCa !== undefined ? inc.isTaxableCa : true
       };
 
       // 1. Check if active
@@ -186,6 +192,11 @@ export class IncentiveResolver {
       // Non-stackable is better
       appliedIncentives.push(bestNonStackable);
       totalRebateCents += bestNonStackable.amountCents;
+      if (bestNonStackable.isTaxableCa) {
+        taxableRebateCents += bestNonStackable.amountCents;
+      } else {
+        nonTaxableRebateCents += bestNonStackable.amountCents;
+      }
       evaluatedIncentives.push({ ...bestNonStackable, status: 'APPLIED', reason: 'Highest non-stackable incentive applied (better than stackable combo)' });
 
       // Reject all others
@@ -199,6 +210,11 @@ export class IncentiveResolver {
       for (const inc of bestStackableIncentives) {
         appliedIncentives.push(inc);
         totalRebateCents += inc.amountCents;
+        if (inc.isTaxableCa) {
+          taxableRebateCents += inc.amountCents;
+        } else {
+          nonTaxableRebateCents += inc.amountCents;
+        }
         evaluatedIncentives.push({ ...inc, status: 'APPLIED', reason: inc.exclusiveGroupId ? `Highest amount in group ${inc.exclusiveGroupId}` : 'Applied stackable incentive' });
       }
 
@@ -215,7 +231,9 @@ export class IncentiveResolver {
     return {
       appliedIncentives,
       evaluatedIncentives,
-      totalRebateCents
+      totalRebateCents,
+      taxableRebateCents,
+      nonTaxableRebateCents
     };
   }
 }

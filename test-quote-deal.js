@@ -6,14 +6,14 @@ async function run() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        vehicleId: 'camry-2025',
+        vehicleId: '2b6abd47-5137-4caa-b742-c069f7404077',
         type: 'LEASE',
         term: 36,
         downPayment: 0,
         annualMileage: 10000,
         make: 'Toyota',
-        model: 'Corolla',
-        trim: 'LE Sedan'
+        model: 'Highlander',
+        trim: 'LE Hybrid'
       })
     });
     console.log(res.status);

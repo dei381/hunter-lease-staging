@@ -5,20 +5,29 @@ import { useAuthStore } from '../../store/authStore';
 export const AuditLogsAdmin = () => {
   const { user } = useAuthStore();
   const [logs, setLogs] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchLogs = async () => {
       if (!user) return;
+      setLoading(true);
       try {
-        const res = await fetch('/api/admin/audit-logs', {
+        const token = await user.getIdToken();
+        const res = await fetch(`/api/admin/audit-logs?page=${page}&limit=50`, {
           headers: {
-            'x-user-uid': user.uid
+            'Authorization': `Bearer ${token}`
           }
         });
         if (res.ok) {
           const data = await res.json();
-          setLogs(data);
+          if (data.data) {
+            setLogs(data.data);
+            setTotalPages(Math.ceil(data.total / data.limit));
+          } else {
+            setLogs(data);
+          }
         }
       } catch (error) {
         console.error('Error fetching audit logs:', error);
@@ -28,7 +37,7 @@ export const AuditLogsAdmin = () => {
     };
 
     fetchLogs();
-  }, [user]);
+  }, [user, page]);
 
   if (loading) {
     return <div className="animate-pulse space-y-4">
@@ -97,6 +106,28 @@ export const AuditLogsAdmin = () => {
             )}
           </tbody>
         </table>
+        
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 p-4 border-t border-[var(--b2)]">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-4 py-2 bg-[var(--s2)] border border-[var(--b2)] rounded-lg text-sm disabled:opacity-50 hover:bg-[var(--s3)] transition-colors"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2 text-sm text-[var(--mu2)] flex items-center">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="px-4 py-2 bg-[var(--s2)] border border-[var(--b2)] rounded-lg text-sm disabled:opacity-50 hover:bg-[var(--s3)] transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

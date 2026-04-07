@@ -14,6 +14,23 @@ export class DataResolver {
 
     if (context.vehicleId) {
       vehicle = await prisma.vehicleCache.findUnique({ where: { id: context.vehicleId } });
+      if (!vehicle) {
+        const deal = await prisma.dealRecord.findUnique({ where: { id: context.vehicleId } });
+        if (deal) {
+          try {
+            const fd = JSON.parse(deal.financialData || '{}');
+            vehicle = {
+              make: fd.make || context.make || 'Unknown',
+              model: fd.model || context.model || 'Unknown',
+              trim: fd.trim || context.trim || 'Unknown',
+              year: fd.year ? Number(fd.year) : (context.year ? Number(context.year) : new Date().getFullYear()),
+              msrpCents: fd.msrp ? Math.round(Number(fd.msrp) * 100) : 0
+            };
+          } catch (e) {
+            console.error("Failed to parse DealRecord financialData", e);
+          }
+        }
+      }
     }
 
     if (!carDbCache || Date.now() - carDbCacheTime > CAR_DB_CACHE_TTL) {
@@ -22,18 +39,46 @@ export class DataResolver {
     }
     let carDb = carDbCache;
 
+    // Always try to normalize trim and msrp using carDb
+    if (vehicle?.make && vehicle?.model) {
+      const makeObj = carDb.makes?.find((m: any) => m.name.toLowerCase() === vehicle.make.toLowerCase());
+      if (makeObj) {
+        const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === vehicle.model.toLowerCase());
+        if (modelObj) {
+          const exactMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase() === vehicle.trim.toLowerCase());
+          const wordMatch = modelObj.trims?.find((t: any) => new RegExp(`\\b${vehicle.trim}\\b`, 'i').test(t.name));
+          const partialMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase().includes(vehicle.trim.toLowerCase()));
+          
+          carDbTrim = exactMatch || wordMatch || partialMatch;
+          
+          if (carDbTrim) {
+            vehicle.trim = carDbTrim.name;
+            if (!vehicle.msrpCents) {
+              vehicle.msrpCents = Math.round(Number(carDbTrim.msrp) || 0) * 100;
+            }
+          }
+        }
+      }
+    }
+
     if (!vehicle) {
       if (context.make && context.model) {
         const makeObj = carDb.makes?.find((m: any) => m.name.toLowerCase() === (context.make || '').toLowerCase());
         if (makeObj) {
           const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === (context.model || '').toLowerCase());
           if (modelObj) {
-            carDbTrim = modelObj.trims?.find((t: any) => t.name.toLowerCase() === (context.trim || '').toLowerCase());
+            const trimToMatch = context.trim || '';
+            const exactMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase() === trimToMatch.toLowerCase());
+            const wordMatch = modelObj.trims?.find((t: any) => new RegExp(`\\b${trimToMatch}\\b`, 'i').test(t.name));
+            const partialMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase().includes(trimToMatch.toLowerCase()));
+            
+            carDbTrim = exactMatch || wordMatch || partialMatch;
+            
             vehicle = {
               make: makeObj.name,
               model: modelObj.name,
-              trim: carDbTrim?.name || '',
-              year: context.year || new Date().getFullYear(),
+              trim: carDbTrim?.name || context.trim || '',
+              year: context.year ? Number(context.year) : new Date().getFullYear(),
               msrpCents: Math.round(Number(carDbTrim?.msrp) || 0) * 100
             };
           }
@@ -46,7 +91,7 @@ export class DataResolver {
     const make = vehicle?.make || context.make || 'Unknown';
     const model = vehicle?.model || context.model || 'Unknown';
     const trim = vehicle?.trim || context.trim || 'Unknown';
-    const year = vehicle?.year || context.year || new Date().getFullYear();
+    const year = Number(vehicle?.year) || Number(context.year) || new Date().getFullYear();
 
     // Fetch incentives from the database
     const dbIncentives = await prisma.oemIncentiveProgram.findMany({
@@ -86,6 +131,7 @@ export class DataResolver {
       isDefault: inc.type === 'OEM_CASH',
       expiresAt: inc.effectiveTo ? inc.effectiveTo.toISOString() : undefined,
       stackable: inc.stackable,
+      isTaxableCa: inc.isTaxableCa,
       verifiedByAdmin: inc.verifiedByAdmin,
       dbType: inc.type
     }));
@@ -105,7 +151,7 @@ export class DataResolver {
     if (context.adminOverrides?.mf || context.adminOverrides?.apr) {
       return [{
         id: 'admin-override',
-        lender: { name: 'Admin Override' },
+        lender: { name: 'Admin Override', lenderType: 'ADMIN' },
         mf: context.adminOverrides.mf || 0.002,
         apr: context.adminOverrides.apr || 5.0,
         rv: context.adminOverrides.rv || 0.55,
@@ -130,13 +176,48 @@ export class DataResolver {
       mileage: context.mileage
     });
 
+    const isHybrid = vehicle.trim.toLowerCase().includes('hybrid');
+    const possibleModels = Array.from(new Set([
+      vehicle.model,
+      vehicle.model.replace(/ Hybrid$/i, '').trim(),
+      isHybrid ? `${vehicle.model} Hybrid` : vehicle.model,
+      'ALL',
+      ''
+    ]));
+
+    const originalTrim = context.trim || vehicle.trim;
+    const possibleTrims = Array.from(new Set([
+      vehicle.trim,
+      originalTrim,
+      vehicle.trim.replace(/ Hybrid$/i, '').trim(),
+      originalTrim.replace(/ Hybrid$/i, '').trim(),
+      vehicle.trim.split(' ')[0],
+      originalTrim.split(' ')[0],
+      'ALL',
+      ''
+    ]));
+
     let bankPrograms = await prisma.bankProgram.findMany({
       where: {
         batchId: activeBatch.id,
         programType: context.quoteType,
         make: { in: [vehicle.make, 'ALL', ''] },
-        model: { in: [vehicle.model, 'ALL', ''] },
-        trim: { in: [vehicle.trim, 'ALL', ''] },
+        AND: [
+          {
+            OR: [
+              { model: { in: possibleModels } },
+              { model: { contains: vehicle.model, mode: 'insensitive' } }
+            ]
+          },
+          {
+            OR: [
+              { trim: { in: possibleTrims } },
+              { trim: { contains: vehicle.trim, mode: 'insensitive' } },
+              { trim: { contains: originalTrim, mode: 'insensitive' } },
+              { trim: { contains: vehicle.trim.split(' ')[0], mode: 'insensitive' } }
+            ]
+          }
+        ],
         year: { in: [vehicle.year, 0] },
         term: context.term,
         ...(context.quoteType === 'LEASE' ? { mileage: 10000 } : {})
@@ -148,6 +229,83 @@ export class DataResolver {
     });
 
     console.log(`Found ${bankPrograms.length} bank programs`);
+    
+    // Group programs by lender to pick the best match per lender
+    const programsByLender = bankPrograms.reduce((acc, p) => {
+      const lenderId = p.lenderId || 'CAPTIVE';
+      if (!acc[lenderId]) acc[lenderId] = [];
+      acc[lenderId].push(p);
+      return acc;
+    }, {} as Record<string, typeof bankPrograms>);
+
+    let finalPrograms: typeof bankPrograms = [];
+
+    for (const [lenderId, lenderPrograms] of Object.entries(programsByLender)) {
+      let bestPrograms = lenderPrograms;
+
+      // Filter to prioritize exact model match if multiple models are returned for this lender
+      if (bestPrograms.length > 1) {
+        const exactModelMatches = bestPrograms.filter(p => p.model?.toLowerCase() === vehicle.model.toLowerCase());
+        if (exactModelMatches.length > 0) {
+          bestPrograms = exactModelMatches;
+        } else {
+          const hybridStrippedModel = vehicle.model.replace(/ Hybrid$/i, '').trim();
+          const strippedModelMatches = bestPrograms.filter(p => p.model?.toLowerCase() === hybridStrippedModel.toLowerCase());
+          if (strippedModelMatches.length > 0) {
+            bestPrograms = strippedModelMatches;
+          }
+        }
+      }
+
+      // Filter to prioritize exact trim match if multiple trims are returned for this lender
+      if (bestPrograms.length > 1) {
+        const exactMatches = bestPrograms.filter(p => p.trim?.toLowerCase() === vehicle.trim.toLowerCase() || p.trim?.toLowerCase() === originalTrim.toLowerCase());
+        if (exactMatches.length > 0) {
+          bestPrograms = exactMatches;
+        } else {
+          const hybridStripped = vehicle.trim.replace(/ Hybrid$/i, '').trim();
+          const originalHybridStripped = originalTrim.replace(/ Hybrid$/i, '').trim();
+          const strippedMatches = bestPrograms.filter(p => p.trim?.toLowerCase() === hybridStripped.toLowerCase() || p.trim?.toLowerCase() === originalHybridStripped.toLowerCase());
+          if (strippedMatches.length > 0) {
+            bestPrograms = strippedMatches;
+          } else {
+            // If no exact match, try to find the best partial match
+            // Group by trim and pick the one that is most similar
+            const trimGroups = bestPrograms.reduce((acc, p) => {
+              const t = p.trim || '';
+              if (!acc[t]) acc[t] = [];
+              acc[t].push(p);
+              return acc;
+            }, {} as Record<string, typeof bankPrograms>);
+            
+            const trims = Object.keys(trimGroups);
+            if (trims.length > 1) {
+              // Simple heuristic: pick the shortest trim that contains our target words
+              const targetWords = originalTrim.toLowerCase().split(/[\s-]+/);
+              let bestTrim = trims[0];
+              let maxMatches = 0;
+              
+              for (const t of trims) {
+                const tLower = t.toLowerCase();
+                const matches = targetWords.filter(w => tLower.includes(w)).length;
+                if (matches > maxMatches) {
+                  maxMatches = matches;
+                  bestTrim = t;
+                } else if (matches === maxMatches && t.length < bestTrim.length) {
+                  bestTrim = t; // Prefer shorter strings if word match count is the same
+                }
+              }
+              bestPrograms = trimGroups[bestTrim];
+            }
+          }
+        }
+      }
+      
+      finalPrograms.push(...bestPrograms);
+    }
+    
+    bankPrograms = finalPrograms;
+
     if (bankPrograms.length === 0) {
       console.log('NO PROGRAMS FOUND. Debug info:', {
         batchId: activeBatch.id,
@@ -224,6 +382,7 @@ export class DataResolver {
       docFeeCents: (Number(settings.docFee) || 85) * 100,
       dmvFeeCents: (Number(settings.dmvFee) || 400) * 100,
       brokerFeeCents: (Number(settings.brokerFee) || 595) * 100,
+      dispositionFeeCents: (Number(settings.dispositionFee) || 395) * 100,
       routingStrategy: settings.routingStrategy || 'BEST_FOR_CUSTOMER'
     };
   }
@@ -242,10 +401,12 @@ export class DataResolver {
       where: {
         isActive: true,
         startsAt: { lte: now },
-        OR: [ { endsAt: null }, { endsAt: { gte: now } } ],
         make: vehicle.make,
-        model: { in: [vehicle.model, '', null] },
-        trim: { in: [vehicle.trim, '', null] }
+        AND: [
+          { OR: [ { endsAt: null }, { endsAt: { gte: now } } ] },
+          { OR: [ { model: vehicle.model }, { model: '' }, { model: null } ] },
+          { OR: [ { trim: vehicle.trim }, { trim: '' }, { trim: null } ] }
+        ]
       },
       orderBy: [
         { trim: 'desc' }, // Prioritize specific trim
@@ -266,6 +427,6 @@ export class DataResolver {
       context,
       vehicle
     );
-    return resolvedIncentives.totalRebateCents || 0;
+    return resolvedIncentives;
   }
 }

@@ -188,7 +188,7 @@ export class CalculatorAuditService {
 
       const program = programs[0] as any; // Take the first one for audit trace
       
-      const bankName = program.lender?.name || 'Unknown';
+      const bankName = program.lender?.name || (vehicle.make ? `${vehicle.make} Financial Services` : 'Unknown');
       if (bankName === 'Unknown') {
         addCheck('Bank Identity', 'WARN', 'HIGH', 'Bank is unknown or missing.');
       } else {
@@ -226,7 +226,7 @@ export class CalculatorAuditService {
         includedInCalculation: true,
         metadata: {
           programId: program.id,
-          bank: program.lender?.name || 'Unknown',
+          bank: bankName,
           batchId: program.batchId,
           termBucket: program.term,
           mileageBucket: program.mileage,
@@ -245,7 +245,7 @@ export class CalculatorAuditService {
         includedInCalculation: true,
         metadata: {
           programId: program.id,
-          bank: program.lender?.name || 'Unknown',
+          bank: bankName,
           batchId: program.batchId,
           termBucket: program.term,
           mileageBucket: program.mileage,
@@ -265,7 +265,7 @@ export class CalculatorAuditService {
         includedInCalculation: true,
         metadata: {
           programId: program.id,
-          bank: program.lender?.name || 'Unknown',
+          bank: bankName,
           batchId: program.batchId,
           termBucket: program.term,
           mileageBucket: program.mileage,
@@ -407,18 +407,6 @@ export class CalculatorAuditService {
       let appliedRvPercent = program.rv || 0; 
 
       if (context.quoteType === 'LEASE') {
-        const originalMf = appliedMf;
-        appliedMf = ModifierEngine.applyMsd(appliedMf, context.msdCount);
-        if (originalMf !== appliedMf) {
-          addStep(
-            'Apply MSD to Money Factor',
-            `${originalMf} - (${context.msdCount} * 0.00005)`,
-            appliedMf,
-            appliedMf.toString(),
-            'none'
-          );
-        }
-
         const originalRv = appliedRvPercent;
         appliedRvPercent = ModifierEngine.applyMileageAdjustment(appliedRvPercent, context.mileage);
         if (originalRv !== appliedRvPercent) {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { useAuthStore } from '../store/authStore';
+import { auth } from '../firebase';
 import { Car, Clock, CheckCircle2, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
 import { CounterOfferModal } from '../components/CounterOfferModal';
 import { AcceptLeadModal } from '../components/AcceptLeadModal';
@@ -8,22 +9,31 @@ import { AcceptLeadModal } from '../components/AcceptLeadModal';
 export const DealerPortal = () => {
   const { user } = useAuthStore();
   const [leads, setLeads] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [counterModalOpen, setCounterModalOpen] = useState(false);
   const [acceptModalOpen, setAcceptModalOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
-  const fetchDealerLeads = async () => {
+  const fetchDealerLeads = async (pageNum: number) => {
     if (!user) return;
+    setLoading(true);
     try {
-      const response = await fetch('/api/dealer/leads', {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/dealer/leads?page=${pageNum}&limit=50`, {
         headers: {
-          'x-user-uid': user.uid
+          'Authorization': `Bearer ${token}`
         }
       });
       if (response.ok) {
-        const fetchedLeads = await response.json();
-        setLeads(fetchedLeads);
+        const data = await response.json();
+        if (data.data) {
+          setLeads(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setLeads(data);
+        }
       }
     } catch (error) {
       console.error('Error fetching dealer leads:', error);
@@ -33,16 +43,17 @@ export const DealerPortal = () => {
   };
 
   useEffect(() => {
-    fetchDealerLeads();
-  }, [user]);
+    fetchDealerLeads(page);
+  }, [user, page]);
 
   const handleAction = async (leadId: string, action: 'accept' | 'reject') => {
     if (!user) return;
     try {
+      const token = await auth.currentUser?.getIdToken();
       const response = await fetch(`/api/dealer/leads/${leadId}/${action}`, {
         method: 'POST',
         headers: {
-          'x-user-uid': user.uid
+          'Authorization': `Bearer ${token}`
         }
       });
       if (response.ok) {
@@ -132,7 +143,7 @@ export const DealerPortal = () => {
                           </div>
 
                           <div className="bg-[var(--s2)] p-3 rounded-lg text-sm">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                               <div>
                                 <div className="text-[var(--mu2)] text-[10px] uppercase tracking-widest">MSRP</div>
                                 <div className="font-bold">${lead.carMsrp?.toLocaleString()}</div>
@@ -144,6 +155,14 @@ export const DealerPortal = () => {
                               <div>
                                 <div className="text-[var(--mu2)] text-[10px] uppercase tracking-widest">Down</div>
                                 <div className="font-bold">${lead.calcDown}</div>
+                              </div>
+                              <div>
+                                <div className="text-[var(--mu2)] text-[10px] uppercase tracking-widest">Term</div>
+                                <div className="font-bold">{lead.calcTerm || '36 mo'}</div>
+                              </div>
+                              <div>
+                                <div className="text-[var(--mu2)] text-[10px] uppercase tracking-widest">Mileage</div>
+                                <div className="font-bold">{lead.calcMileage || '10k'}</div>
                               </div>
                               <div>
                                 <div className="text-[var(--mu2)] text-[10px] uppercase tracking-widest">Zip Code</div>
@@ -196,6 +215,28 @@ export const DealerPortal = () => {
             </div>
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 mt-8">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-4 py-2 bg-[var(--s1)] border border-[var(--b2)] rounded-lg text-sm disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2 text-sm text-[var(--mu2)] flex items-center">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="px-4 py-2 bg-[var(--s1)] border border-[var(--b2)] rounded-lg text-sm disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       {selectedLeadId && (
@@ -207,7 +248,7 @@ export const DealerPortal = () => {
           }}
           leadId={selectedLeadId}
           onSuccess={() => {
-            fetchDealerLeads();
+            fetchDealerLeads(page);
           }}
         />
       )}
@@ -221,7 +262,7 @@ export const DealerPortal = () => {
           }}
           leadId={selectedLeadId}
           onSuccess={() => {
-            fetchDealerLeads();
+            fetchDealerLeads(page);
           }}
         />
       )}

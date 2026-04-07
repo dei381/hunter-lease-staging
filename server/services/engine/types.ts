@@ -15,7 +15,6 @@ export const QuoteContextSchema = z.object({
   tradeInEquityCents: z.number().int().default(0),
   mileage: z.number().int().optional(),
   creditTier: z.enum(['t1', 't2', 't3', 't4', 't5', 't6']).default('t1'),
-  msdCount: z.number().int().min(0).max(10).default(0),
   isFirstTimeBuyer: z.boolean().default(false),
   hasCosigner: z.boolean().default(false),
   selectedIncentiveIds: z.array(z.string()).default([]),
@@ -81,6 +80,7 @@ export interface PaymentBreakdown {
   sourceMetadata: {
     lenderId: string | null;
     lenderName: string;
+    lenderType: string;
     msrpSource: 'DB' | 'ADMIN_OVERRIDE';
     ratesSource: 'BANK_PROGRAM' | 'ADMIN_OVERRIDE';
   };
@@ -95,4 +95,11 @@ export interface PaymentBreakdown {
     monthlyPaymentCents: number;
     isBest: boolean;
   }[];
+  availableIncentives?: Array<{
+    id: string;
+    name: string;
+    amount: number;
+    type: string;
+    isDefault: boolean;
+  }>;
 }

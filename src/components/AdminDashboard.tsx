@@ -68,6 +68,8 @@ interface Deal {
 export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos' | 'calculator-audit'>('overview');
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [dealsPage, setDealsPage] = useState(1);
+  const [dealsTotalPages, setDealsTotalPages] = useState(1);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterMake, setFilterMake] = useState<string>('ALL');
@@ -76,6 +78,8 @@ export function AdminDashboard() {
   const [lenders, setLenders] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersTotalPages, setUsersTotalPages] = useState(1);
   const [settings, setSettings] = useState<any>({
     platformFee: 95,
     taxRateDefault: 8.875,
@@ -188,7 +192,7 @@ export function AdminDashboard() {
       
       if (!response.ok) throw new Error('Failed to create deal from VIN');
       toast.success('Deal created successfully');
-      fetchDeals(true);
+      fetchDeals(true, dealsPage);
     } catch (error) {
       console.error('Failed to create deal from VIN:', error);
       toast.error('Failed to create deal');
@@ -295,15 +299,20 @@ export function AdminDashboard() {
     }
   };
 
-  const fetchDeals = async (showToast = false) => {
+  const fetchDeals = async (showToast = false, pageNum = dealsPage) => {
     try {
       clearClientCache();
-      const response = await fetch('/api/admin/deals', {
+      const response = await fetch(`/api/admin/deals?page=${pageNum}&limit=100`, {
         headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
-        setDeals(data);
+        if (data.data) {
+          setDeals(data.data);
+          setDealsTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setDeals(data);
+        }
         if (showToast) toast.success('Deals refreshed successfully');
       } else {
         if (showToast) toast.error('Failed to refresh deals');
@@ -337,14 +346,19 @@ export function AdminDashboard() {
     }
   };
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (pageNum = usersPage) => {
     try {
-      const response = await fetch('/api/admin/users', {
+      const response = await fetch(`/api/admin/users?page=${pageNum}&limit=50`, {
         headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
-        setUsers(data);
+        if (data.data) {
+          setUsers(data.data);
+          setUsersTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setUsers(data);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch users:', error);
@@ -431,15 +445,15 @@ export function AdminDashboard() {
     switch (activeTab) {
       case 'overview': fetchStats(); break;
       case 'deals': 
-        fetchDeals(); 
+        fetchDeals(false, dealsPage); 
         fetchLenders();
         break;
       case 'leads': fetchLeads(); break;
-      case 'users': fetchUsers(); break;
+      case 'users': fetchUsers(usersPage); break;
       case 'settings': fetchSettings(); break;
     }
     checkApiKey();
-  }, [activeTab]);
+  }, [activeTab, dealsPage, usersPage]);
 
   const updateLeadStatus = async (leadId: string, status: string, brokerFeeCents?: number, dealerReserveCents?: number) => {
     try {
@@ -526,7 +540,7 @@ export function AdminDashboard() {
   };
 
   const handleUploadSuccess = (dealId: string) => {
-    fetchDeals();
+    fetchDeals(false, dealsPage);
   };
 
   const handleArchiveDeal = async (dealId: string) => {
@@ -547,7 +561,7 @@ export function AdminDashboard() {
             },
             body: JSON.stringify({ publishStatus: 'ARCHIVED' })
           });
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           toast.success('Deal archived successfully');
         } catch (error) {
           console.error('Failed to archive deal:', error);
@@ -575,7 +589,7 @@ export function AdminDashboard() {
             },
             body: JSON.stringify({ publishStatus: 'DRAFT', reviewStatus: 'NEEDS_REVIEW' })
           });
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           toast.success('Deal restored successfully');
         } catch (error) {
           console.error('Failed to restore deal:', error);
@@ -599,7 +613,7 @@ export function AdminDashboard() {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
           });
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           toast.success('Deal permanently deleted');
         } catch (error) {
           console.error('Failed to delete deal:', error);
@@ -632,7 +646,7 @@ export function AdminDashboard() {
       });
       if (response.ok) {
         toast.success('Deal duplicated successfully');
-        fetchDeals();
+        fetchDeals(false, dealsPage);
       } else {
         const data = await response.json();
         toast.error(`Failed to duplicate deal: ${data.error || 'Unknown error'}`);
@@ -679,7 +693,7 @@ export function AdminDashboard() {
           }
           
           setSelectedDeals([]);
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           fetchStats();
         } catch (error) {
           console.error('Failed to archive deals:', error);
@@ -727,7 +741,7 @@ export function AdminDashboard() {
           }
           
           setSelectedDeals([]);
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           fetchStats();
         } catch (error) {
           console.error('Failed to restore deals:', error);
@@ -771,7 +785,7 @@ export function AdminDashboard() {
           }
           
           setSelectedDeals([]);
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           fetchStats();
         } catch (error) {
           console.error('Failed to delete deals:', error);
@@ -812,7 +826,7 @@ export function AdminDashboard() {
       }
       
       setSelectedDeals([]);
-      fetchDeals();
+      fetchDeals(false, dealsPage);
     } catch (error) {
       console.error('Failed to update deals:', error);
     } finally {
@@ -927,7 +941,7 @@ export function AdminDashboard() {
       }
 
       clearClientCache();
-      fetchDeals();
+      fetchDeals(false, dealsPage);
       setExpandedDealId(null);
     } catch (error) {
       console.error('Failed to update deal:', error);
@@ -1638,7 +1652,7 @@ export function AdminDashboard() {
                     <span>{t.createManualOffer}</span>
                   </button>
                   <button 
-                    onClick={() => fetchDeals(true)}
+                    onClick={() => fetchDeals(true, dealsPage)}
                     className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
                   >
                     {t.refresh}
@@ -2028,6 +2042,28 @@ export function AdminDashboard() {
                       );
                     })()}
                   </div>
+                  
+                  {dealsTotalPages > 1 && (
+                    <div className="flex justify-center gap-2 mt-6 p-4 border-t border-slate-200">
+                      <button
+                        onClick={() => setDealsPage(p => Math.max(1, p - 1))}
+                        disabled={dealsPage === 1 || loading}
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+                      >
+                        Previous
+                      </button>
+                      <span className="px-4 py-2 text-sm text-slate-500">
+                        Page {dealsPage} of {dealsTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setDealsPage(p => Math.min(dealsTotalPages, p + 1))}
+                        disabled={dealsPage === dealsTotalPages || loading}
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
                 )}
               </div>
             </section>
@@ -2106,6 +2142,27 @@ export function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+              {usersTotalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-6 p-4 border-t border-slate-200">
+                  <button
+                    onClick={() => setUsersPage(p => Math.max(1, p - 1))}
+                    disabled={usersPage === 1 || loading}
+                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-4 py-2 text-sm text-slate-500">
+                    Page {usersPage} of {usersTotalPages}
+                  </span>
+                  <button
+                    onClick={() => setUsersPage(p => Math.min(usersTotalPages, p + 1))}
+                    disabled={usersPage === usersTotalPages || loading}
+                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -2586,8 +2643,10 @@ export function AdminDashboard() {
                                 <p><span className="font-medium">{t.type}:</span> {lead.calc?.type}</p>
                                 <p><span className="font-medium">{t.payment}:</span> ${lead.calc?.payment}{t.mo}</p>
                                 <p><span className="font-medium">{t.down}:</span> ${lead.calc?.down}</p>
+                                <p><span className="font-medium">{t.term || 'Term'}:</span> {lead.calc?.term}</p>
                                 <p><span className="font-medium">{t.mileage}:</span> {lead.calc?.mileage}</p>
                                 <p><span className="font-medium">{t.tier}:</span> {lead.calc?.tier}</p>
+                                <p><span className="font-medium">{t.zipCode || 'ZIP'}:</span> {lead.calc?.zip}</p>
                               </div>
                               <div className="mt-4 flex flex-wrap gap-2">
                                 <button 
@@ -2729,7 +2788,7 @@ export function AdminDashboard() {
         isOpen={showOfferBuilder}
         onClose={() => setShowOfferBuilder(false)}
         onSave={() => {
-          fetchDeals();
+          fetchDeals(false, dealsPage);
           fetchStats();
         }}
       />
@@ -2746,14 +2805,14 @@ export function AdminDashboard() {
         lenders={lenders}
         onSuccess={() => {
           setSelectedDeals([]);
-          fetchDeals(true);
+          fetchDeals(true, dealsPage);
         }}
       />
       <BulkGenerateModal
         isOpen={isBulkGenerateModalOpen}
         onClose={() => setIsBulkGenerateModalOpen(false)}
         onComplete={() => {
-          fetchDeals(true);
+          fetchDeals(true, dealsPage);
         }}
         carDb={carDb}
       />

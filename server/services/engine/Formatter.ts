@@ -7,19 +7,19 @@ export class Formatter {
     resolvedData: any,
     modifiers: any
   ): PaymentBreakdown {
-    const { term, msdCount } = context;
+    const { term } = context;
     const { finalPaymentCents, totalFeesCents, upfrontFeesCents, capitalizedFeesCents, monthlyTaxCents } = mathResult;
     const { taxRate, acqFeeCents, docFeeCents, dmvFeeCents, brokerFeeCents } = resolvedData.settings;
 
     // Calculate MSD Amount (rounded up to nearest $50)
-    const msdAmountCents = msdCount > 0 ? msdCount * Math.ceil(finalPaymentCents / 5000) * 5000 : 0;
+    const msdAmountCents = 0; // MSDs are disabled
     
     // Calculate DAS
     const downPaymentCents = context.downPaymentCents + context.tradeInEquityCents;
     
     // In California, Capitalized Cost Reduction (CCR) is taxed upfront.
     // CCR includes Cash Down, Trade-In Equity, and Taxable Incentives.
-    const ccrForTax = Math.max(0, downPaymentCents + resolvedData.totalIncentivesCents);
+    const ccrForTax = Math.max(0, downPaymentCents + resolvedData.taxableIncentivesCents);
     const upfrontTaxesCents = Math.round(ccrForTax * taxRate);
     
     const firstMonthCents = finalPaymentCents;
@@ -30,9 +30,10 @@ export class Formatter {
     const insurancePerMonthCents = 15000;
     const maintenancePerMonthCents = 5000;
     const registrationPerYearCents = 40000;
+    const dispositionFeeCents = resolvedData.settings.dispositionFeeCents || 39500;
     
     const totalLeasePaymentsCents = finalPaymentCents * term;
-    const totalCostCents = totalLeasePaymentsCents + dueAtSigningCents + (insurancePerMonthCents * term) + (maintenancePerMonthCents * term) + ((registrationPerYearCents / 12) * term);
+    const totalCostCents = totalLeasePaymentsCents + dueAtSigningCents + dispositionFeeCents + (insurancePerMonthCents * term) + (maintenancePerMonthCents * term) + ((registrationPerYearCents / 12) * term);
 
     return {
       calcStatus: 'SUCCESS',
@@ -73,7 +74,8 @@ export class Formatter {
       },
       sourceMetadata: {
         lenderId: resolvedData.program?.id || null,
-        lenderName: resolvedData.program?.lender?.name || 'Unknown',
+        lenderName: resolvedData.program?.lender?.name || (resolvedData.vehicle?.make ? `${resolvedData.vehicle.make} Financial Services` : 'Unknown'),
+        lenderType: resolvedData.program?.lender?.lenderType || (resolvedData.vehicle?.make ? 'CAPTIVE' : 'Unknown'),
         msrpSource: context.adminOverrides?.msrpCents ? 'ADMIN_OVERRIDE' : 'DB',
         ratesSource: context.adminOverrides?.mf ? 'ADMIN_OVERRIDE' : 'BANK_PROGRAM'
       }
@@ -141,7 +143,8 @@ export class Formatter {
       },
       sourceMetadata: {
         lenderId: resolvedData.program?.id || null,
-        lenderName: resolvedData.program?.lender?.name || 'Unknown',
+        lenderName: resolvedData.program?.lender?.name || (resolvedData.vehicle?.make ? `${resolvedData.vehicle.make} Financial Services` : 'Unknown'),
+        lenderType: resolvedData.program?.lender?.lenderType || (resolvedData.vehicle?.make ? 'CAPTIVE' : 'Unknown'),
         msrpSource: context.adminOverrides?.msrpCents ? 'ADMIN_OVERRIDE' : 'DB',
         ratesSource: context.adminOverrides?.apr ? 'ADMIN_OVERRIDE' : 'BANK_PROGRAM'
       }

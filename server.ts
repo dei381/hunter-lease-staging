@@ -11,7 +11,7 @@ import db from "./server/lib/db";
 import admin from 'firebase-admin';
 import NodeCache from 'node-cache';
 import { AuditLogger } from './server/services/AuditLogger';
-import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth } from "./server/middleware/auth";
+import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth, dealerAuth, userAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
 
@@ -88,6 +88,76 @@ const getCarPhotos = async () => {
     return [];
   }
 };
+
+let cachedCarDbMaps: {
+  makeMap: Map<string, any>;
+  modelMap: Map<string, any>;
+  trimMap: Map<string, any>;
+  lastUpdated: number;
+} | null = null;
+
+let cachedCarPhotosMap: {
+  map: Map<string, any[]>;
+  lastUpdated: number;
+} | null = null;
+
+const CACHE_TTL = 60000; // 1 minute
+
+async function getCachedCarDbMaps() {
+  const now = Date.now();
+  if (cachedCarDbMaps && (now - cachedCarDbMaps.lastUpdated < CACHE_TTL)) {
+    return cachedCarDbMaps;
+  }
+
+  const CAR_DB = await getCarDb();
+  const makeMap = new Map();
+  const modelMap = new Map();
+  const trimMap = new Map();
+
+  if ((CAR_DB as any).makes) {
+    for (const make of (CAR_DB as any).makes) {
+      const makeKey = make.name?.toLowerCase();
+      if (!makeKey) continue;
+      makeMap.set(makeKey, make);
+      if (make.models) {
+        for (const model of make.models) {
+          const modelKey = `${makeKey}-${model.name?.toLowerCase()}`;
+          modelMap.set(modelKey, model);
+          if (model.trims) {
+            for (const trim of model.trims) {
+              const trimKey = `${modelKey}-${trim.name?.toLowerCase()}`;
+              trimMap.set(trimKey, trim);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  cachedCarDbMaps = { makeMap, modelMap, trimMap, lastUpdated: now };
+  return cachedCarDbMaps;
+}
+
+async function getCachedCarPhotosMap() {
+  const now = Date.now();
+  if (cachedCarPhotosMap && (now - cachedCarPhotosMap.lastUpdated < CACHE_TTL)) {
+    return cachedCarPhotosMap;
+  }
+
+  const CAR_PHOTOS = await getCarPhotos();
+  
+  const map = new Map();
+  for (const photo of CAR_PHOTOS) {
+    const key = `${photo.makeId}-${photo.modelId}`;
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+    map.get(key).push(photo);
+  }
+
+  cachedCarPhotosMap = { map, lastUpdated: now };
+  return cachedCarPhotosMap;
+}
 
 // Helper to save CAR_PHOTOS to Postgres
 const saveCarPhotos = async (data: any[]) => {
@@ -184,6 +254,9 @@ const leadSchema = z.object({
     payment: z.union([z.string(), z.number()]),
     down: z.union([z.string(), z.number()]),
     tier: z.string().max(20).optional(),
+    zip: z.string().max(10).optional(),
+    mileage: z.string().max(20).optional(),
+    term: z.string().max(20).optional(),
   }),
   userId: z.string().optional().nullable(),
   dealId: z.string().optional().nullable(),
@@ -629,19 +702,35 @@ async function startServer() {
   app.get("/api/admin/lenders/:id/lease-programs", adminAuth, async (req, res) => {
     try {
       const activeBatch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
-      if (!activeBatch) return res.json([]);
+      if (!activeBatch) return res.json({ data: [], total: 0, page: 1, limit: 50 });
       
-      const programs = await prisma.bankProgram.findMany({
-        where: { lenderId: req.params.id, programType: 'LEASE', batchId: activeBatch.id },
-        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }, { term: 'asc' }]
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [programs, total] = await Promise.all([
+        prisma.bankProgram.findMany({
+          where: { lenderId: req.params.id, programType: 'LEASE', batchId: activeBatch.id },
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }, { term: 'asc' }],
+          skip,
+          take: limit
+        }),
+        prisma.bankProgram.count({
+          where: { lenderId: req.params.id, programType: 'LEASE', batchId: activeBatch.id }
+        })
+      ]);
+      res.json({
+        data: programs.map(p => ({
+          ...p,
+          buyRateMf: p.mf,
+          residualPercentage: p.rv,
+          internalLenderTier: 'Standard',
+          isActive: true
+        })),
+        total,
+        page,
+        limit
       });
-      res.json(programs.map(p => ({
-        ...p,
-        buyRateMf: p.mf,
-        residualPercentage: p.rv,
-        internalLenderTier: 'Standard',
-        isActive: true
-      })));
     } catch (error) {
       console.error("Failed to fetch lease programs:", error);
       res.status(500).json({ error: "Failed to fetch lease programs" });
@@ -727,18 +816,34 @@ async function startServer() {
   app.get("/api/admin/lenders/:id/finance-programs", adminAuth, async (req, res) => {
     try {
       const activeBatch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
-      if (!activeBatch) return res.json([]);
+      if (!activeBatch) return res.json({ data: [], total: 0, page: 1, limit: 50 });
       
-      const programs = await prisma.bankProgram.findMany({
-        where: { lenderId: req.params.id, programType: 'FINANCE', batchId: activeBatch.id },
-        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }, { term: 'asc' }]
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [programs, total] = await Promise.all([
+        prisma.bankProgram.findMany({
+          where: { lenderId: req.params.id, programType: 'FINANCE', batchId: activeBatch.id },
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }, { term: 'asc' }],
+          skip,
+          take: limit
+        }),
+        prisma.bankProgram.count({
+          where: { lenderId: req.params.id, programType: 'FINANCE', batchId: activeBatch.id }
+        })
+      ]);
+      res.json({
+        data: programs.map(p => ({
+          ...p,
+          buyRateApr: p.apr,
+          internalLenderTier: 'Standard',
+          isActive: true
+        })),
+        total,
+        page,
+        limit
       });
-      res.json(programs.map(p => ({
-        ...p,
-        buyRateApr: p.apr,
-        internalLenderTier: 'Standard',
-        isActive: true
-      })));
     } catch (error) {
       console.error("Failed to fetch finance programs:", error);
       res.status(500).json({ error: "Failed to fetch finance programs" });
@@ -912,10 +1017,19 @@ async function startServer() {
   // OEM Incentives Management
   app.get("/api/admin/incentives", adminAuth, async (req, res) => {
     try {
-      const incentives = await prisma.oemIncentiveProgram.findMany({
-        orderBy: [{ make: 'asc' }, { model: 'asc' }, { name: 'asc' }]
-      });
-      res.json(safeValidate(IncentivesResponseSchema, incentives, [], 'incentives'));
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [incentives, total] = await Promise.all([
+        prisma.oemIncentiveProgram.findMany({
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { name: 'asc' }],
+          skip,
+          take: limit
+        }),
+        prisma.oemIncentiveProgram.count()
+      ]);
+      res.json({ data: safeValidate(IncentivesResponseSchema, incentives, [], 'incentives'), total, page, limit });
     } catch (error) {
       console.error("Failed to fetch incentives:", error);
       res.status(500).json({ error: "Failed to fetch incentives" });
@@ -1134,11 +1248,20 @@ async function startServer() {
   // Dealer Network Management
   app.get("/api/admin/dealers", adminAuth, async (req, res) => {
     try {
-      const dealers = await prisma.dealerPartner.findMany({
-        include: { adjustments: true },
-        orderBy: { name: 'asc' }
-      });
-      res.json(dealers);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [dealers, total] = await Promise.all([
+        prisma.dealerPartner.findMany({
+          include: { adjustments: true },
+          orderBy: { name: 'asc' },
+          skip,
+          take: limit
+        }),
+        prisma.dealerPartner.count()
+      ]);
+      res.json({ data: dealers, total, page, limit });
     } catch (error) {
       console.error("Error fetching dealers:", error);
       res.status(500).json({ error: "Failed to fetch dealers" });
@@ -1268,10 +1391,19 @@ async function startServer() {
   // Promo Codes Management
   app.get("/api/admin/promos", contentManagerAuth, async (req, res) => {
     try {
-      const promos = await prisma.promoCode.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json(promos);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [promos, total] = await Promise.all([
+        prisma.promoCode.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.promoCode.count()
+      ]);
+      res.json({ data: promos, total, page, limit });
     } catch (error) {
       console.error("Error fetching promos:", error);
       res.status(500).json({ error: "Failed to fetch promo codes" });
@@ -1341,10 +1473,19 @@ async function startServer() {
   // Blog Posts Management
   app.get("/api/admin/blog", contentManagerAuth, async (req, res) => {
     try {
-      const posts = await prisma.blogPost.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json(posts);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [posts, total] = await Promise.all([
+        prisma.blogPost.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.blogPost.count()
+      ]);
+      res.json({ data: posts, total, page, limit });
     } catch (error) {
       console.error("Error fetching blog posts:", error);
       res.status(500).json({ error: "Failed to fetch blog posts" });
@@ -1511,10 +1652,19 @@ You must return the response as a JSON array of objects. Each object must have t
   // User Management
   app.get("/api/admin/users", adminAuth, async (req, res) => {
     try {
-      const users = await prisma.user.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json(users);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.user.count()
+      ]);
+      res.json({ data: users, total, page, limit });
     } catch (error) {
       console.error("Failed to fetch users:", error);
       res.status(500).json({ error: "Failed to fetch users" });
@@ -1590,10 +1740,19 @@ You must return the response as a JSON array of objects. Each object must have t
 
   app.get("/api/admin/feedback", contentManagerAuth, async (req, res) => {
     try {
-      const feedback = await prisma.feedback.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json(feedback);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [feedback, total] = await Promise.all([
+        prisma.feedback.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.feedback.count()
+      ]);
+      res.json({ data: feedback, total, page, limit });
     } catch (error) {
       console.error("Failed to fetch feedback:", error);
       res.status(500).json({ error: "Failed to fetch feedback" });
@@ -1617,10 +1776,19 @@ You must return the response as a JSON array of objects. Each object must have t
 
   app.get("/api/admin/reviews", contentManagerAuth, async (req, res) => {
     try {
-      const reviews = await prisma.review.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json(reviews);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
+      const [reviews, total] = await Promise.all([
+        prisma.review.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.review.count()
+      ]);
+      res.json({ data: reviews, total, page, limit });
     } catch (error) {
       console.error("Failed to fetch reviews:", error);
       res.status(500).json({ error: "Failed to fetch reviews" });
@@ -2289,6 +2457,9 @@ You must return the response as a JSON array of objects. Each object must have t
           calcPayment: Number(calc.payment),
           calcDown: Number(calc.down),
           calcTier: calc.tier || '',
+          calcZip: calc.zip || '',
+          calcMileage: calc.mileage || '',
+          calcTerm: calc.term || '',
           isFirstTimeBuyer: client.isFirstTimeBuyer || false,
           userId: validatedData.userId || null,
           dealId: validatedData.dealId || null,
@@ -2303,6 +2474,32 @@ You must return the response as a JSON array of objects. Each object must have t
           where: { id: validatedData.dealId },
           data: { leadCount: { increment: 1 } }
         }).catch(err => console.error("Failed to increment leadCount for deal:", err));
+      }
+
+      // Backup to Firestore
+      try {
+        await admin.firestore().collection('leads').doc(lead.id).set({
+          userId: validatedData.userId || null,
+          name: client.name,
+          email: client.email,
+          phone: client.phone,
+          payMethod: client.payMethod || '',
+          paymentName: client.paymentName || '',
+          status: 'pending',
+          legalConsent: {
+            tcpa: client.tcpaConsent,
+            terms: client.termsConsent
+          },
+          tradeIn: tradeIn ? tradeIn : null,
+          vehicle: car,
+          calc: calc,
+          source: source || 'catalog_deal',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          prismaId: lead.id
+        });
+      } catch (fsError) {
+        console.warn("Firestore backup failed, but backend succeeded:", fsError);
       }
 
       // Send notification email
@@ -2376,9 +2573,9 @@ You must return the response as a JSON array of objects. Each object must have t
   });
 
   // Security: Protect admin routes
-  app.get("/api/leads/my", async (req, res) => {
+  app.get("/api/leads/my", userAuth, async (req, res) => {
     try {
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
@@ -2412,7 +2609,10 @@ You must return the response as a JSON array of objects. Each object must have t
           type: l.calcType,
           payment: l.calcPayment,
           down: l.calcDown,
-          tier: l.calcTier
+          tier: l.calcTier,
+          zip: l.calcZip,
+          mileage: l.calcMileage,
+          term: l.calcTerm
         }
       }));
 
@@ -2423,9 +2623,9 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
-  app.get("/api/notifications/my", async (req, res) => {
+  app.get("/api/notifications/my", userAuth, async (req, res) => {
     try {
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
@@ -2442,9 +2642,9 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
-  app.post("/api/notifications/my/read", async (req, res) => {
+  app.post("/api/notifications/my/read", userAuth, async (req, res) => {
     try {
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
@@ -2464,7 +2664,7 @@ You must return the response as a JSON array of objects. Each object must have t
   app.post("/api/admin/calculator/bulk-update", adminAuth, async (req, res) => {
     try {
       const { filters, updates } = req.body;
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid;
 
       // In a real app, we would apply these updates to the database
       // For now, we'll just log the action
@@ -2486,11 +2686,19 @@ You must return the response as a JSON array of objects. Each object must have t
 
   app.get("/api/admin/audit-logs", adminAuth, async (req, res) => {
     try {
-      const logs = await prisma.auditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 100
-      });
-      res.json(logs);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const skip = (page - 1) * limit;
+
+      const [logs, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.auditLog.count()
+      ]);
+      res.json({ data: logs, total, page, limit });
     } catch (error) {
       console.error("Error fetching audit logs:", error);
       res.status(500).json({ error: "Failed to fetch audit logs" });
@@ -2498,18 +2706,27 @@ You must return the response as a JSON array of objects. Each object must have t
   });
 
   // Dealer Portal Routes
-  app.get("/api/dealer/leads", async (req, res) => {
+  app.get("/api/dealer/leads", dealerAuth, async (req, res) => {
     try {
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
 
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+
       // In a real app, verify if the user is a dealer
-      const leads = await prisma.lead.findMany({
-        where: { status: { in: ['new', 'pending'] } },
-        orderBy: { createdAt: 'desc' }
-      });
+      const [leads, total] = await Promise.all([
+        prisma.lead.findMany({
+          where: { status: { in: ['new', 'pending'] } },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.lead.count({ where: { status: { in: ['new', 'pending'] } } })
+      ]);
 
       // Anonymize leads
       const anonymizedLeads = leads.map(l => ({
@@ -2523,27 +2740,39 @@ You must return the response as a JSON array of objects. Each object must have t
         carMsrp: l.carMsrp,
         calcType: l.calcType,
         calcPayment: l.calcPayment,
-        calcDown: l.calcDown
+        calcDown: l.calcDown,
+        calcZip: l.calcZip,
+        calcMileage: l.calcMileage,
+        calcTerm: l.calcTerm
       }));
 
-      res.json(anonymizedLeads);
+      res.json({ data: anonymizedLeads, total, page, limit });
     } catch (error) {
       console.error("Error fetching dealer leads:", error);
       res.status(500).json({ error: "Failed to fetch dealer leads" });
     }
   });
 
-  app.post("/api/dealer/leads/:id/:action", async (req, res) => {
+  app.post("/api/dealer/leads/:id/:action", dealerAuth, async (req, res) => {
     try {
       const { id, action } = req.params;
       const { vin } = req.body || {};
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
 
       if (action === 'accept' && !vin) {
         return res.status(400).json({ error: "VIN is required to accept a lead" });
+      }
+
+      const lead = await prisma.lead.findUnique({ where: { id } });
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      if (action === 'accept' && lead.status !== 'pending' && lead.status !== 'new') {
+        return res.status(400).json({ error: "This lead has already been claimed by another dealer." });
       }
 
       const newStatus = action === 'accept' ? 'accepted' : 'rejected';
@@ -2556,6 +2785,18 @@ You must return the response as a JSON array of objects. Each object must have t
           vin: action === 'accept' ? vin : null
         }
       });
+
+      // Sync to Firestore
+      try {
+        await admin.firestore().collection('leads').doc(id).update({
+          status: newStatus,
+          acceptedBy: action === 'accept' ? userId : null,
+          vin: action === 'accept' ? vin : null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (fsError) {
+        console.warn("Firestore sync failed:", fsError);
+      }
 
       // Notify the client
       if (updatedLead.userId && action === 'accept') {
@@ -2584,11 +2825,11 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
-  app.post("/api/leads/:id/complaint", async (req, res) => {
+  app.post("/api/leads/:id/complaint", userAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { reason } = req.body;
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.uid;
       
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
@@ -2626,11 +2867,11 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
-  app.post("/api/dealer/leads/:id/counter", async (req, res) => {
+  app.post("/api/dealer/leads/:id/counter", dealerAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { payment, down, alternative, message } = req.body;
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
@@ -2657,6 +2898,16 @@ You must return the response as a JSON array of objects. Each object must have t
         where: { id },
         data: { status: 'countered' }
       });
+
+      // Sync to Firestore
+      try {
+        await admin.firestore().collection('leads').doc(id).update({
+          status: 'countered',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (fsError) {
+        console.warn("Firestore sync failed:", fsError);
+      }
 
       // Notify the client
       if (lead.userId) {
@@ -2686,10 +2937,10 @@ You must return the response as a JSON array of objects. Each object must have t
   });
 
   // 700Credit Soft Pull
-  app.post("/api/700credit/soft-pull", async (req, res) => {
+  app.post("/api/700credit/soft-pull", userAuth, async (req, res) => {
     try {
       const { leadId, firstName, lastName, address, city, state, zip, dob, ssnLast4 } = req.body;
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.uid;
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
       }
@@ -2739,10 +2990,10 @@ You must return the response as a JSON array of objects. Each object must have t
   });
 
   // Stripe Deposit Flow
-  app.post("/api/create-checkout-session", async (req, res) => {
+  app.post("/api/create-checkout-session", userAuth, async (req, res) => {
     try {
       const { leadId } = req.body;
-      const userId = req.headers['x-user-uid'] as string;
+      const userId = (req as any).user?.uid;
       
       if (!userId) {
         return res.status(401).json({ error: "User ID required" });
@@ -2833,11 +3084,20 @@ You must return the response as a JSON array of objects. Each object must have t
     try {
       const dbUser = (req as any).user?.dbUser;
       const whereClause = dbUser?.role === 'SALES_AGENT' ? { assignedToId: dbUser.id } : {};
+      
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
 
-      const leads = await prisma.lead.findMany({
-        where: whereClause,
-        orderBy: { createdAt: 'desc' }
-      });
+      const [leads, total] = await Promise.all([
+        prisma.lead.findMany({
+          where: whereClause,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.lead.count({ where: whereClause })
+      ]);
       
       const mappedLeads = leads.map(l => ({
         id: l.id,
@@ -2860,7 +3120,7 @@ You must return the response as a JSON array of objects. Each object must have t
           payoff: l.tradeInPayoff
         } : null,
         vehicle: { make: l.carMake, model: l.carModel, year: l.carYear, trim: l.carTrim, msrp: l.carMsrp },
-        calc: { type: l.calcType, payment: l.calcPayment, down: l.calcDown, tier: l.calcTier, mileage: 10000 },
+        calc: { type: l.calcType, payment: l.calcPayment, down: l.calcDown, tier: l.calcTier, mileage: l.calcMileage || '10k', zip: l.calcZip, term: l.calcTerm },
         status: l.status,
         depositStatus: l.depositStatus,
         depositAmount: l.depositAmount,
@@ -3001,10 +3261,19 @@ You must return the response as a JSON array of objects. Each object must have t
   // Get all deals for Admin Queue
   app.get("/api/admin/deals", salesAgentAuth, async (req, res) => {
     try {
-      const deals = await prisma.dealRecord.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json(safeValidate(DealsResponseSchema, deals, [], 'deals'));
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const skip = (page - 1) * limit;
+
+      const [deals, total] = await Promise.all([
+        prisma.dealRecord.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.dealRecord.count()
+      ]);
+      res.json({ data: safeValidate(DealsResponseSchema, deals, [], 'deals'), total, page, limit });
     } catch (error: any) {
       console.error("Failed to fetch deals:", error);
       res.status(500).json({ error: "Failed to fetch deals" });
@@ -3303,34 +3572,366 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
+// Helper function to map deals for frontend
+const mapDealsForFrontend = (
+  dealsToProcess: any[],
+  cachedMaps: any,
+  cachedPhotos: any,
+  settings: any,
+  queryParams: any
+) => {
+  const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier } = queryParams;
+  const { makeMap: carDbMakeMap, modelMap: carDbModelMap, trimMap: carDbTrimMap } = cachedMaps;
+  const { map: carPhotosMap } = cachedPhotos;
+
+  const acqFeeCents = (settings.acquisitionFee || 650) * 100;
+  const docFeeCents = (settings.docFee || 85) * 100;
+  const dmvFeeCents = (settings.dmvFee || 400) * 100;
+  const brokerFeeCents = (settings.brokerFee || 595) * 100;
+  const taxRate = (settings.taxRateDefault || 8.875) / 100;
+
+  return dealsToProcess.map(({ deal, data }) => {
+    const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
+    const manufacturerRebate = data.manufacturerRebate?.isGlobal ? (data.manufacturerRebate.value || 0) : 0;
+    const totalGlobalSavings = hunterDiscount + manufacturerRebate;
+
+    let msrp = getVal(data.msrp);
+    let mf = getVal(data.moneyFactor || data.mf, 0.002);
+    let rv = getVal(data.residualValue || data.rv, 0.5);
+    let leaseCash = getVal(data.leaseCash || data.rebates, 0);
+    let term = queryTerm ? parseInt(queryTerm as string, 10) : getVal(data.term, 36);
+    let down = queryDown ? parseInt(queryDown as string, 10) : getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000); // This is total DAS
+    let savings = getVal(data.savings, 0);
+    let discount = getVal(data.discount, 0);
+    let rebates = getVal(data.rebates, 0);
+    let apr = getVal(data.apr, 4.9);
+
+    // Use totalGlobalSavings if it's greater than 0, otherwise fallback to existing savings logic
+    const effectiveSavings = totalGlobalSavings > 0 ? totalGlobalSavings : savings;
+    let type = data.type || 'lease';
+
+    let usedTiersData = false;
+    // AUTOMATIC UPDATE: Check CAR_DB for latest data
+    if (data.make && data.model && data.trim) {
+      const makeKey = data.make.toLowerCase();
+      const modelKey = `${makeKey}-${data.model.toLowerCase()}`;
+      const trimKey = `${modelKey}-${data.trim.toLowerCase()}`;
+      
+      const makeObj = carDbMakeMap.get(makeKey);
+      if (makeObj) {
+        const modelObj = carDbModelMap.get(modelKey);
+        if (modelObj) {
+          const trimObj = carDbTrimMap.get(trimKey);
+          if (trimObj) {
+            // Use latest data from catalog
+            msrp = Number(trimObj.msrp) || msrp;
+            mf = trimObj.mf !== undefined && String(trimObj.mf) !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && String(modelObj.mf) !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && String(makeObj.baseMF) !== "" ? Number(makeObj.baseMF) : (mf !== undefined && String(mf) !== "" ? Number(mf) : 0.002)));
+            rv = trimObj.rv36 !== undefined && String(trimObj.rv36) !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && String(modelObj.rv36) !== "" ? Number(modelObj.rv36) : (rv !== undefined && String(rv) !== "" ? Number(rv) : 0.55));
+            leaseCash = trimObj.leaseCash !== undefined && String(trimObj.leaseCash) !== "" ? Number(trimObj.leaseCash) : (leaseCash !== undefined && String(leaseCash) !== "" ? Number(leaseCash) : 0);
+            apr = trimObj.baseAPR !== undefined && String(trimObj.baseAPR) !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && String(modelObj.baseAPR) !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && String(makeObj.baseAPR) !== "" ? Number(makeObj.baseAPR) : (apr !== undefined && String(apr) !== "" ? Number(apr) : 4.9)));
+
+            if (queryTier) {
+              const tierId = queryTier as string;
+              const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
+              
+              if (makeTier || modelObj.tiersData?.[tierId] || trimObj.tiersData?.[tierId]) {
+                const fallbackMakeTier = makeTier || { mfAdd: 0, aprAdd: 0 };
+                const modelTier = modelObj.tiersData?.[tierId] || fallbackMakeTier;
+                const trimTier = trimObj.tiersData?.[tierId];
+
+                if (trimTier) {
+                  mf = trimTier.mf !== undefined && trimTier.mf !== "" ? Number(trimTier.mf) : mf;
+                  rv = trimTier.rv36 !== undefined && trimTier.rv36 !== "" ? Number(trimTier.rv36) : rv;
+                  leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
+                  apr = trimTier.baseAPR !== undefined && trimTier.baseAPR !== "" ? Number(trimTier.baseAPR) : apr;
+                } else {
+                  mf = mf + (Number(modelTier.mfAdd) || 0);
+                  apr = apr + (Number(modelTier.aprAdd) || 0);
+                }
+                
+                // Attach the resolved tier data to the object so the frontend can use it
+                if (!data.tiersData) data.tiersData = {};
+                data.tiersData[tierId] = {
+                  mf: mf,
+                  rv36: rv,
+                  baseAPR: apr,
+                  leaseCash: leaseCash
+                };
+                usedTiersData = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Apply query adjustments
+    if (queryMileage) {
+      if (queryMileage === '12k') rv -= 0.01;
+      else if (queryMileage === '15k') rv -= 0.03;
+      else if (queryMileage === '20k') rv -= 0.05;
+      else if (queryMileage === '7.5k') rv += 0.01;
+    }
+
+    if (queryTier && !usedTiersData) {
+      if (queryTier === 't2') mf *= 1.1;
+      else if (queryTier === 't3') mf *= 1.2;
+      else if (queryTier === 't4') mf *= 1.35;
+      else if (queryTier === 't5') mf *= 1.5;
+      else if (queryTier === 't6') mf *= 1.7;
+    }
+
+    // Re-calculate payment based on new DAS logic
+    let payment = 0;
+    let financePayment = 0;
+    
+    const lease = PureMathEngine.calculateLease({
+      msrpCents: msrp * 100,
+      sellingPriceCents: (msrp - effectiveSavings - leaseCash - rebates - discount) * 100,
+      residualValuePercent: rv > 1 ? rv / 100 : rv,
+      moneyFactor: mf,
+      term,
+      downPaymentCents: down * 100,
+      acqFeeCents: acqFeeCents,
+      docFeeCents: docFeeCents,
+      dmvFeeCents: dmvFeeCents,
+      brokerFeeCents: brokerFeeCents,
+      taxRate: taxRate
+    });
+    payment = lease.finalPaymentCents / 100;
+
+    if (queryTier && !usedTiersData) {
+      if (queryTier === 't2') apr += 1.0;
+      else if (queryTier === 't3') apr += 2.5;
+      else if (queryTier === 't4') apr += 4.5;
+      else if (queryTier === 't5') apr += 7.0;
+      else if (queryTier === 't6') apr += 10.0;
+    }
+
+    const finance = PureMathEngine.calculateFinance({
+      sellingPriceCents: (msrp - effectiveSavings - (totalGlobalSavings || rebates) - discount) * 100,
+      apr,
+      term,
+      downPaymentCents: down * 100,
+      docFeeCents: docFeeCents,
+      dmvFeeCents: dmvFeeCents,
+      brokerFeeCents: brokerFeeCents,
+      taxRate: taxRate
+    });
+    financePayment = finance.finalPaymentCents / 100;
+
+    // Handle RV percentage vs absolute
+    let rvPercent = '0%';
+    if (rv > 0) {
+      if (rv < 1) {
+        rvPercent = (rv * 100).toFixed(0) + '%';
+      } else if (rv <= 100) {
+        rvPercent = rv.toFixed(0) + '%';
+      } else if (msrp > 0) {
+        rvPercent = (rv / msrp * 100).toFixed(0) + '%';
+      } else {
+        rvPercent = rv.toString();
+      }
+    }
+
+    // Find photo from CAR_PHOTOS if available
+    let imageUrl = data.image || null;
+    let images: string[] = [];
+    if (data.image) {
+      images.push(data.image);
+    }
+    let bodyStyle = data.bodyStyle || 'Auto';
+    let fuelType = data.fuelType || 'Gas';
+    let driveType = data.driveType || 'FWD';
+    let seats = data.seats || 5;
+    let features = data.features || [];
+    let featuresRu = data.featuresRu || [];
+    
+    if (data.make && data.model) {
+      const makeKey = data.make.toLowerCase();
+      const modelKey = `${makeKey}-${data.model.toLowerCase()}`;
+      
+      const makeObj = carDbMakeMap.get(makeKey);
+      if (makeObj) {
+        const modelObj = carDbModelMap.get(modelKey);
+        if (modelObj) {
+          const photoKey = `${makeObj.id}-${modelObj.id}`;
+          const modelPhotos = carPhotosMap.get(photoKey) || [];
+          if (modelPhotos.length > 0) {
+            // Sort so default is first
+            modelPhotos.sort((a: any, b: any) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+            images = modelPhotos.map((p: any) => p.imageUrl);
+            imageUrl = images[0];
+          }
+          bodyStyle = getBodyStyle(modelObj.class, modelObj.name);
+          fuelType = getFuelType(modelObj.class, data.trim || '');
+          seats = (modelObj.class || '').includes('3-Row') || (modelObj.class || '').includes('Minivan') ? 7 : 5;
+          
+          if (data.trim) {
+            const trimKey = `${modelKey}-${data.trim.toLowerCase()}`;
+            const trimObj = carDbTrimMap.get(trimKey);
+            if (trimObj && trimObj.feat) {
+              driveType = trimObj.feat.includes('AWD') || trimObj.feat.includes('4x4') ? 'AWD' : 'FWD';
+              features = trimObj.feat.split(' · ');
+              // Note: featuresRu is translated in frontend or we can leave it empty to fallback
+            }
+          }
+        }
+      }
+    }
+
+    const { specs, specsRu } = getDetailedSpecs(data.model || '', data.trim || '', bodyStyle, fuelType);
+    const catFeatures = getCategorizedFeatures(data.make || '', data.model || '', data.trim || '');
+    const isLuxury = ['BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Porsche', 'Land Rover'].includes(data.make || '');
+    const verdict = getOwnerVerdict(data.make || '', data.model || '', data.trim || '', isLuxury);
+
+    let isFirstTimeBuyerEligible = deal.isFirstTimeBuyerEligible;
+    let allowWithCoSigner = true;
+    
+    // Evaluate based on lender eligibility rules if available
+    if ((deal as any).lender && (deal as any).lender.eligibilityRules) {
+      const rules = (deal as any).lender.eligibilityRules;
+      const make = data.make || '';
+      const model = data.model || '';
+      const dealType = type.toUpperCase(); // LEASE or FINANCE
+      
+      // Find the most specific rule
+      // 1. Match make, model, and deal type
+      // 2. Match make, ALL models, and deal type
+      // 3. Match make, model, ALL deal types
+      // 4. Match make, ALL models, ALL deal types
+      
+      let matchedRule = rules.find((r: any) => 
+        r.make.toLowerCase() === make.toLowerCase() && 
+        r.model.toLowerCase() === model.toLowerCase() && 
+        r.dealApplicability === dealType
+      );
+      
+      if (!matchedRule) {
+        matchedRule = rules.find((r: any) => 
+          r.make.toLowerCase() === make.toLowerCase() && 
+          r.model === 'ALL' && 
+          r.dealApplicability === dealType
+        );
+      }
+      
+      if (!matchedRule) {
+        matchedRule = rules.find((r: any) => 
+          r.make.toLowerCase() === make.toLowerCase() && 
+          r.model.toLowerCase() === model.toLowerCase() && 
+          r.dealApplicability === 'ALL'
+        );
+      }
+      
+      if (!matchedRule) {
+        matchedRule = rules.find((r: any) => 
+          r.make.toLowerCase() === make.toLowerCase() && 
+          r.model === 'ALL' && 
+          r.dealApplicability === 'ALL'
+        );
+      }
+      
+      if (matchedRule) {
+        isFirstTimeBuyerEligible = matchedRule.allowFirstTimeBuyer;
+        allowWithCoSigner = matchedRule.allowWithCoSigner;
+      }
+    }
+
+    return {
+      id: deal.id,
+      type: type,
+      hot: data.hot || savings > 5000 || payment < 300,
+      secret: data.secret || false,
+      icon: data.icon || (fuelType === 'Electric' || fuelType === 'PHEV' ? '⚡' : '🚗'),
+      make: data.make || 'Unknown',
+      model: data.model || 'Unknown',
+      year: data.year || new Date().getFullYear(),
+      trim: data.trim || 'Base',
+      class: data.class || 'Auto',
+      payment: payment,
+      financePayment: financePayment,
+      term: typeof data.term === 'string' && data.term.includes('mo') ? data.term : `${term} mo`,
+      down: down,
+      mf: typeof mf === 'number' ? mf.toFixed(5) : mf,
+      rv: rvPercent,
+      msrp: msrp,
+      savings: effectiveSavings,
+      dealer: data.dealer || 'Verified Dealer',
+      region: data.region || 'California',
+      intel: data.intel || '11-Key Lock Verified Deal. No hidden markups.',
+      marketAvg: data.marketAvg || Math.round(payment * 1.15),
+      incHint: data.incHint || 'Contact us for exact incentives.',
+      time: data.time || 1,
+      unit: data.unit || 'h',
+      dot: data.dot || 'lv',
+      isNew: data.isNew !== undefined ? data.isNew : true,
+      isFirstTimeBuyerEligible: isFirstTimeBuyerEligible,
+      allowWithCoSigner: allowWithCoSigner,
+      displayPayment: payment,
+      displayType: type,
+      image: imageUrl,
+      images: images,
+      expirationDate: deal.expirationDate,
+      availableIncentives: data.availableIncentives || [],
+      leaseCash: leaseCash || 0,
+      rebates: data.rebates || 0,
+      discount: data.discount || 0,
+      // New fields for detailed deal page
+      bodyStyle: bodyStyle,
+      fuelType: fuelType,
+      driveType: driveType,
+      seats: seats,
+      efficiency: data.efficiency,
+      features: data.features && data.features.length > 0 ? data.features : features,
+      featuresRu: data.featuresRu && data.featuresRu.length > 0 ? data.featuresRu : featuresRu,
+      categorizedFeatures: data.categorizedFeatures && Object.keys(data.categorizedFeatures).length > 0 ? data.categorizedFeatures : catFeatures.en,
+      categorizedFeaturesRu: data.categorizedFeaturesRu && Object.keys(data.categorizedFeaturesRu).length > 0 ? data.categorizedFeaturesRu : catFeatures.ru,
+      fuelEconomy: data.fuelEconomy || { city: 25, hwy: 32, combined: 28 },
+      ownerVerdict: data.ownerVerdict && Object.keys(data.ownerVerdict).length > 0 ? data.ownerVerdict : verdict.en,
+      ownerVerdictRu: data.ownerVerdictRu && Object.keys(data.ownerVerdictRu).length > 0 ? data.ownerVerdictRu : verdict.ru,
+      detailedSpecs: data.detailedSpecs && Object.keys(data.detailedSpecs).length > 0 ? data.detailedSpecs : specs,
+      detailedSpecsRu: data.detailedSpecsRu && Object.keys(data.detailedSpecsRu).length > 0 ? data.detailedSpecsRu : specsRu
+    };
+  }).filter(Boolean);
+};
+
   // Get approved/published deals for Marketplace
   app.get("/api/deals", async (req, res) => {
     try {
-      const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier, displayMode: queryDisplayMode, id: queryId, ids: queryIds, limit: queryLimit } = req.query;
+      const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier, displayMode: queryDisplayMode, id: queryId, ids: queryIds, limit: queryLimit, make: queryMake } = req.query;
       
       const whereClause: any = {
         AND: [
-          { publishStatus: { not: 'ARCHIVED' } },
-          {
-            OR: [
-              { expirationDate: null },
-              { expirationDate: { gt: new Date() } }
-            ]
-          },
-          {
-            OR: [
-              { reviewStatus: 'APPROVED' },
-              { publishStatus: 'PUBLISHED' }
-            ]
-          }
+          { publishStatus: { not: 'ARCHIVED' } }
         ]
       };
+
+      if (!queryId && !queryIds) {
+        whereClause.AND.push({
+          OR: [
+            { expirationDate: null },
+            { expirationDate: { gt: new Date() } }
+          ]
+        });
+        whereClause.AND.push({
+          OR: [
+            { reviewStatus: 'APPROVED' },
+            { publishStatus: 'PUBLISHED' }
+          ]
+        });
+      }
 
       if (queryId) {
         whereClause.id = queryId as string;
       } else if (queryIds) {
         const idsArray = (queryIds as string).split(',');
         whereClause.id = { in: idsArray };
+      }
+
+      if (queryMake) {
+        whereClause.financialData = {
+          contains: `"make":"${queryMake}"`
+        };
       }
 
       const queryOptions: any = {
@@ -3353,13 +3954,15 @@ You must return the response as a JSON array of objects. Each object must have t
         queryOptions.take = parseInt(queryLimit as string, 10);
       }
 
+      console.time('fetchDeals');
       // Fetch deals that are APPROVED or PUBLISHED from Prisma
-      const [dbDeals, CAR_DB, CAR_PHOTOS, settingsRecord] = await Promise.all([
+      const [dbDeals, cachedMaps, cachedPhotos, settingsRecord] = await Promise.all([
         prisma.dealRecord.findMany(queryOptions),
-        getCarDb(),
-        getCarPhotos(),
+        getCachedCarDbMaps(),
+        getCachedCarPhotosMap(),
         prisma.siteSettings.findUnique({ where: { id: 'global' } })
       ]);
+      console.timeEnd('fetchDeals');
 
       let settings;
       try {
@@ -3377,311 +3980,39 @@ You must return the response as a JSON array of objects. Each object must have t
         };
       }
 
-      const acqFeeCents = (settings.acquisitionFee || 650) * 100;
-      const docFeeCents = (settings.docFee || 85) * 100;
-      const dmvFeeCents = (settings.dmvFee || 400) * 100;
-      const brokerFeeCents = (settings.brokerFee || 595) * 100;
-      const taxRate = (settings.taxRateDefault || 8.875) / 100;
+      console.time('deduplicateDeals');
+      // Deduplicate deals by make + model + trim before heavy processing
+      // Skip deduplication if specific IDs are requested
+      const shouldDeduplicate = !queryId && !queryIds;
+      const uniqueDealsMap = new Map();
+      const dealsToProcess = [];
 
-      // Map DB deals to the format expected by the frontend
-      const mappedDeals = (dbDeals as any[]).map(deal => {
+      for (const deal of (dbDeals as any[])) {
         let data = null;
         try {
           data = deal.financialData ? JSON.parse(deal.financialData) : null;
         } catch (e) {
           console.error(`Failed to parse financialData for deal ${deal.id}:`, e);
         }
-        if (!data) return null;
+        if (!data) continue;
 
-        const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
-        const manufacturerRebate = data.manufacturerRebate?.isGlobal ? (data.manufacturerRebate.value || 0) : 0;
-        const totalGlobalSavings = hunterDiscount + manufacturerRebate;
-
-        let msrp = getVal(data.msrp);
-        let mf = getVal(data.moneyFactor || data.mf, 0.002);
-        let rv = getVal(data.residualValue || data.rv, 0.5);
-        let leaseCash = getVal(data.leaseCash || data.rebates, 0);
-        let term = queryTerm ? parseInt(queryTerm as string, 10) : getVal(data.term, 36);
-        let down = queryDown ? parseInt(queryDown as string, 10) : getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000); // This is total DAS
-        let savings = getVal(data.savings, 0);
-        let discount = getVal(data.discount, 0);
-        let rebates = getVal(data.rebates, 0);
-        let apr = getVal(data.apr, 4.9);
-
-        // Use totalGlobalSavings if it's greater than 0, otherwise fallback to existing savings logic
-        const effectiveSavings = totalGlobalSavings > 0 ? totalGlobalSavings : savings;
-        let type = data.type || 'lease';
-
-        let usedTiersData = false;
-        // AUTOMATIC UPDATE: Check CAR_DB for latest data
-        if (data.make && data.model && data.trim) {
-          const makeObj = (CAR_DB as any).makes?.find((m: any) => m.name.toLowerCase() === data.make.toLowerCase());
-          if (makeObj) {
-            const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === data.model.toLowerCase());
-            if (modelObj) {
-              const trimObj = modelObj.trims?.find((t: any) => t.name.toLowerCase() === data.trim.toLowerCase());
-              if (trimObj) {
-                // Use latest data from catalog
-                msrp = Number(trimObj.msrp) || msrp;
-                mf = trimObj.mf !== undefined && String(trimObj.mf) !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && String(modelObj.mf) !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && String(makeObj.baseMF) !== "" ? Number(makeObj.baseMF) : (mf !== undefined && String(mf) !== "" ? Number(mf) : 0.002)));
-                rv = trimObj.rv36 !== undefined && String(trimObj.rv36) !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && String(modelObj.rv36) !== "" ? Number(modelObj.rv36) : (rv !== undefined && String(rv) !== "" ? Number(rv) : 0.55));
-                leaseCash = trimObj.leaseCash !== undefined && String(trimObj.leaseCash) !== "" ? Number(trimObj.leaseCash) : (leaseCash !== undefined && String(leaseCash) !== "" ? Number(leaseCash) : 0);
-                apr = trimObj.baseAPR !== undefined && String(trimObj.baseAPR) !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && String(modelObj.baseAPR) !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && String(makeObj.baseAPR) !== "" ? Number(makeObj.baseAPR) : (apr !== undefined && String(apr) !== "" ? Number(apr) : 4.9)));
-
-                if (queryTier) {
-                  const tierId = queryTier as string;
-                  const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
-                  
-                  if (makeTier || modelObj.tiersData?.[tierId] || trimObj.tiersData?.[tierId]) {
-                    const fallbackMakeTier = makeTier || { mfAdd: 0, aprAdd: 0 };
-                    const modelTier = modelObj.tiersData?.[tierId] || fallbackMakeTier;
-                    const trimTier = trimObj.tiersData?.[tierId];
-
-                    if (trimTier) {
-                      mf = trimTier.mf !== undefined && trimTier.mf !== "" ? Number(trimTier.mf) : mf;
-                      rv = trimTier.rv36 !== undefined && trimTier.rv36 !== "" ? Number(trimTier.rv36) : rv;
-                      leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
-                      apr = trimTier.baseAPR !== undefined && trimTier.baseAPR !== "" ? Number(trimTier.baseAPR) : apr;
-                    } else {
-                      mf = mf + (Number(modelTier.mfAdd) || 0);
-                      apr = apr + (Number(modelTier.aprAdd) || 0);
-                    }
-                    
-                    // Attach the resolved tier data to the object so the frontend can use it
-                    if (!data.tiersData) data.tiersData = {};
-                    data.tiersData[tierId] = {
-                      mf: mf,
-                      rv36: rv,
-                      baseAPR: apr,
-                      leaseCash: leaseCash
-                    };
-                    usedTiersData = true;
-                  }
-                }
-              }
-            }
+        if (shouldDeduplicate) {
+          const key = `${data.make}-${data.model}-${data.trim}`;
+          if (!uniqueDealsMap.has(key) || data.type === 'lease') {
+            uniqueDealsMap.set(key, { deal, data });
           }
+        } else {
+          dealsToProcess.push({ deal, data });
         }
+      }
 
-        // Apply query adjustments
-        if (queryMileage) {
-          if (queryMileage === '12k') rv -= 0.01;
-          else if (queryMileage === '15k') rv -= 0.03;
-          else if (queryMileage === '20k') rv -= 0.05;
-          else if (queryMileage === '7.5k') rv += 0.01;
-        }
+      const finalDealsToProcess = shouldDeduplicate ? Array.from(uniqueDealsMap.values()) : dealsToProcess;
+      console.timeEnd('deduplicateDeals');
 
-        if (queryTier && !usedTiersData) {
-          if (queryTier === 't2') mf *= 1.1;
-          else if (queryTier === 't3') mf *= 1.2;
-          else if (queryTier === 't4') mf *= 1.35;
-          else if (queryTier === 't5') mf *= 1.5;
-          else if (queryTier === 't6') mf *= 1.7;
-        }
-
-        // Re-calculate payment based on new DAS logic
-        let payment = 0;
-        let financePayment = 0;
-        
-        const lease = PureMathEngine.calculateLease({
-          msrpCents: msrp * 100,
-          sellingPriceCents: (msrp - effectiveSavings - leaseCash - rebates - discount) * 100,
-          residualValuePercent: rv > 1 ? rv / 100 : rv,
-          moneyFactor: mf,
-          term,
-          downPaymentCents: down * 100,
-          acqFeeCents: acqFeeCents,
-          docFeeCents: docFeeCents,
-          dmvFeeCents: dmvFeeCents,
-          brokerFeeCents: brokerFeeCents,
-          taxRate: taxRate
-        });
-        payment = lease.finalPaymentCents / 100;
-
-        if (queryTier && !usedTiersData) {
-          if (queryTier === 't2') apr += 1.0;
-          else if (queryTier === 't3') apr += 2.5;
-          else if (queryTier === 't4') apr += 4.5;
-          else if (queryTier === 't5') apr += 7.0;
-          else if (queryTier === 't6') apr += 10.0;
-        }
-
-        const finance = PureMathEngine.calculateFinance({
-          sellingPriceCents: (msrp - effectiveSavings - (totalGlobalSavings || rebates) - discount) * 100,
-          apr,
-          term,
-          downPaymentCents: down * 100,
-          docFeeCents: docFeeCents,
-          dmvFeeCents: dmvFeeCents,
-          brokerFeeCents: brokerFeeCents,
-          taxRate: taxRate
-        });
-        financePayment = finance.finalPaymentCents / 100;
-
-        // Handle RV percentage vs absolute
-        let rvPercent = '0%';
-        if (rv > 0) {
-          if (rv < 1) {
-            rvPercent = (rv * 100).toFixed(0) + '%';
-          } else if (rv <= 100) {
-            rvPercent = rv.toFixed(0) + '%';
-          } else if (msrp > 0) {
-            rvPercent = (rv / msrp * 100).toFixed(0) + '%';
-          } else {
-            rvPercent = rv.toString();
-          }
-        }
-
-        // Find photo from CAR_PHOTOS if available
-        let imageUrl = data.image || null;
-        let images: string[] = [];
-        if (data.image) {
-          images.push(data.image);
-        }
-        let bodyStyle = data.bodyStyle || 'Auto';
-        let fuelType = data.fuelType || 'Gas';
-        let driveType = data.driveType || 'FWD';
-        let seats = data.seats || 5;
-        let features = data.features || [];
-        let featuresRu = data.featuresRu || [];
-        
-        if (data.make && data.model) {
-          const makeObj = (CAR_DB as any).makes?.find((m: any) => m.name.toLowerCase() === data.make.toLowerCase());
-          if (makeObj) {
-            const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === data.model.toLowerCase());
-            if (modelObj) {
-              const modelPhotos = CAR_PHOTOS.filter(p => p.makeId === makeObj.id && p.modelId === modelObj.id);
-              if (modelPhotos.length > 0) {
-                // Sort so default is first
-                modelPhotos.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
-                images = modelPhotos.map(p => p.imageUrl);
-                imageUrl = images[0];
-              }
-              bodyStyle = getBodyStyle(modelObj.class, modelObj.name);
-              fuelType = getFuelType(modelObj.class, data.trim || '');
-              seats = (modelObj.class || '').includes('3-Row') || (modelObj.class || '').includes('Minivan') ? 7 : 5;
-              
-              if (data.trim) {
-                const trimObj = modelObj.trims?.find((t: any) => t.name.toLowerCase() === data.trim.toLowerCase());
-                if (trimObj && trimObj.feat) {
-                  driveType = trimObj.feat.includes('AWD') || trimObj.feat.includes('4x4') ? 'AWD' : 'FWD';
-                  features = trimObj.feat.split(' · ');
-                  // Note: featuresRu is translated in frontend or we can leave it empty to fallback
-                }
-              }
-            }
-          }
-        }
-
-        const { specs, specsRu } = getDetailedSpecs(data.model || '', data.trim || '', bodyStyle, fuelType);
-        const catFeatures = getCategorizedFeatures(data.make || '', data.model || '', data.trim || '');
-        const isLuxury = ['BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Porsche', 'Land Rover'].includes(data.make || '');
-        const verdict = getOwnerVerdict(data.make || '', data.model || '', data.trim || '', isLuxury);
-
-        let isFirstTimeBuyerEligible = deal.isFirstTimeBuyerEligible;
-        let allowWithCoSigner = true;
-        
-        // Evaluate based on lender eligibility rules if available
-        if ((deal as any).lender && (deal as any).lender.eligibilityRules) {
-          const rules = (deal as any).lender.eligibilityRules;
-          const make = data.make || '';
-          const model = data.model || '';
-          const dealType = type.toUpperCase(); // LEASE or FINANCE
-          
-          // Find the most specific rule
-          // 1. Match make, model, and deal type
-          // 2. Match make, ALL models, and deal type
-          // 3. Match make, model, ALL deal types
-          // 4. Match make, ALL models, ALL deal types
-          
-          let matchedRule = rules.find((r: any) => 
-            r.make.toLowerCase() === make.toLowerCase() && 
-            r.model.toLowerCase() === model.toLowerCase() && 
-            r.dealApplicability === dealType
-          );
-          
-          if (!matchedRule) {
-            matchedRule = rules.find((r: any) => 
-              r.make.toLowerCase() === make.toLowerCase() && 
-              r.model === 'ALL' && 
-              r.dealApplicability === dealType
-            );
-          }
-          
-          if (!matchedRule) {
-            matchedRule = rules.find((r: any) => 
-              r.make.toLowerCase() === make.toLowerCase() && 
-              r.model.toLowerCase() === model.toLowerCase() && 
-              r.dealApplicability === 'ALL'
-            );
-          }
-          
-          if (!matchedRule) {
-            matchedRule = rules.find((r: any) => 
-              r.make.toLowerCase() === make.toLowerCase() && 
-              r.model === 'ALL' && 
-              r.dealApplicability === 'ALL'
-            );
-          }
-          
-          if (matchedRule) {
-            isFirstTimeBuyerEligible = matchedRule.allowFirstTimeBuyer;
-            allowWithCoSigner = matchedRule.allowWithCoSigner;
-          }
-        }
-
-        return {
-          id: deal.id,
-          type: type,
-          hot: data.hot || savings > 5000 || payment < 300,
-          secret: data.secret || false,
-          icon: data.icon || (fuelType === 'Electric' || fuelType === 'PHEV' ? '⚡' : '🚗'),
-          make: data.make || 'Unknown',
-          model: data.model || 'Unknown',
-          year: data.year || new Date().getFullYear(),
-          trim: data.trim || 'Base',
-          class: data.class || 'Auto',
-          payment: payment,
-          financePayment: financePayment,
-          term: typeof data.term === 'string' && data.term.includes('mo') ? data.term : `${term} mo`,
-          down: down,
-          mf: typeof mf === 'number' ? mf.toFixed(5) : mf,
-          rv: rvPercent,
-          msrp: msrp,
-          savings: effectiveSavings,
-          dealer: data.dealer || 'Verified Dealer',
-          region: data.region || 'California',
-          intel: data.intel || '11-Key Lock Verified Deal. No hidden markups.',
-          marketAvg: data.marketAvg || Math.round(payment * 1.15),
-          incHint: data.incHint || 'Contact us for exact incentives.',
-          time: data.time || 1,
-          unit: data.unit || 'h',
-          dot: data.dot || 'lv',
-          isNew: data.isNew !== undefined ? data.isNew : true,
-          isFirstTimeBuyerEligible: isFirstTimeBuyerEligible,
-          allowWithCoSigner: allowWithCoSigner,
-          displayPayment: payment,
-          displayType: type,
-          image: imageUrl,
-          images: images,
-          availableIncentives: data.availableIncentives || [],
-          // New fields for detailed deal page
-          bodyStyle: bodyStyle,
-          fuelType: fuelType,
-          driveType: driveType,
-          seats: seats,
-          efficiency: data.efficiency,
-          features: data.features && data.features.length > 0 ? data.features : features,
-          featuresRu: data.featuresRu && data.featuresRu.length > 0 ? data.featuresRu : featuresRu,
-          categorizedFeatures: data.categorizedFeatures && Object.keys(data.categorizedFeatures).length > 0 ? data.categorizedFeatures : catFeatures.en,
-          categorizedFeaturesRu: data.categorizedFeaturesRu && Object.keys(data.categorizedFeaturesRu).length > 0 ? data.categorizedFeaturesRu : catFeatures.ru,
-          fuelEconomy: data.fuelEconomy || { city: 25, hwy: 32, combined: 28 },
-          ownerVerdict: data.ownerVerdict && Object.keys(data.ownerVerdict).length > 0 ? data.ownerVerdict : verdict.en,
-          ownerVerdictRu: data.ownerVerdictRu && Object.keys(data.ownerVerdictRu).length > 0 ? data.ownerVerdictRu : verdict.ru,
-          detailedSpecs: data.detailedSpecs && Object.keys(data.detailedSpecs).length > 0 ? data.detailedSpecs : specs,
-          detailedSpecsRu: data.detailedSpecsRu && Object.keys(data.detailedSpecsRu).length > 0 ? data.detailedSpecsRu : specsRu
-        };
-      }).filter(Boolean);
+      console.time('mapDeals');
+      // Map DB deals to the format expected by the frontend
+      const mappedDeals = mapDealsForFrontend(finalDealsToProcess, cachedMaps, cachedPhotos, settings, req.query);
+      console.timeEnd('mapDeals');
 
       // Return database deals only
       res.json(mappedDeals);
@@ -3691,42 +4022,71 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
+  // Get a single deal by ID
   app.get("/api/deals/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier, displayMode: queryDisplayMode } = req.query;
       
-      const [deal, CAR_DB, CAR_PHOTOS, settingsRecord] = await Promise.all([
+      console.time(`fetchDeal-${id}`);
+      const [dbDeal, cachedMaps, cachedPhotos, settingsRecord] = await Promise.all([
         prisma.dealRecord.findUnique({
-          where: { id }
+          where: { id },
+          include: {
+            lender: {
+              include: {
+                eligibilityRules: true
+              }
+            }
+          }
         }),
-        getCarDb(),
-        getCarPhotos(),
-        prisma.siteSettings.findUnique({ where: { id: 'default' } })
+        getCachedCarDbMaps(),
+        getCachedCarPhotosMap(),
+        prisma.siteSettings.findUnique({ where: { id: 'global' } })
       ]);
+      console.timeEnd(`fetchDeal-${id}`);
 
-      if (!deal) {
+      if (!dbDeal) {
         return res.status(404).json({ error: "Deal not found" });
       }
 
-      const settings = settingsRecord ? JSON.parse(settingsRecord.data) : { platformFee: 95, taxRateDefault: 8.875, dmvFee: 400 };
+      let settings;
+      try {
+        settings = settingsRecord ? JSON.parse(settingsRecord.data) : null;
+      } catch (e) {
+        console.error("Failed to parse settings:", e);
+      }
+      if (!settings) {
+        settings = {
+          brokerFee: 595,
+          taxRateDefault: 8.875,
+          dmvFee: 400,
+          docFee: 85,
+          acquisitionFee: 650
+        };
+      }
 
-      // Re-calculate the deal for display
-      const data = JSON.parse(deal.financialData);
-      const isFirstTimeBuyerEligible = deal.isFirstTimeBuyerEligible;
-      
-      // ... we can just use the same mapping logic as in /api/deals
-      // To avoid duplicating 300 lines of code, we can just fetch all deals and filter,
-      // but that defeats the purpose.
-      // Wait, the mapping logic in /api/deals is huge.
-      // Let's just return the raw deal and let the frontend handle it? No, frontend expects the mapped deal.
-      // Let's extract the mapping logic into a function.
-      // Actually, since this is a quick fix, I will just copy the mapping logic for a single deal.
-      
-      // I'll just use the existing /api/deals endpoint in DealPage.tsx for now, but pass ?id=${id} to filter on the backend.
-      // Wait, /api/deals doesn't support filtering by ID. Let's add it to /api/deals.
+      let data = null;
+      try {
+        data = dbDeal.financialData ? JSON.parse(dbDeal.financialData) : null;
+      } catch (e) {
+        console.error(`Failed to parse financialData for deal ${dbDeal.id}:`, e);
+      }
+
+      if (!data) {
+        return res.status(500).json({ error: "Invalid deal data" });
+      }
+
+      console.time(`mapDeal-${id}`);
+      const mappedDeals = mapDealsForFrontend([{ deal: dbDeal, data }], cachedMaps, cachedPhotos, settings, req.query);
+      console.timeEnd(`mapDeal-${id}`);
+
+      if (mappedDeals.length === 0) {
+        return res.status(500).json({ error: "Failed to map deal" });
+      }
+
+      res.json(mappedDeals[0]);
     } catch (error) {
-      console.error("Failed to fetch deal:", error);
+      console.error(`Failed to fetch deal ${req.params.id}:`, error);
       res.status(500).json({ error: "Failed to fetch deal" });
     }
   });

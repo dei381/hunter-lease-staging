@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, MessageSquare, DollarSign, Car } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { auth } from '../firebase';
 
 interface CounterOfferModalProps {
   isOpen: boolean;
@@ -24,11 +25,12 @@ export const CounterOfferModal: React.FC<CounterOfferModalProps> = ({ isOpen, on
     e.preventDefault();
     setLoading(true);
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/dealer/leads/${leadId}/counter`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-uid': user?.uid || ''
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           payment: parseInt(formData.payment) || null,

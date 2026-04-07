@@ -21,20 +21,27 @@ export const PromoCodesAdmin = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState<Partial<PromoCode>>({});
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    fetchPromos();
-  }, []);
+    fetchPromos(page);
+  }, [page]);
 
-  const fetchPromos = async () => {
+  const fetchPromos = async (pageNum: number) => {
     try {
       const token = await getAuthToken();
-      const res = await fetch('/api/admin/promos', {
+      const res = await fetch(`/api/admin/promos?page=${pageNum}&limit=50`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setPromos(data);
+        if (data.data) {
+          setPromos(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setPromos(data);
+        }
       } else {
         throw new Error('Failed to fetch promos');
       }
@@ -62,7 +69,7 @@ export const PromoCodesAdmin = () => {
       });
 
       if (res.ok) {
-        await fetchPromos();
+        await fetchPromos(page);
         setEditingPromo(null);
         setIsAdding(false);
         setFormData({});
@@ -85,7 +92,7 @@ export const PromoCodesAdmin = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        await fetchPromos();
+        await fetchPromos(page);
       } else {
         throw new Error('Failed to delete promo code');
       }
@@ -221,6 +228,28 @@ export const PromoCodesAdmin = () => {
             </tbody>
           </table>
         </div>
+        
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 p-4 border-t border-slate-200">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2 text-sm text-slate-500 flex items-center">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       {isAdding && (

@@ -256,6 +256,8 @@ model User {
   status    String   @default("active")
   createdAt DateTime @default(now())
   leads     Lead[]   @relation("AssignedLeads")
+
+  @@index([role])
 }
 
 model Lead {
@@ -280,6 +282,9 @@ model Lead {
   calcPayment      Int?
   calcDown         Int?
   calcTier         String?
+  calcZip          String?
+  calcMileage      String?
+  calcTerm         String?
   payMethod        String?
   paymentName      String?
   isFirstTimeBuyer Boolean     @default(false)
@@ -310,6 +315,12 @@ model Lead {
   assignedTo       User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
   deal             DealRecord? @relation(fields: [dealId], references: [id])
   offers           LeadOffer[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([assignedToId])
+  @@index([dealId])
 }
 
 model Complaint {
@@ -400,6 +411,11 @@ model DealRecord {
   // Team & Workflow
   dealerNotes              String?  // Internal note about which dealer/manager provided this
   leads                    Lead[]
+
+  @@index([publishStatus])
+  @@index([lenderId])
+  @@index([createdAt])
+  @@index([type])
 }
 
 model Review {

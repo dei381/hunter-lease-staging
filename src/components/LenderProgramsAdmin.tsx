@@ -16,21 +16,28 @@ export const LenderProgramsAdmin: React.FC<LenderProgramsAdminProps> = ({ lender
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<any>({});
   const [isAdding, setIsAdding] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    fetchPrograms();
-  }, [activeTab, lenderId]);
+    fetchPrograms(page);
+  }, [activeTab, lenderId, page]);
 
-  const fetchPrograms = async () => {
+  const fetchPrograms = async (pageNum: number) => {
     setLoading(true);
     try {
       const endpoint = activeTab === 'lease' ? 'lease-programs' : 'finance-programs';
-      const response = await fetch(`/api/admin/lenders/${lenderId}/${endpoint}`, {
+      const response = await fetch(`/api/admin/lenders/${lenderId}/${endpoint}?page=${pageNum}&limit=50`, {
         headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
       });
       if (response.ok) {
         const data = await response.json();
-        setPrograms(data);
+        if (data.data) {
+          setPrograms(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setPrograms(data);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch programs:', error);
@@ -107,7 +114,7 @@ export const LenderProgramsAdmin: React.FC<LenderProgramsAdminProps> = ({ lender
       if (response.ok) {
         setEditingId(null);
         setIsAdding(false);
-        fetchPrograms();
+        fetchPrograms(page);
       } else {
         const data = await response.json();
         toast.error(`Failed to save program: ${data.error || 'Unknown error'}`);
@@ -129,7 +136,7 @@ export const LenderProgramsAdmin: React.FC<LenderProgramsAdminProps> = ({ lender
       });
 
       if (response.ok) {
-        fetchPrograms();
+        fetchPrograms(page);
       }
     } catch (error) {
       console.error('Failed to delete program:', error);
@@ -469,6 +476,28 @@ export const LenderProgramsAdmin: React.FC<LenderProgramsAdminProps> = ({ lender
                 )}
               </tbody>
             </table>
+            
+            {totalPages > 1 && (
+              <div className="flex justify-center gap-2 p-4 border-t border-slate-200">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1 || loading}
+                  className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2 text-sm text-slate-500 flex items-center">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages || loading}
+                  className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

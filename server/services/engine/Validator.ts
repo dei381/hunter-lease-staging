@@ -19,6 +19,9 @@ export class Validator {
     if (typeof safeBody.term === 'string') {
       safeBody.term = parseInt(safeBody.term, 10);
     }
+    if (safeBody.selectedIncentives && !safeBody.selectedIncentiveIds) {
+      safeBody.selectedIncentiveIds = safeBody.selectedIncentives;
+    }
     
     return QuoteContextSchema.parse(safeBody);
   }
@@ -36,6 +39,9 @@ export class Validator {
     }
     if (typeof safeBody.term === 'string') {
       safeBody.term = parseInt(safeBody.term, 10);
+    }
+    if (safeBody.selectedIncentives && !safeBody.selectedIncentiveIds) {
+      safeBody.selectedIncentiveIds = safeBody.selectedIncentives;
     }
     return QuoteContextSchema.parse(safeBody);
   }
