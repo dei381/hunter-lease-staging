@@ -120,6 +120,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
             make: currentCar.make,
             model: currentCar.model,
             trim: currentCar.trim,
+            year: currentCar.year,
             type: calcType,
             term,
             mileage: mileage === '7.5k' ? 7500 : parseInt(mileage.replace('k', '000')),
