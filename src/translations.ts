@@ -1113,8 +1113,10 @@ export const translations = {
       payoffDesc:
         'This is the exact amount required to fully pay off your loan early. To find out, call your bank and request a "10-day payoff quote".',
       depositTitle: "Platform Deposit",
-      depositDesc:
-        "A $95 fully refundable deposit is required to submit your request to the dealership.",
+      depositDescCalc:
+        "A fully refundable $95 deposit is required to lock in these terms. All work happens within the platform — a dealer ready to approve this deal will contact you. Dealers respond within 24 hours (Mon-Fri).",
+      depositDescCatalog:
+        "A fully refundable $95 deposit is required to reserve this vehicle and lock in the price. Dealers respond within 24 hours (Mon-Fri).",
       whyDeposit: "WHY A DEPOSIT IS REQUIRED",
       vipBuyer: "Dealership Requirement:",
       vipBuyerDesc:
@@ -1125,9 +1127,9 @@ export const translations = {
       approvalGuarantee: "Secure Transaction:",
       approvalGuaranteeDesc:
         "Your payment is processed securely via Stripe. We do not store your credit card information.",
-      refundGuarantee: "TRANSPARENT PROCESS",
+      refundGuaranteeTitle: "🛡 100% Refund Guarantee",
       refundGuaranteeDesc:
-        "No hidden fees. You review the final dealership contract before signing anything.",
+        "If the final dealer terms are even 1 cent more expensive than your estimate, we will instantly refund your deposit. The price guarantee applies to the selected configuration. If you decide to change the trim or model during the process, the price will be recalculated. If the reserved vehicle is unavailable, the dealer will offer an equivalent — if this changes the payment amount, you have the right to decline with a full $95 refund.",
       paymentMethod: "Payment Method",
       senderName: "Name on Card",
       senderNameDesc:
@@ -1145,6 +1147,16 @@ export const translations = {
         "Your VIP status is now active. A personal concierge will contact you shortly to arrange home delivery and remote paperwork.",
       startCreditApp: "START CREDIT APPLICATION",
       startLeaseApp: "START LEASE APPLICATION",
+      continueOnPhone: "Continue on Phone",
+      scanQrCode: "Scan QR code to securely complete on your mobile device",
+      showQr: "Show QR",
+      waitingStatus0: "Sending to partners...",
+      waitingStatus1: "Analyzing credit profile...",
+      waitingStatus2: "Our Senior Expert is finalizing deal terms...",
+      prepareDocsTitle: "Prepare Documents",
+      prepareDocsInsurance: "Prepare your insurance policy.",
+      prepareDocsW2: "Since you are a W2 employee, the dealer may request pay stubs for the last 3 months. Please prepare them.",
+      prepareDocs1099: "Since you are 1099/Self-employed, the dealer may request bank statements for the last 6 months. Please prepare them.",
       close: "Close",
       yourSelection: "Your Selection",
       dealType: "Deal Type",
@@ -2942,8 +2954,10 @@ export const translations = {
       payoffDesc:
         'Это точная сумма, необходимая для полного досрочного погашения кредита. Чтобы узнать ее, позвоните в свой банк и запросите "10-day payoff quote".',
       depositTitle: "Депозит платформы",
-      depositDesc:
-        "Для отправки вашей заявки дилеру требуется полностью возвратный депозит в размере $95.",
+      depositDescCalc:
+        "Внесите возвратный депозит $95 для фиксации условий. Вся работа происходит внутри платформы — с вами свяжется дилер, готовый одобрить эту сделку. Дилеры ответят в течение 24 часов (Пн-Пт).",
+      depositDescCatalog:
+        "Внесите $95 для бронирования автомобиля и фиксации цены. Дилеры ответят в течение 24 часов (Пн-Пт).",
       whyDeposit: "ПОЧЕМУ ТРЕБУЕТСЯ ДЕПОЗИТ",
       vipBuyer: "Требование дилерских центров:",
       vipBuyerDesc:
@@ -2954,9 +2968,9 @@ export const translations = {
       approvalGuarantee: "Безопасная транзакция:",
       approvalGuaranteeDesc:
         "Ваш платеж безопасно обрабатывается через Stripe. Мы не храним данные вашей кредитной карты.",
-      refundGuarantee: "ПРОЗРАЧНЫЙ ПРОЦЕСС",
+      refundGuaranteeTitle: "🛡 100% Гарантия возврата",
       refundGuaranteeDesc:
-        "Никаких скрытых комиссий. Вы проверяете окончательный контракт дилерского центра перед подписанием.",
+        "Если финальные условия дилера окажутся хоть на 1 цент дороже вашего расчета, мы моментально вернем депозит. Гарантия цены действует на выбранную конфигурацию. Если в процессе оформления вы решите изменить комплектацию или модель, стоимость будет пересчитана. Если забронированный автомобиль недоступен, дилер предложит аналог — если из-за этого сумма изменится, вы вправе отказаться с полным возвратом $95.",
       paymentMethod: "Способ оплаты",
       senderName: "Имя на карте",
       senderNameDesc:
@@ -2974,6 +2988,16 @@ export const translations = {
         "Ваш VIP-статус теперь активен. Персональный консьерж свяжется с вами в ближайшее время, чтобы организовать доставку на дом и дистанционное оформление документов.",
       startCreditApp: "ЗАПОЛНИТЬ КРЕДИТНУЮ АНКЕТУ",
       startLeaseApp: "ЗАПОЛНИТЬ ЛИЗИНГОВУЮ АНКЕТУ",
+      continueOnPhone: "Продолжить на телефоне",
+      scanQrCode: "Отсканируйте QR-код, чтобы безопасно завершить на мобильном устройстве",
+      showQr: "Показать QR",
+      waitingStatus0: "Отправка партнерам...",
+      waitingStatus1: "Анализ кредитного профиля...",
+      waitingStatus2: "Наш старший эксперт финализирует условия...",
+      prepareDocsTitle: "Подготовка документов",
+      prepareDocsInsurance: "Подготовьте вашу страховку.",
+      prepareDocsW2: "Так как вы работаете по W2, дилер может запросить pay stubs за последние 3 месяца. Пожалуйста, подготовьте их.",
+      prepareDocs1099: "Так как вы работаете по 1099, дилер может запросить банковские выписки (bank statements) за последние 6 месяцев. Пожалуйста, подготовьте их.",
       close: "Закрыть",
       yourSelection: "Ваш выбор",
       dealType: "Тип сделки",

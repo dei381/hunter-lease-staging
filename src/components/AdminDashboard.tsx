@@ -1844,8 +1844,9 @@ export function AdminDashboard() {
                     <p className="mt-1 text-sm text-slate-500">{t.uploadOfferToStart}</p>
                   </div>
                 ) : (
-                  <div>
-                    {(() => {
+                  <>
+                    <div>
+                      {(() => {
                       const filteredDeals = deals
                         .filter(deal => {
                           const isArchived = deal.publishStatus === 'ARCHIVED';
@@ -2064,6 +2065,7 @@ export function AdminDashboard() {
                       </button>
                     </div>
                   )}
+                  </>
                 )}
               </div>
             </section>
@@ -2097,7 +2099,7 @@ export function AdminDashboard() {
                   <Users className="w-4 h-4 text-slate-400 absolute left-2.5 top-2" />
                 </div>
                 <button 
-                  onClick={fetchUsers}
+                  onClick={() => fetchUsers()}
                   className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
                 >
                   {t.refresh}
@@ -2277,6 +2279,30 @@ export function AdminDashboard() {
                     >
                       <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.maintenanceMode ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 pt-4 border-t border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-900 mb-4">700Credit Integration</h3>
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">Account ID</label>
+                      <input
+                        type="text"
+                        value={settings.credit700AccountId || ''}
+                        onChange={(e) => setSettings({...settings, credit700AccountId: e.target.value})}
+                        className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">Password</label>
+                      <input
+                        type="password"
+                        value={settings.credit700Password || ''}
+                        onChange={(e) => setSettings({...settings, credit700Password: e.target.value})}
+                        className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2643,10 +2669,10 @@ export function AdminDashboard() {
                                 <p><span className="font-medium">{t.type}:</span> {lead.calc?.type}</p>
                                 <p><span className="font-medium">{t.payment}:</span> ${lead.calc?.payment}{t.mo}</p>
                                 <p><span className="font-medium">{t.down}:</span> ${lead.calc?.down}</p>
-                                <p><span className="font-medium">{t.term || 'Term'}:</span> {lead.calc?.term}</p>
+                                <p><span className="font-medium">{(t as any).term || 'Term'}:</span> {lead.calc?.term}</p>
                                 <p><span className="font-medium">{t.mileage}:</span> {lead.calc?.mileage}</p>
                                 <p><span className="font-medium">{t.tier}:</span> {lead.calc?.tier}</p>
-                                <p><span className="font-medium">{t.zipCode || 'ZIP'}:</span> {lead.calc?.zip}</p>
+                                <p><span className="font-medium">{(t as any).zipCode || 'ZIP'}:</span> {lead.calc?.zip}</p>
                               </div>
                               <div className="mt-4 flex flex-wrap gap-2">
                                 <button 

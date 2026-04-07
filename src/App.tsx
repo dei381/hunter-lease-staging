@@ -40,6 +40,7 @@ import { useLanguageStore } from './store/languageStore';
 import { useAuthStore } from './store/authStore';
 import { useFeedbackStore } from './store/feedbackStore';
 import { auth, db } from './firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { translations } from './translations';
 import { doc, getDocFromCache, getDocFromServer, addDoc, setDoc, onSnapshot, collection, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './utils/firestoreErrorHandler';
@@ -117,6 +118,19 @@ function MainApp() {
     testConnection();
   }, []);
 
+  // Handle cross-device handoff
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const handoffLeadId = params.get('creditApp');
+    if (handoffLeadId) {
+      setLeadId(handoffLeadId);
+      localStorage.setItem('leadId', handoffLeadId);
+      setIsModalOpen(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const handleSelect = (data: any) => {
     if (data.id) {
       setSelectedDealForCalc(data);
@@ -136,8 +150,32 @@ function MainApp() {
   const submitLead = async () => {
     setIsSubmitting(true);
 
+    let currentUserId = auth.currentUser?.uid || null;
+
+    // Shadow Registration: Create anonymous account if not logged in
+    if (!currentUserId) {
+      try {
+        const userCredential = await signInAnonymously(auth);
+        currentUserId = userCredential.user.uid;
+        
+        // Save user profile in Firestore
+        await setDoc(doc(db, 'users', currentUserId), {
+          uid: currentUserId,
+          email: clientInfo.email,
+          name: clientInfo.name,
+          phone: clientInfo.phone,
+          role: 'client',
+          createdAt: serverTimestamp(),
+          isAnonymous: true
+        });
+      } catch (error) {
+        console.error("Shadow registration failed:", error);
+        // Continue without user ID if anonymous auth fails
+      }
+    }
+
     const payload = {
-      userId: auth.currentUser?.uid || null,
+      userId: currentUserId,
       name: clientInfo.name,
       email: clientInfo.email,
       phone: clientInfo.phone,
@@ -179,7 +217,7 @@ function MainApp() {
           ...payload, 
           client: { ...clientInfo, payMethod, paymentName }, 
           car: payload.vehicle,
-          userId: auth.currentUser?.uid || null
+          userId: currentUserId
         })
       });
 
@@ -190,18 +228,6 @@ function MainApp() {
 
       const { leadId: prismaLeadId } = await response.json();
       
-      // Also add to Firestore for real-time tracking
-      try {
-        await setDoc(doc(db, 'leads', prismaLeadId.toString()), {
-          ...payload,
-          prismaId: prismaLeadId,
-          status: 'pending',
-          updatedAt: serverTimestamp()
-        });
-      } catch (fsError) {
-        console.warn("Firestore backup failed, but backend succeeded:", fsError);
-      }
-
       setLeadId(prismaLeadId.toString());
       localStorage.setItem('leadId', prismaLeadId.toString());
       localStorage.setItem('activeSelection', JSON.stringify(activeSelection));
@@ -240,6 +266,18 @@ function MainApp() {
         const data = snapshot.data() as Lead;
         setLeadData(data);
         
+        // Restore activeSelection if missing (e.g. cross-device handoff)
+        if (!activeSelection && data.car) {
+          setActiveSelection({
+            make: data.car.make,
+            model: data.car.model,
+            year: data.car.year,
+            type: data.calc?.type,
+            payment: data.calc?.payment,
+            down: data.calc?.down,
+          });
+        }
+
         // If credit app is not submitted, open DepositModal
         if (!data.creditApp) {
           setIsModalOpen(true);

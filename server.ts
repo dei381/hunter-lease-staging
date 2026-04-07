@@ -232,6 +232,8 @@ const leadSchema = z.object({
     payMethod: z.string().max(50).optional(),
     paymentName: z.string().max(100).optional(),
     isFirstTimeBuyer: z.boolean().optional().default(false),
+    tcpaConsent: z.boolean().optional(),
+    termsConsent: z.boolean().optional(),
   }),
   tradeIn: z.object({
     make: z.string().max(50).optional(),
@@ -2950,8 +2952,21 @@ You must return the response as a JSON array of objects. Each object must have t
         return res.status(404).json({ error: "Lead not found" });
       }
 
-      // In a real app, we would call the 700Credit API here
-      // const creditResponse = await fetch('https://api.700credit.com/v1/softpull', { ... });
+      // Get 700Credit API settings
+      const settingsRecord = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
+      const settings = settingsRecord ? JSON.parse(settingsRecord.data) : {};
+      
+      if (settings.credit700AccountId && settings.credit700Password) {
+        console.log(`Calling 700Credit API for lead ${leadId} with Account ID: ${settings.credit700AccountId}`);
+        // In a real app, we would call the 700Credit API here using the credentials
+        // const creditResponse = await fetch('https://api.700credit.com/v1/softpull', { 
+        //   method: 'POST',
+        //   headers: { 'Authorization': `Basic ${Buffer.from(settings.credit700AccountId + ':' + settings.credit700Password).toString('base64')}` },
+        //   ...
+        // });
+      } else {
+        console.log(`700Credit API credentials not configured. Using mock data for lead ${leadId}`);
+      }
       
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -2989,7 +3004,47 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
-  // Stripe Deposit Flow
+  // Stripe Payment Intent (for seamless modal)
+  app.post("/api/create-payment-intent", userAuth, async (req, res) => {
+    try {
+      const { leadId } = req.body;
+      const userId = (req as any).user?.uid;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
+      }
+
+      const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+      if (!lead || lead.userId !== userId) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        console.warn("STRIPE_SECRET_KEY not set. Mocking payment intent.");
+        return res.json({ clientSecret: "pi_mock_secret_12345" });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: 9500, // $95.00
+        currency: 'usd',
+        metadata: {
+          leadId: lead.id,
+          userId: userId
+        },
+        // Automatic payment methods enabled by default
+        automatic_payment_methods: {
+          enabled: true,
+        },
+      });
+
+      res.json({ clientSecret: paymentIntent.client_secret });
+    } catch (error) {
+      console.error("Error creating payment intent:", error);
+      res.status(500).json({ error: "Failed to create payment intent" });
+    }
+  });
+
+  // Stripe Deposit Flow (Checkout Session - Legacy)
   app.post("/api/create-checkout-session", userAuth, async (req, res) => {
     try {
       const { leadId } = req.body;

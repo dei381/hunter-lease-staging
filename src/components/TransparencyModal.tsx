@@ -65,9 +65,9 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
     { name: 'DMV Fee', amountCents: quoteResult.fees.dmvFeeCents || 0 },
     { name: 'Broker Fee', amountCents: quoteResult.fees.brokerFeeCents || 0 }
   ].filter(f => f.amountCents > 0) : [
-    { name: 'Doc Fee', amountCents: (Number(settings.docFee) || 85) * 100 },
-    { name: 'DMV Fee', amountCents: (Number(settings.dmvFee) || 400) * 100 },
-    { name: 'Broker Fee', amountCents: (Number(settings.brokerFee) || 595) * 100 }
+    { name: 'Doc Fee', amountCents: (Number((settings as any).docFee) || 85) * 100 },
+    { name: 'DMV Fee', amountCents: (Number((settings as any).dmvFee) || 400) * 100 },
+    { name: 'Broker Fee', amountCents: (Number((settings as any).brokerFee) || 595) * 100 }
   ];
 
   const firstPayment = isFinance ? 0 : totalPayment;
@@ -258,7 +258,7 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                           <Tooltip text="Acquisition Fee (Rolled into monthly payment)">
                             <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest border-b border-dashed border-[var(--mu2)]">Acq Fee</span>
                           </Tooltip>
-                          <span className="text-sm font-bold text-black">{fmt((calc.fees?.acqFeeCents || 0) / 100)}</span>
+                          <span className="text-sm font-bold text-black">{fmt((quoteResult?.fees?.acqFeeCents || 0) / 100)}</span>
                         </div>
                         <div className="flex justify-between items-center pt-4 border-t border-[var(--b1)]">
                           <Tooltip text={t.tooltips.residualValue}>
