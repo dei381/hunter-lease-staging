@@ -63,6 +63,13 @@ export const DepositModal = ({
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [consentAccepted, setConsentAccepted] = useState(false);
 
+  // 700Credit soft pull state
+  const [creditCheckConsent, setCreditCheckConsent] = useState(false);
+  const [creditCheckData, setCreditCheckData] = useState({ ssnLast4: '', dob: '', address: '', city: '', state: '', zip: '' });
+  const [isCreditCheckRunning, setIsCreditCheckRunning] = useState(false);
+  const [creditCheckResult, setCreditCheckResult] = useState<{ creditBand?: string; scoreRange?: string; tier?: string; score?: number } | null>(null);
+  const [creditCheckError, setCreditCheckError] = useState('');
+
   // Reset step when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -77,6 +84,10 @@ export const DepositModal = ({
       setIsConfirmed(false);
       setIsVipSelected(false);
       setIsCreditAppSuccess(false);
+      setCreditCheckConsent(false);
+      setCreditCheckData({ ssnLast4: '', dob: '', address: '', city: '', state: '', zip: '' });
+      setCreditCheckResult(null);
+      setCreditCheckError('');
       setCreditAppData({
         firstName: clientInfo.name?.split(' ')[0] || '',
         lastName: clientInfo.name?.split(' ').slice(1).join(' ') || '',
@@ -122,6 +133,51 @@ export const DepositModal = ({
     setIsVipSelected(true);
     // In a real app, this would trigger another payment or update the lead
     setStep(4);
+  };
+
+  const handleCreditCheck = async () => {
+    if (!leadId || !creditCheckConsent) return;
+    setIsCreditCheckRunning(true);
+    setCreditCheckError('');
+    try {
+      // Step 1: Record consent
+      const consentRes = await fetch('/api/credit/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId, userId: user?.uid }),
+      });
+      const consentData = await consentRes.json();
+      if (!consentRes.ok) throw new Error(consentData.error || 'Failed to record consent');
+
+      // Step 2: Execute soft pull
+      const pullRes = await fetch('/api/credit/soft-pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creditCheckId: consentData.id,
+          applicant: {
+            firstName: clientInfo.name?.split(' ')[0] || '',
+            lastName: clientInfo.name?.split(' ').slice(1).join(' ') || '',
+            address: creditCheckData.address,
+            city: creditCheckData.city,
+            state: creditCheckData.state,
+            zipCode: creditCheckData.zip,
+            dateOfBirth: creditCheckData.dob,
+            ssn: creditCheckData.ssnLast4,
+          }
+        }),
+      });
+      const pullData = await pullRes.json();
+      if (!pullRes.ok) throw new Error(pullData.error || 'Failed to run credit check');
+      
+      setCreditCheckResult(pullData);
+      toast.success('Credit check completed!');
+    } catch (err: any) {
+      setCreditCheckError(err.message || 'Credit check failed');
+      toast.error(err.message || 'Credit check failed');
+    } finally {
+      setIsCreditCheckRunning(false);
+    }
   };
 
   const handleCreditAppSubmit = async (e: React.FormEvent) => {
@@ -424,6 +480,64 @@ export const DepositModal = ({
                 </div>
                 <h2 className="font-display text-4xl mb-2">{t.acceptedTitle}</h2>
                 <p className="text-[var(--mu2)] text-sm mb-8 max-w-md leading-relaxed" dangerouslySetInnerHTML={{ __html: t.acceptedDesc }} />
+
+                {/* 700Credit Soft Pull Section */}
+                {leadId && !creditCheckResult && (
+                  <div className="w-full max-w-md mb-8 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 text-left">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-[var(--lime)]/10 rounded-xl flex items-center justify-center">
+                        <ShieldCheck size={20} className="text-[var(--lime)]" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold">700Credit Check</h3>
+                        <p className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-bold">Soft Pull — No Impact on Your Score</p>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-[var(--mu2)] leading-relaxed mb-4">
+                      A soft credit inquiry helps us find you the best rates. This will NOT affect your credit score.
+                    </p>
+                    <div className="space-y-3 mb-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <input type="date" value={creditCheckData.dob} onChange={e => setCreditCheckData({...creditCheckData, dob: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="Date of Birth" />
+                        <input type="text" maxLength={4} value={creditCheckData.ssnLast4} onChange={e => setCreditCheckData({...creditCheckData, ssnLast4: e.target.value.replace(/\D/g, '').slice(0, 4)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all font-mono" placeholder="SSN last 4" />
+                      </div>
+                      <input type="text" value={creditCheckData.address} onChange={e => setCreditCheckData({...creditCheckData, address: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="Street Address" />
+                      <div className="grid grid-cols-3 gap-3">
+                        <input type="text" value={creditCheckData.city} onChange={e => setCreditCheckData({...creditCheckData, city: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="City" />
+                        <input type="text" maxLength={2} value={creditCheckData.state} onChange={e => setCreditCheckData({...creditCheckData, state: e.target.value.toUpperCase().slice(0, 2)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="State" />
+                        <input type="text" maxLength={5} value={creditCheckData.zip} onChange={e => setCreditCheckData({...creditCheckData, zip: e.target.value.replace(/\D/g, '').slice(0, 5)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="ZIP" />
+                      </div>
+                    </div>
+                    <label className="flex items-start gap-3 cursor-pointer group mb-4">
+                      <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${creditCheckConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
+                        {creditCheckConsent && <CheckCircle2 size={14} className="text-black" />}
+                      </div>
+                      <span className="text-[9px] text-[var(--mu2)] leading-relaxed">
+                        I authorize Hunter Lease to obtain my credit report through a soft inquiry via 700Credit. I understand this will not affect my credit score.
+                      </span>
+                      <input type="checkbox" className="hidden" checked={creditCheckConsent} onChange={(e) => setCreditCheckConsent(e.target.checked)} />
+                    </label>
+                    {creditCheckError && <p className="text-red-500 text-xs mb-3">{creditCheckError}</p>}
+                    <button
+                      onClick={handleCreditCheck}
+                      disabled={!creditCheckConsent || !creditCheckData.ssnLast4 || !creditCheckData.dob || isCreditCheckRunning}
+                      className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                    >
+                      {isCreditCheckRunning ? 'Running Credit Check...' : 'Check My Credit'}
+                      <ShieldCheck size={16} />
+                    </button>
+                  </div>
+                )}
+
+                {/* 700Credit Result */}
+                {creditCheckResult && (
+                  <div className="w-full max-w-md mb-8 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-2xl p-6 text-center">
+                    <ShieldCheck size={24} className="text-[var(--lime)] mx-auto mb-3" />
+                    <h3 className="text-sm font-bold mb-1">Credit Check Complete</h3>
+                    <div className="text-2xl font-display text-[var(--lime)] mb-1">{creditCheckResult.creditBand || creditCheckResult.tier || 'N/A'}</div>
+                    <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{creditCheckResult.scoreRange || ''}</p>
+                  </div>
+                )}
                 
                 <div className="flex flex-col gap-4 w-full max-w-md mb-8">
                   <button 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, ArrowRight } from 'lucide-react';
-import { auth, googleProvider, appleProvider, sendSignInLinkToEmail } from '../firebase';
+import { auth, googleProvider, appleProvider, sendSignInLinkToEmail, signInWithEmailAndPassword } from '../firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { useAuthStore } from '../store/authStore';
 
@@ -13,8 +13,10 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { authEmail, setAuthEmail } = useAuthStore();
   const [email, setEmail] = useState(authEmail || '');
+  const [password, setPassword] = useState('');
   const [isSent, setIsSent] = useState(false);
   const [error, setError] = useState('');
+  const [authMode, setAuthMode] = useState<'password' | 'magic'>('password');
 
   useEffect(() => {
     if (isOpen && authEmail) {
@@ -40,20 +42,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleEmailSignIn = async (e: React.FormEvent) => {
+  const handleEmailPasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
+    if (authMode === 'magic') {
+      try {
+        const actionCodeSettings = {
+          url: window.location.origin + '/finish-sign-up',
+          handleCodeInApp: true,
+        };
+        await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+        window.localStorage.setItem('emailForSignIn', email);
+        setIsSent(true);
+      } catch (err: any) {
+        setError(err.message);
+      }
+      return;
+    }
+
+    if (!password) return;
     try {
-      const actionCodeSettings = {
-        url: window.location.origin + '/finish-sign-up',
-        handleCodeInApp: true,
-      };
-      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-      window.localStorage.setItem('emailForSignIn', email);
-      setIsSent(true);
+      await signInWithEmailAndPassword(auth, email, password);
+      onClose();
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password');
+      } else if (err.code === 'auth/user-not-found') {
+        setError('No account found with this email');
+      } else {
+        setError(err.message);
+      }
     }
   };
 
@@ -130,7 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleEmailSignIn} className="space-y-4">
+              <form onSubmit={handleEmailPasswordSignIn} className="space-y-4">
                 <div>
                   <input
                     type="email"
@@ -141,12 +160,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     required
                   />
                 </div>
+                {authMode === 'password' && (
+                  <div>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl px-4 py-3 text-[var(--w)] outline-none focus:border-[var(--lime)] transition-colors"
+                      required
+                    />
+                  </div>
+                )}
                 <button
                   type="submit"
                   className="w-full flex items-center justify-center gap-2 bg-[var(--lime)] text-white font-bold uppercase tracking-widest py-3 px-4 rounded-xl hover:bg-[var(--lime2)] transition-colors"
                 >
-                  Send Magic Link
+                  {authMode === 'password' ? 'Sign In' : 'Send Magic Link'}
                   <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode(authMode === 'password' ? 'magic' : 'password'); setError(''); }}
+                  className="w-full text-center text-xs text-[var(--mu2)] hover:text-[var(--w)] transition-colors"
+                >
+                  {authMode === 'password' ? 'Use magic link instead' : 'Use password instead'}
                 </button>
               </form>
             )}

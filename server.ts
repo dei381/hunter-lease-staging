@@ -353,6 +353,83 @@ async function startServer() {
     if (dealCount === 0) {
       console.log('No deals found in database. Please create deals via the admin panel.');
     }
+
+    // Seed bank programs for calculator if insufficient
+    // Ensure lenders always exist
+    let lender = await prisma.lender.findFirst({ where: { name: 'BMW Financial Services' } });
+    if (!lender) {
+      lender = await prisma.lender.create({
+        data: { name: 'BMW Financial Services', isCaptive: true, lenderType: 'CAPTIVE', priority: 1, isActive: true }
+      });
+      console.log('Created lender: BMW Financial Services');
+    }
+    let mbLender = await prisma.lender.findFirst({ where: { name: 'Mercedes-Benz Financial Services' } });
+    if (!mbLender) {
+      mbLender = await prisma.lender.create({
+        data: { name: 'Mercedes-Benz Financial Services', isCaptive: true, lenderType: 'CAPTIVE', priority: 1, isActive: true }
+      });
+      console.log('Created lender: Mercedes-Benz Financial Services');
+    }
+
+    const programCount = await prisma.bankProgram.count();
+    if (programCount < 10) {
+      console.log(`Only ${programCount} bank programs — seeding more...`);
+      
+      let batch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
+      if (!batch) {
+        batch = await prisma.programBatch.create({
+          data: { status: 'ACTIVE', isValid: true, description: 'Default seed programs', publishedAt: new Date() }
+        });
+      }
+
+      const programSeeds = [
+        // BMW 3 Series — Lease
+        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 24, mileage: 10000, rv: 0.62, mf: 0.00125, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.55, mf: 0.00125, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2024, term: 36, mileage: 10000, rv: 0.52, mf: 0.00135, apr: null, rebates: 0 },
+        // BMW 3 Series — Finance
+        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 36, mileage: null, rv: null, mf: null, apr: 4.9, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 48, mileage: null, rv: null, mf: null, apr: 5.49, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.9, rebates: 0 },
+        // BMW X5
+        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: 'X5', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.58, mf: 0.00115, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: 'X5', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.49, rebates: 0 },
+        // Mercedes C-Class — Lease
+        { batchId: batch.id, lenderId: mbLender.id, programType: 'LEASE', make: 'Mercedes-Benz', model: 'C-Class', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.53, mf: 0.00145, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: mbLender.id, programType: 'LEASE', make: 'Mercedes-Benz', model: 'C-Class', trim: 'ALL', year: 2024, term: 36, mileage: 10000, rv: 0.50, mf: 0.00155, apr: null, rebates: 0 },
+        // Mercedes C-Class — Finance
+        { batchId: batch.id, lenderId: mbLender.id, programType: 'FINANCE', make: 'Mercedes-Benz', model: 'C-Class', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.99, rebates: 0 },
+        // Mercedes E-Class
+        { batchId: batch.id, lenderId: mbLender.id, programType: 'LEASE', make: 'Mercedes-Benz', model: 'E-Class', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.50, mf: 0.00160, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: mbLender.id, programType: 'FINANCE', make: 'Mercedes-Benz', model: 'E-Class', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 6.29, rebates: 0 },
+        // Audi A4
+        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'Audi', model: 'A4', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.52, mf: 0.00140, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'Audi', model: 'A4', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.79, rebates: 0 },
+        // Audi Q5
+        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'Audi', model: 'Q5', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.54, mf: 0.00130, apr: null, rebates: 0 },
+        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'Audi', model: 'Q5', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.59, rebates: 0 },
+      ];
+
+      await prisma.bankProgram.createMany({ data: programSeeds });
+      console.log(`Seeded ${programSeeds.length} bank programs in batch ${batch.id}`);
+    }
+
+    // Ensure VehicleTrims have MSRP values for calculator
+    const trimsWithoutMsrp = await prisma.vehicleTrim.findMany({ where: { msrpCents: 0, isActive: true } });
+    if (trimsWithoutMsrp.length > 0) {
+      const msrpDefaults: Record<string, number> = {
+        '330i': 4400000, '330i xDrive': 4600000, 'M340i': 5600000, 'M340i xDrive': 5800000,
+        'xDrive40i': 6400000, 'M50': 8200000,
+        'C 300': 4700000, 'C 300 4MATIC': 4900000, 'AMG C 43': 6200000, 'AMG C 63': 7700000,
+        'E 350': 6000000, 'E 350 4MATIC': 6200000, 'AMG E 53': 7500000,
+        'Premium': 4200000, 'Premium Plus': 4600000, 'Prestige': 5000000,
+      };
+      for (const trim of trimsWithoutMsrp) {
+        const msrp = msrpDefaults[trim.name] || 4500000;
+        await prisma.vehicleTrim.update({ where: { id: trim.id }, data: { msrpCents: msrp } });
+      }
+      console.log(`Updated MSRP for ${trimsWithoutMsrp.length} trims`);
+    }
   } catch (err) {
     console.error('Seeding error:', err);
   }
