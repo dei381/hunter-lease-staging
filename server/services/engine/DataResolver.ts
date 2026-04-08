@@ -244,8 +244,10 @@ export class DataResolver {
         startsAt: { lte: now },
         OR: [ { endsAt: null }, { endsAt: { gte: now } } ],
         make: vehicle.make,
-        model: { in: [vehicle.model, '', null] },
-        trim: { in: [vehicle.trim, '', null] }
+        AND: [
+          { OR: [{ model: vehicle.model }, { model: '' }, { model: null }] },
+          { OR: [{ trim: vehicle.trim }, { trim: '' }, { trim: null }] }
+        ]
       },
       orderBy: [
         { trim: 'desc' }, // Prioritize specific trim

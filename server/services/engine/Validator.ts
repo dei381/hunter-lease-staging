@@ -19,6 +19,9 @@ export class Validator {
     if (typeof safeBody.term === 'string') {
       safeBody.term = parseInt(safeBody.term, 10);
     }
+    if (typeof safeBody.year === 'string') {
+      safeBody.year = parseInt(safeBody.year, 10);
+    }
     
     return QuoteContextSchema.parse(safeBody);
   }
@@ -36,6 +39,9 @@ export class Validator {
     }
     if (typeof safeBody.term === 'string') {
       safeBody.term = parseInt(safeBody.term, 10);
+    }
+    if (typeof safeBody.year === 'string') {
+      safeBody.year = parseInt(safeBody.year, 10);
     }
     return QuoteContextSchema.parse(safeBody);
   }
