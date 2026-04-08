@@ -3495,7 +3495,7 @@ You must return the response as a JSON array of objects. Each object must have t
 
       await prisma.auditLog.create({
         data: {
-          userId: (req as any).user.id,
+          userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
           action: "CREATE",
           entityId: deal.id,
           entity: "DealRecord",
@@ -3572,7 +3572,7 @@ You must return the response as a JSON array of objects. Each object must have t
 
       await prisma.auditLog.create({
         data: {
-          userId: (req as any).user.id,
+          userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
           action: "UPDATE",
           entityId: updatedDeal.id,
           entity: "DealRecord",
@@ -3595,7 +3595,7 @@ You must return the response as a JSON array of objects. Each object must have t
 
       await prisma.auditLog.create({
         data: {
-          userId: (req as any).user.id,
+          userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
           action: "DELETE",
           entityId: id,
           entity: "DealRecord",
@@ -3686,7 +3686,7 @@ You must return the response as a JSON array of objects. Each object must have t
 
         await prisma.auditLog.create({
           data: {
-            userId: (req as any).user.id,
+            userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
             action: "BULK_UPDATE",
             entityId: deal.id,
             entity: "DealRecord",
