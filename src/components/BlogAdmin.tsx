@@ -24,6 +24,8 @@ interface BlogPost {
 
 export const BlogAdmin = () => {
   const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editingPost, setEditingPost] = useState<Partial<BlogPost> | null>(null);
@@ -31,18 +33,23 @@ export const BlogAdmin = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchPosts();
-  }, []);
+    fetchPosts(page);
+  }, [page]);
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (pageNum: number) => {
     try {
       const token = await getAuthToken();
-      const res = await fetch('/api/admin/blog', {
+      const res = await fetch(`/api/admin/blog?page=${pageNum}&limit=50`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setPosts(data);
+        if (data.data) {
+          setPosts(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setPosts(data);
+        }
       } else {
         throw new Error('Failed to fetch blog posts');
       }
@@ -75,7 +82,7 @@ export const BlogAdmin = () => {
       });
 
       if (res.ok) {
-        await fetchPosts();
+        await fetchPosts(page);
         setIsEditing(false);
         setEditingPost(null);
       } else {
@@ -97,7 +104,7 @@ export const BlogAdmin = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
-          await fetchPosts();
+          await fetchPosts(page);
         } else {
           throw new Error('Failed to delete blog post');
         }
@@ -224,6 +231,28 @@ export const BlogAdmin = () => {
               )}
             </tbody>
           </table>
+          
+          {totalPages > 1 && (
+            <div className="flex justify-center gap-2 p-4 border-t border-slate-200">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-sm text-slate-500 flex items-center">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages || loading}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -8,22 +8,33 @@ export const LeadsAdmin = () => {
   const { language } = useLanguageStore();
   const t = translations[language].admin;
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchLeads();
-  }, []);
+    fetchLeads(page);
+  }, [page]);
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (pageNum: number) => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/leads', {
+      const res = await fetch(`/api/leads?page=${pageNum}&limit=50`, {
         headers: {
           'Authorization': `Bearer ${await getAuthToken()}`
         }
       });
       const data = await res.json();
-      setLeads(data);
+      if (data.data) {
+        setLeads(data.data);
+        setTotalPages(Math.ceil(data.total / data.limit));
+      } else {
+        setLeads(data); // fallback if backend hasn't updated yet
+      }
     } catch (err) {
       console.error('Failed to fetch leads', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -37,7 +48,7 @@ export const LeadsAdmin = () => {
         },
         body: JSON.stringify({ status })
       });
-      fetchLeads();
+      fetchLeads(page);
     } catch (err) {
       console.error('Failed to update lead status', err);
     }
@@ -45,7 +56,10 @@ export const LeadsAdmin = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="font-display text-2xl tracking-widest text-[var(--w)]">{t.customerLeads}</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="font-display text-2xl tracking-widest text-[var(--w)]">{t.customerLeads}</h2>
+        {loading && <span className="text-sm text-[var(--mu2)]">Loading...</span>}
+      </div>
       
       <div className="grid gap-4">
         {leads.map(lead => (
@@ -161,6 +175,28 @@ export const LeadsAdmin = () => {
           <div className="text-center py-12 text-[var(--mu2)]">{t.noLeads}</div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2 mt-6">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1 || loading}
+            className="px-4 py-2 bg-[var(--s1)] border border-[var(--b2)] rounded-lg text-sm disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="px-4 py-2 text-sm text-[var(--mu2)]">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages || loading}
+            className="px-4 py-2 bg-[var(--s1)] border border-[var(--b2)] rounded-lg text-sm disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 };

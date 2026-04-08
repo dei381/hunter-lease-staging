@@ -89,7 +89,7 @@ service cloud.firestore {
              data.phone is string && data.phone.size() > 0 && data.phone.size() < 20 &&
              (!('email' in data) || (data.email is string && data.email.size() < 100)) &&
              (!('userId' in data) || (data.userId is string && data.userId.size() < 100)) &&
-             data.status in ['new', 'contacted', 'approved', 'delivered', 'closed'] &&
+             data.status in ['pending', 'new', 'contacted', 'approved', 'delivered', 'closed'] &&
              data.legalConsent is map &&
              data.legalConsent.keys().hasAll(['tcpa', 'terms']) &&
              data.legalConsent.tcpa == true &&

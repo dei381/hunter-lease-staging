@@ -158,7 +158,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
     const timer = setTimeout(fetchLenderOptions, 500);
     return () => clearTimeout(timer);
-  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, selectedIncentives, isFirstTimeBuyer, hasCosigner]);
+  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, JSON.stringify(selectedIncentives), isFirstTimeBuyer, hasCosigner]);
 
   
 
@@ -224,22 +224,32 @@ export const Calculator: React.FC<CalculatorProps> = ({
     }
   }, [trimsData, deal, selectedModel?.id]);
 
+  const effectiveIncentives = useMemo(() => {
+    return deal?.availableIncentives || quoteData?.availableIncentives || currentCar?.availableIncentives || [];
+  }, [deal?.availableIncentives, quoteData?.availableIncentives, currentCar?.availableIncentives]);
+
   useEffect(() => {
-    if (currentCar?.availableIncentives) {
-      const defaultIds = currentCar.availableIncentives
+    if (effectiveIncentives.length > 0) {
+      const defaultIds = effectiveIncentives
         .filter((inc: any) => {
           if (isStandalone && inc.type === 'dealer') return false;
           return inc.isDefault || inc.type === 'dealer';
         })
         .map((inc: any) => inc.id);
-      setSelectedIncentives(defaultIds);
+      
+      setSelectedIncentives(prev => {
+        if (prev.length === defaultIds.length && prev.every(id => defaultIds.includes(id))) {
+          return prev;
+        }
+        return defaultIds;
+      });
     } else {
-      setSelectedIncentives([]);
+      setSelectedIncentives(prev => prev.length === 0 ? prev : []);
     }
-  }, [currentCar?.id, currentCar?.trim, isStandalone]);
+  }, [currentCar?.id, currentCar?.trim, isStandalone, effectiveIncentives]);
 
   const toggleIncentive = (id: string) => {
-    const incentive = currentCar?.availableIncentives?.find((inc: any) => inc.id === id);
+    const incentive = effectiveIncentives.find((inc: any) => inc.id === id);
     if (incentive?.isDefault && role !== 'admin') return;
     
     setSelectedIncentives(prev => 
@@ -248,10 +258,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
   };
 
   const calculatedPayment = useMemo(() => {
-    if (quoteStatus === 'NO_PROGRAMS') return null;
-    if (backendPayment !== null) return backendPayment;
-    return 0;
-  }, [backendPayment, quoteStatus]);
+    if (quoteStatus && quoteStatus !== 'SUCCESS') return currentCar?.displayPayment || null;
+    if (backendPayment !== null && backendPayment > 0) return backendPayment;
+    return currentCar?.displayPayment || null;
+  }, [backendPayment, quoteStatus, currentCar]);
 
   useEffect(() => {
     if (currentCar && calculatedPayment !== null) {
@@ -263,23 +273,24 @@ export const Calculator: React.FC<CalculatorProps> = ({
         term: `${term} mo`,
         tier,
         mileage,
+        zip: zipCode,
         source: isStandalone ? 'custom_calculator' : 'catalog_deal'
       });
     }
-  }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, isStandalone, onChange]);
+  }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, zipCode, isStandalone, onChange]);
 
   const totalIncentives = useMemo(() => {
     if (quoteData?.totalIncentivesCents !== undefined) {
       return quoteData.totalIncentivesCents / 100;
     }
-    return currentCar?.availableIncentives?.reduce((sum: number, inc: any) => {
+    return effectiveIncentives.reduce((sum: number, inc: any) => {
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
       if (selectedIncentives.includes(inc.id) || (isFtbIncentive && isFirstTimeBuyer)) {
         return sum + (inc.amount || 0);
       }
       return sum;
     }, 0) || 0;
-  }, [quoteData, currentCar, selectedIncentives, isFirstTimeBuyer]);
+  }, [quoteData, effectiveIncentives, selectedIncentives, isFirstTimeBuyer]);
 
   const marketAvgRatio = useMemo(() => {
     if (!currentCar || !currentCar.displayPayment) return 1.267;
@@ -662,7 +673,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 </button>
               </div>
 
-              {showIncentives && currentCar?.availableIncentives && (
+              {showIncentives && effectiveIncentives.length > 0 && (
                 <div className="space-y-4">
                   <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
                     <div className="text-xs font-bold text-blue-400">
@@ -733,7 +744,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           <IncentivesModal
             isOpen={isIncentivesModalOpen}
             onClose={() => setIsIncentivesModalOpen(false)}
-            deal={currentCar}
+            deal={{ ...currentCar, availableIncentives: effectiveIncentives }}
             selectedIncentives={selectedIncentives}
             toggleIncentive={toggleIncentive}
             isFirstTimeBuyer={isFirstTimeBuyer}
@@ -786,7 +797,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
 
           {/* Lender Comparison */}
-          {!isStandalone && lenderOptions.length > 0 && (
+          {lenderOptions.length > 0 && (
             <div className="pt-6 border-t border-[var(--b2)] space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest flex items-center gap-2">
@@ -820,7 +831,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     </div>
                     <div className="text-[10px] font-bold text-[var(--w)] uppercase truncate">{opt.lenderName}</div>
                     <div className="flex items-baseline gap-1 mt-1">
-                      <span className="text-lg font-display text-[var(--w)]">{fmt(opt.monthlyPayment)}</span>
+                      <span className="text-lg font-display text-[var(--w)]">{fmt(opt.monthlyPaymentCents / 100)}</span>
                       <span className="text-[8px] text-[var(--mu2)] font-bold uppercase tracking-widest">/mo</span>
                     </div>
                   </div>

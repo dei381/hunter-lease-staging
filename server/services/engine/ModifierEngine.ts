@@ -1,10 +1,4 @@
 export class ModifierEngine {
-  static applyMsd(mf: number, msdCount: number): number {
-    if (msdCount <= 0) return mf;
-    // Typical reduction is 0.00007 per MSD
-    return Math.max(0.00001, mf - (msdCount * 0.00007));
-  }
-
   static applyMileageAdjustment(rv: number, mileage?: number): number {
     let adjustedRv = rv;
     if (mileage === 12000) adjustedRv -= 0.01;

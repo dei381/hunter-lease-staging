@@ -98,32 +98,38 @@ export const DealCalculatorModal = ({
     const fetchQuote = async () => {
       if (!deal) return;
       
-      const vehicleId = deal.vehicleId || "camry-2025"; 
+      const vehicleId = deal.vehicleId; 
       const lenderId = deal.lenderId || "tfs";
 
       setIsCalculating(true);
       try {
+        const payload: any = {
+          lenderId,
+          config: {
+            type: calcType,
+            term: debouncedTerm,
+            downPaymentCents: debouncedDown * 100,
+            mileage: parseInt(debouncedMileage) * 1000,
+            creditTier: debouncedTier,
+            zipCode: '90210',
+            msdCount: debouncedMsdCount,
+            selectedIncentiveIds: debouncedSelectedIncentives,
+            isFirstTimeBuyer: debouncedIsFirstTimeBuyer,
+            make: deal?.make,
+            model: deal?.model,
+            trim: deal?.trim,
+            year: deal?.year
+          }
+        };
+        
+        if (vehicleId) {
+          payload.vehicleId = vehicleId;
+        }
+
         const response = await fetch('/api/v2/quote', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            vehicleId,
-            lenderId,
-            config: {
-              type: calcType,
-              term: debouncedTerm,
-              downPaymentCents: debouncedDown * 100,
-              mileage: parseInt(debouncedMileage) * 1000,
-              creditTier: debouncedTier,
-              zipCode: '90210',
-              msdCount: debouncedMsdCount,
-              selectedIncentiveIds: debouncedSelectedIncentives,
-              isFirstTimeBuyer: debouncedIsFirstTimeBuyer,
-              make: deal?.make,
-              model: deal?.model,
-              trim: deal?.trim
-            }
-          })
+          body: JSON.stringify(payload)
         });
 
         if (response.ok) {
@@ -144,8 +150,8 @@ export const DealCalculatorModal = ({
 
   const calculatedPayment = useMemo(() => {
     if (quoteResult) {
-      if (quoteResult.status === 'NO_PROGRAMS_AVAILABLE') return null;
-      return Math.round(quoteResult.monthlyPayment);
+      if (quoteResult.calcStatus === 'NO_PROGRAMS' || quoteResult.calcStatus === 'MISSING_MSRP') return null;
+      return Math.round((quoteResult.monthlyPaymentCents || 0) / 100);
     }
     return Number(deal?.displayPayment) || Number(deal?.payment) || 0;
   }, [quoteResult, deal]);

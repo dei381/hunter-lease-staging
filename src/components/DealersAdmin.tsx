@@ -31,20 +31,27 @@ export const DealersAdmin = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState<Partial<DealerPartner>>({});
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    fetchDealers();
-  }, []);
+    fetchDealers(page);
+  }, [page]);
 
-  const fetchDealers = async () => {
+  const fetchDealers = async (pageNum: number) => {
     try {
       const token = await getAuthToken();
-      const res = await fetch('/api/admin/dealers', {
+      const res = await fetch(`/api/admin/dealers?page=${pageNum}&limit=50`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setDealers(data);
+        if (data.data) {
+          setDealers(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setDealers(data);
+        }
       } else {
         throw new Error('Failed to fetch dealers');
       }
@@ -72,7 +79,7 @@ export const DealersAdmin = () => {
       });
 
       if (res.ok) {
-        await fetchDealers();
+        await fetchDealers(page);
         setEditingDealer(null);
         setIsAdding(false);
         setFormData({});
@@ -94,7 +101,7 @@ export const DealersAdmin = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        await fetchDealers();
+        await fetchDealers(page);
       } else {
         throw new Error('Failed to delete dealer');
       }

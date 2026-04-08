@@ -13,7 +13,6 @@ import { HappyClients } from '../components/HappyClients';
 import { FAQ } from '../components/FAQ';
 import { CaseStudies } from '../components/CaseStudies';
 import { TrustSection } from '../components/TrustSection';
-import { DealAuditor } from '../components/DealAuditor';
 import { DealerReviews } from '../components/DealerReviews';
 import { ImageGallery } from '../components/ImageGallery';
 import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon } from 'lucide-react';
@@ -21,11 +20,8 @@ import { cn } from '../utils/cn';
 
 import { CompareBar } from '../components/CompareBar';
 import { getCarImage, CarPhoto } from '../utils/carImage';
-import { PriceHistoryChart } from '../components/PriceHistoryChart';
 import { SmartPriceAlertModal } from '../components/SmartPriceAlertModal';
-import { GroupBuyingWidget } from '../components/GroupBuyingWidget';
-import { AINegotiatorModal } from '../components/AINegotiatorModal';
-import { Bell, Bot } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { toast } from 'react-hot-toast';
@@ -50,7 +46,6 @@ export const DealPage = () => {
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
-  const [isNegotiatorOpen, setIsNegotiatorOpen] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<any>(null);
   const handleCalculatorChange = React.useCallback((data: any) => {
     setSelectedConfig(data);
@@ -89,16 +84,16 @@ export const DealPage = () => {
     let savings5Years = 0;
     
     if (deal.fuelType === 'Electric') {
-      const kWhPerMile = (33.7 / deal.fuelEconomy.combined);
+      const kWhPerMile = (33.7 / (deal.fuelEconomy.combined || 100));
       monthlyCost = (milesPerYear / 12) * kWhPerMile * electricityPrice;
       const gasAlternativeCost = (milesPerYear / 12 / 25) * gasPrice;
       savings5Years = (gasAlternativeCost - monthlyCost) * 12 * 5;
     } else if (deal.fuelType === 'Hybrid' || deal.fuelType === 'PHEV') {
-      monthlyCost = (milesPerYear / 12 / deal.fuelEconomy.combined) * gasPrice;
+      monthlyCost = (milesPerYear / 12 / (deal.fuelEconomy.combined || 40)) * gasPrice;
       const gasAlternativeCost = (milesPerYear / 12 / 25) * gasPrice;
       savings5Years = (gasAlternativeCost - monthlyCost) * 12 * 5;
     } else {
-      monthlyCost = (milesPerYear / 12 / deal.fuelEconomy.combined) * gasPrice;
+      monthlyCost = (milesPerYear / 12 / (deal.fuelEconomy.combined || 25)) * gasPrice;
       savings5Years = 0;
     }
     
@@ -206,6 +201,7 @@ export const DealPage = () => {
         term: activeSelection.term || '36 mo',
         tier: activeSelection.tier || 'Tier 1',
         mileage: activeSelection.mileage || '10k',
+        zip: activeSelection.zip || '90210',
       },
       source: activeSelection.source || 'catalog_deal',
       createdAt: serverTimestamp(),
@@ -232,17 +228,6 @@ export const DealPage = () => {
 
       const { leadId: prismaLeadId } = responseData;
       
-      try {
-        await setDoc(doc(db, 'leads', prismaLeadId.toString()), {
-          ...payload,
-          prismaId: prismaLeadId,
-          status: 'pending',
-          updatedAt: serverTimestamp()
-        });
-      } catch (fsError) {
-        console.warn("Firestore backup failed, but backend succeeded:", fsError);
-      }
-
       setLeadId(prismaLeadId.toString());
       localStorage.setItem('leadId', prismaLeadId.toString());
       localStorage.setItem('activeSelection', JSON.stringify(activeSelection));
@@ -448,7 +433,7 @@ export const DealPage = () => {
                           {(td[category as keyof typeof td] as string) || category}
                         </div>
                         <ul className="space-y-3">
-                          {(Array.isArray(items) ? items : []).map((item: string, i: number) => (
+                          {Array.isArray(items) && items.map((item: string, i: number) => (
                             <li key={i} className="flex items-start gap-2 group">
                               <Check size={12} className="text-[var(--lime)] mt-0.5 shrink-0" />
                               <span className="text-xs text-[var(--mu)] group-hover:text-[var(--w)] transition-colors">{item}</span>
@@ -513,43 +498,53 @@ export const DealPage = () => {
                     <h3 className="font-display text-xl uppercase">{td.ownerVerdictTitle}</h3>
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2 text-[var(--lime)] text-[10px] font-bold uppercase tracking-widest">
-                        <ThumbsUp size={14} />
-                        {td.pros}
+                  {currentVerdict && typeof currentVerdict === 'object' ? (
+                    <>
+                      <div className="grid md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 text-[var(--lime)] text-[10px] font-bold uppercase tracking-widest">
+                            <ThumbsUp size={14} />
+                            {td.pros}
+                          </div>
+                          <ul className="space-y-2">
+                            {Array.isArray(currentVerdict.pros) && currentVerdict.pros.map((pro: string, i: number) => (
+                              <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
+                                <span className="text-[var(--lime)]">•</span>
+                                {pro}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold uppercase tracking-widest">
+                            <ThumbsDown size={14} />
+                            {td.cons}
+                          </div>
+                          <ul className="space-y-2">
+                            {Array.isArray(currentVerdict.cons) && currentVerdict.cons.map((con: string, i: number) => (
+                              <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
+                                <span className="text-red-500">•</span>
+                                {con}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                      <ul className="space-y-2">
-                        {(currentVerdict.pros || []).map((pro: string, i: number) => (
-                          <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
-                            <span className="text-[var(--lime)]">•</span>
-                            {pro}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold uppercase tracking-widest">
-                        <ThumbsDown size={14} />
-                        {td.cons}
-                      </div>
-                      <ul className="space-y-2">
-                        {(currentVerdict.cons || []).map((con: string, i: number) => (
-                          <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
-                            <span className="text-red-500">•</span>
-                            {con}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
 
-                  <div className="pt-6 border-t border-[var(--b2)]">
-                    <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-2">{td.summary}</div>
-                    <p className="text-sm text-[var(--w)] leading-relaxed italic">
-                      "{currentVerdict.summary || currentVerdict}"
-                    </p>
-                  </div>
+                      <div className="pt-6 border-t border-[var(--b2)]">
+                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-2">{td.summary}</div>
+                        <p className="text-sm text-[var(--w)] leading-relaxed italic">
+                          "{currentVerdict.summary}"
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="pt-2">
+                      <p className="text-sm text-[var(--w)] leading-relaxed italic">
+                        "{String(currentVerdict)}"
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -723,36 +718,6 @@ export const DealPage = () => {
                   </AnimatePresence>
                 </div>
               </div>
-
-              {/* Price History Chart */}
-              <div className="mt-8">
-                <PriceHistoryChart make={deal.make} model={deal.model} />
-              </div>
-
-              {/* AI Negotiator Banner */}
-              <div className="mt-8 bg-[var(--s2)] border border-[var(--b2)] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center shrink-0 border border-[var(--lime)]/20">
-                    <Bot size={24} className="text-[var(--lime)]" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-widest mb-1">
-                      {language === 'ru' ? 'Нашли эту машину у дилера?' : 'Found this car at a local dealer?'}
-                    </h3>
-                    <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest leading-relaxed">
-                      {language === 'ru' 
-                        ? 'Позвольте нашему AI написать идеальный контр-оффер, чтобы сбить цену.' 
-                        : 'Let our AI write the perfect counter-offer script to negotiate the best price.'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsNegotiatorOpen(true)}
-                  className="w-full sm:w-auto px-6 py-3 bg-[var(--b1)] border border-[var(--b2)] hover:border-[var(--lime)] text-[var(--w)] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors shrink-0 whitespace-nowrap"
-                >
-                  {language === 'ru' ? 'Запустить AI' : 'Launch AI Negotiator'}
-                </button>
-              </div>
             </div>
 
             {/* Right Column: Calculator */}
@@ -774,14 +739,6 @@ export const DealPage = () => {
                     initialIsFirstTimeBuyer={isFirstTimeBuyer}
                     initialHasCosigner={hasCosigner}
                   />
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.3 }}
-                >
-                  <GroupBuyingWidget make={deal.make} model={deal.model} />
                 </motion.div>
               </div>
             </div>
@@ -835,72 +792,6 @@ export const DealPage = () => {
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 2. Comparison */}
-        <section className="bg-[var(--s1)] py-32 border-y border-[var(--b2)]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16 space-y-4">
-              <h2 className="font-display text-4xl md:text-6xl uppercase">
-                {td.compTitle} <span className="text-[var(--mu2)]">{td.compVs}</span> {td.compSubtitle}
-              </h2>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Retail Column */}
-              <div className="bg-[var(--s2)] border border-[var(--b2)] p-8 rounded-2xl space-y-8 opacity-60">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-2xl uppercase">{td.retailDealer}</h3>
-                  <X className="text-red-500" size={24} />
-                </div>
-                <ul className="space-y-4">
-                  {td.retailPoints.map((item: string, i: number) => (
-                    <li key={i} className="flex items-center gap-3 text-[var(--mu2)] text-xs">
-                      <div className="w-1 h-1 rounded-full bg-red-500/50" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Hunter Column */}
-              <div className="bg-[var(--s2)] border border-[var(--lime)]/20 p-8 rounded-2xl space-y-8 relative">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-2xl uppercase">Hunter Lease</h3>
-                  <Check className="text-[var(--lime)]" size={24} />
-                </div>
-                <ul className="space-y-4">
-                  {td.hunterPoints.map((item: string, i: number) => (
-                    <li key={i} className="flex items-center gap-3 text-[var(--w)] text-xs font-medium">
-                      <div className="w-1 h-1 rounded-full bg-[var(--lime)]" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <div className="pt-6 border-t border-[var(--b2)]">
-                  <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest mb-1">{td.yourSavings}</div>
-                  <div className="font-mono text-3xl text-[var(--lime)] font-bold">${Math.max(0, (deal.savings || 0) + (deal.leaseCash || 0) + (deal.rebates || 0) + (deal.discount || 0)).toLocaleString()}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 3. Auditor */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row gap-16 items-center">
-            <div className="lg:w-1/2 space-y-6">
-              <h2 className="font-display text-4xl md:text-6xl uppercase">
-                {td.auditorTitle} <span className="text-[var(--mu2)]">{td.auditorSubtitle}</span>
-              </h2>
-              <p className="text-lg text-[var(--mu)] leading-relaxed">
-                {td.auditorText}
-              </p>
-            </div>
-            <div className="lg:w-1/2 w-full">
-              <DealAuditor />
             </div>
           </div>
         </section>
@@ -982,20 +873,15 @@ export const DealPage = () => {
         model={deal.model}
       />
 
-      <AINegotiatorModal
-        isOpen={isNegotiatorOpen}
-        onClose={() => setIsNegotiatorOpen(false)}
-      />
-
       {/* Mobile Sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
         <div className="flex flex-col">
           <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">{selectedConfig?.type === 'finance' ? (language === 'ru' ? 'Платеж по кредиту' : 'Finance Payment') : t.calc.leasePayment}</div>
           <div className="flex items-baseline gap-1">
-            <span className="font-display text-2xl text-[var(--w)] leading-none">${selectedConfig?.payment || deal.leasePay}</span>
+            <span className="font-display text-2xl text-[var(--w)] leading-none">${selectedConfig?.payment || deal.payment}</span>
             <span className="text-[10px] text-[var(--mu2)]">/mo</span>
           </div>
-          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${selectedConfig?.down !== undefined ? selectedConfig.down : deal.dueAtSigning} due</div>
+          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${selectedConfig?.down !== undefined ? selectedConfig.down : deal.down} due</div>
         </div>
         <button 
           onClick={() => handleProceed(selectedConfig || deal)}

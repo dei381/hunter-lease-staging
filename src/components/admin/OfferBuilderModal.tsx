@@ -189,6 +189,13 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
           lenderId: selectedLenderId,
           programId: selectedProgramId,
           incentives: selectedIncentives.map(i => ({ name: i.name, amount: i.amountCents / 100 })),
+          availableIncentives: availableIncentives.map(i => ({
+            id: i.id,
+            name: i.name,
+            amount: i.amountCents / 100,
+            type: i.type,
+            isDefault: selectedIncentives.some(si => si.id === i.id)
+          })),
           dealerDiscount,
           image: selectedMediaId ? media.find(m => m.id === selectedMediaId)?.url : undefined
         };
@@ -250,6 +257,13 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
         lenderId: selectedLenderId,
         programId: selectedProgramId,
         incentives: selectedIncentives.map(i => ({ name: i.name, amount: i.amountCents / 100 })),
+        availableIncentives: availableIncentives.map(i => ({
+          id: i.id,
+          name: i.name,
+          amount: i.amountCents / 100,
+          type: i.type,
+          isDefault: selectedIncentives.some(si => si.id === i.id)
+        })),
         dealerDiscount,
         image: selectedMediaId ? media.find(m => m.id === selectedMediaId)?.url : undefined
       };

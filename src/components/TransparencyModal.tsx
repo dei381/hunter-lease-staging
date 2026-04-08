@@ -38,32 +38,37 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
   const t = translations[language].transparency;
   const tc = translations[language].calc;
 
-  if (!isOpen || !deal || !quoteResult) return null;
+  if (!isOpen || !deal) return null;
 
-  const calc = quoteResult;
+  const isFinance = quoteResult?.quoteType === 'FINANCE' || quoteResult?.quoteType === 'finance' || deal.displayType === 'FINANCE' || deal.type === 'FINANCE';
   
-  const msrp = calc.msrpCents / 100;
-  const leaseCash = calc.totalIncentivesCents / 100;
-  const taxRate = calc.taxes?.rate || ((Number(settings.taxRateDefault) || 8.875) / 100);
+  const msrp = quoteResult ? quoteResult.msrpCents / 100 : Number(deal.msrp) || 0;
+  const leaseCash = quoteResult ? quoteResult.totalIncentivesCents / 100 : Number(deal.rebates) || 0;
+  const taxRate = quoteResult?.taxes?.rate || ((Number(settings.taxRateDefault) || 8.875) / 100);
   const term = parseInt(deal.displayTerm || deal.term) || 36;
-  const isFinance = quoteResult.quoteType === 'FINANCE' || quoteResult.quoteType === 'finance' || deal.displayType === 'FINANCE' || deal.type === 'FINANCE';
-  const totalDas = calc.dueAtSigningCents / 100;
-  const sellingPrice = calc.sellingPriceCents / 100;
+  const totalDas = quoteResult ? quoteResult.dueAtSigningCents / 100 : Number(deal.down) || 0;
+  const sellingPrice = quoteResult ? quoteResult.sellingPriceCents / 100 : msrp - (Number(deal.savings) || 0) - leaseCash;
   
-  const rvAmt = calc.residualValueCents / 100;
-  const rvPct = rvAmt / msrp;
+  const rvPct = quoteResult ? (quoteResult.residualValueCents / 100 / msrp) : Number(deal.rv) || 0;
+  const rvAmt = quoteResult ? quoteResult.residualValueCents / 100 : msrp * rvPct;
   
-  const mf = calc.appliedMf || 0;
-  const apr = calc.appliedApr || 0;
+  const mf = quoteResult ? quoteResult.appliedMf : Number(deal.mf) || 0;
+  const apr = quoteResult ? quoteResult.appliedApr : Number(deal.apr) || 0;
   
-  const totalPayment = calc.monthlyPaymentCents / 100;
-  const basePayment = totalPayment / (1 + taxRate);
+  const totalPayment = quoteResult ? quoteResult.monthlyPaymentCents / 100 : Number(deal.displayPayment || deal.payment) || 0;
+  const basePayment = quoteResult?.taxes?.monthlyTaxCents !== undefined 
+    ? (quoteResult.monthlyPaymentCents - quoteResult.taxes.monthlyTaxCents) / 100 
+    : totalPayment / (1 + taxRate);
   
-  const feesList = calc.fees ? [
-    { name: 'Doc Fee', amountCents: calc.fees.docFeeCents || 0 },
-    { name: 'DMV Fee', amountCents: calc.fees.dmvFeeCents || 0 },
-    { name: 'Broker Fee', amountCents: calc.fees.brokerFeeCents || 0 }
-  ].filter(f => f.amountCents > 0) : [];
+  const feesList = quoteResult?.fees ? [
+    { name: 'Doc Fee', amountCents: quoteResult.fees.docFeeCents || 0 },
+    { name: 'DMV Fee', amountCents: quoteResult.fees.dmvFeeCents || 0 },
+    { name: 'Broker Fee', amountCents: quoteResult.fees.brokerFeeCents || 0 }
+  ].filter(f => f.amountCents > 0) : [
+    { name: 'Doc Fee', amountCents: (Number((settings as any).docFee) || 85) * 100 },
+    { name: 'DMV Fee', amountCents: (Number((settings as any).dmvFee) || 400) * 100 },
+    { name: 'Broker Fee', amountCents: (Number((settings as any).brokerFee) || 595) * 100 }
+  ];
 
   const firstPayment = isFinance ? 0 : totalPayment;
 
@@ -154,14 +159,14 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                         </div>
                       );
                     })}
-                    {calc.dasBreakdown?.downPaymentCents !== 0 && (
+                    {quoteResult?.dasBreakdown?.downPaymentCents !== 0 && (
                       <div className="flex justify-between text-xs">
-                        <Tooltip text={calc.dasBreakdown?.downPaymentCents > 0 ? "Cash Down Payment" : "Costs Rolled into Monthly Payment or Covered by Trade-In"}>
+                        <Tooltip text={quoteResult?.dasBreakdown?.downPaymentCents > 0 ? "Cash Down Payment" : "Costs Rolled into Monthly Payment or Covered by Trade-In"}>
                           <span className="text-[var(--mu2)] border-b border-dashed border-[var(--mu2)]">
-                            {calc.dasBreakdown?.downPaymentCents > 0 ? "Cash Down" : "Rolled-in / Covered Costs"}
+                            {quoteResult?.dasBreakdown?.downPaymentCents > 0 ? "Cash Down" : "Rolled-in / Covered Costs"}
                           </span>
                         </Tooltip>
-                        <span className="text-black font-medium">{fmt(calc.dasBreakdown.downPaymentCents / 100)}</span>
+                        <span className="text-black font-medium">{fmt((quoteResult?.dasBreakdown?.downPaymentCents || 0) / 100)}</span>
                       </div>
                     )}
                     {!isFinance && (
@@ -170,20 +175,20 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                         <span className="text-black font-medium">{fmt(firstPayment)}</span>
                       </div>
                     )}
-                    {!isFinance && calc.dasBreakdown?.upfrontTaxesCents > 0 && (
+                    {!isFinance && quoteResult?.dasBreakdown?.upfrontTaxesCents > 0 && (
                       <div className="flex justify-between text-xs">
                         <Tooltip text="Taxes on Down Payment and Incentives (CCR)">
                           <span className="text-[var(--mu2)] border-b border-dashed border-[var(--mu2)]">Upfront Taxes</span>
                         </Tooltip>
-                        <span className="text-black font-medium">{fmt(calc.dasBreakdown.upfrontTaxesCents / 100)}</span>
+                        <span className="text-black font-medium">{fmt(quoteResult.dasBreakdown.upfrontTaxesCents / 100)}</span>
                       </div>
                     )}
-                    {!isFinance && calc.dasBreakdown?.msdAmountCents > 0 && (
+                    {!isFinance && quoteResult?.dasBreakdown?.msdAmountCents > 0 && (
                       <div className="flex justify-between text-xs">
                         <Tooltip text="Multiple Security Deposits (Refundable)">
                           <span className="text-[var(--mu2)] border-b border-dashed border-[var(--mu2)]">MSD Amount</span>
                         </Tooltip>
-                        <span className="text-black font-medium">{fmt(calc.dasBreakdown.msdAmountCents / 100)}</span>
+                        <span className="text-black font-medium">{fmt(quoteResult.dasBreakdown.msdAmountCents / 100)}</span>
                       </div>
                     )}
                     <div className="pt-3 border-t border-[var(--b1)] flex justify-between items-end">
@@ -253,7 +258,7 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                           <Tooltip text="Acquisition Fee (Rolled into monthly payment)">
                             <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest border-b border-dashed border-[var(--mu2)]">Acq Fee</span>
                           </Tooltip>
-                          <span className="text-sm font-bold text-black">{fmt((calc.fees?.acqFeeCents || 0) / 100)}</span>
+                          <span className="text-sm font-bold text-black">{fmt((quoteResult?.fees?.acqFeeCents || 0) / 100)}</span>
                         </div>
                         <div className="flex justify-between items-center pt-4 border-t border-[var(--b1)]">
                           <Tooltip text={t.tooltips.residualValue}>

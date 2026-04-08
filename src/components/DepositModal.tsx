@@ -9,6 +9,11 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { toast } from 'react-hot-toast';
 
+import { QRCodeSVG } from 'qrcode.react';
+
+import { DocumentUploader } from './DocumentUploader';
+import { StripePaymentForm } from './StripePaymentForm';
+
 export const DepositModal = ({ 
   isOpen, 
   onClose, 
@@ -33,7 +38,8 @@ export const DepositModal = ({
   const t = translations[language].deposit;
 
   const [step, setStep] = useState(1);
-  const [isVipSelected, setIsVipSelected] = useState(false);
+  const [waitingStatus, setWaitingStatus] = useState(0);
+  const [showQrCode, setShowQrCode] = useState(false);
   const [creditAppData, setCreditAppData] = useState({
     firstName: '',
     lastName: '',
@@ -59,31 +65,30 @@ export const DepositModal = ({
   });
   const [isCreditAppSubmitting, setIsCreditAppSubmitting] = useState(false);
   const [isCreditAppSuccess, setIsCreditAppSuccess] = useState(false);
-  const [creditAppStep, setCreditAppStep] = useState(1);
+  const [creditAppStep, setCreditAppStep] = useState(0);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [consentAccepted, setConsentAccepted] = useState(false);
-
-  // 700Credit soft pull state
   const [creditCheckConsent, setCreditCheckConsent] = useState(false);
   const [creditCheckData, setCreditCheckData] = useState({ ssnLast4: '', dob: '', address: '', city: '', state: '', zip: '' });
-  const [isCreditCheckRunning, setIsCreditCheckRunning] = useState(false);
-  const [creditCheckResult, setCreditCheckResult] = useState<{ creditBand?: string; scoreRange?: string; tier?: string; score?: number } | null>(null);
+  const [creditCheckResult, setCreditCheckResult] = useState<any>(null);
   const [creditCheckError, setCreditCheckError] = useState('');
+  const [isCreditCheckRunning, setIsCreditCheckRunning] = useState(false);
 
   // Reset step when modal opens
   useEffect(() => {
     if (isOpen) {
       if (leadId) {
-        setStep(3);
+        setStep(2);
       } else {
         setStep(1);
       }
-      setCreditAppStep(1);
+      setCreditAppStep(0);
       setPolicyAccepted(false);
       setConsentAccepted(false);
       setIsConfirmed(false);
-      setIsVipSelected(false);
       setIsCreditAppSuccess(false);
+      setWaitingStatus(0);
+      setShowQrCode(false);
       setCreditCheckConsent(false);
       setCreditCheckData({ ssnLast4: '', dob: '', address: '', city: '', state: '', zip: '' });
       setCreditCheckResult(null);
@@ -114,25 +119,26 @@ export const DepositModal = ({
     }
   }, [isOpen, clientInfo]);
 
-  if (!isOpen) return null;
-
-  const handleNext = () => {
-    if (step === 1 && clientInfo.name && clientInfo.phone && clientInfo.email) {
-      setStep(2);
+  useEffect(() => {
+    if (isCreditAppSuccess) {
+      const t1 = setTimeout(() => setWaitingStatus(1), 2500);
+      const t2 = setTimeout(() => setWaitingStatus(2), 5500);
+      const t3 = setTimeout(() => setWaitingStatus(3), 9000);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }
-  };
+  }, [isCreditAppSuccess]);
+
+  if (!isOpen) return null;
 
   const handleSubmit = async () => {
     const success = await onConfirm();
     if (success) {
-      setStep(3);
+      if (payMethod === 's') {
+        setStep(1.5); // Stripe payment step
+      } else {
+        setStep(2); // Credit app step
+      }
     }
-  };
-
-  const handleVipUpgrade = () => {
-    setIsVipSelected(true);
-    // In a real app, this would trigger another payment or update the lead
-    setStep(4);
   };
 
   const handleCreditCheck = async () => {
@@ -140,7 +146,6 @@ export const DepositModal = ({
     setIsCreditCheckRunning(true);
     setCreditCheckError('');
     try {
-      // Step 1: Record consent
       const consentRes = await fetch('/api/credit/consent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,8 +153,6 @@ export const DepositModal = ({
       });
       const consentData = await consentRes.json();
       if (!consentRes.ok) throw new Error(consentData.error || 'Failed to record consent');
-
-      // Step 2: Execute soft pull
       const pullRes = await fetch('/api/credit/soft-pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -169,9 +172,9 @@ export const DepositModal = ({
       });
       const pullData = await pullRes.json();
       if (!pullRes.ok) throw new Error(pullData.error || 'Failed to run credit check');
-      
       setCreditCheckResult(pullData);
       toast.success('Credit check completed!');
+      setCreditAppStep(1);
     } catch (err: any) {
       setCreditCheckError(err.message || 'Credit check failed');
       toast.error(err.message || 'Credit check failed');
@@ -262,7 +265,7 @@ export const DepositModal = ({
         <div className="flex-1 p-4 md:p-12 flex flex-col relative overflow-hidden bg-white">
           <div className="absolute top-0 left-0 -mt-20 -ml-20 w-64 h-64 bg-[var(--lime)]/5 rounded-full blur-3xl pointer-events-none" />
           
-          {step < 3 && (
+          {step < 2 && (
             <div className="mb-10 relative z-10">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
@@ -286,10 +289,17 @@ export const DepositModal = ({
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
-                className="flex-1 relative z-10"
+                className="flex-1 relative z-10 overflow-y-auto max-h-[70vh] pr-4 custom-scrollbar"
               >
-                <h2 className="font-display text-4xl mb-2">{t.contactAndTradeIn}</h2>
-                <p className="text-[var(--mu2)] text-base mb-8">{t.contactAndTradeInDesc}</p>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-4xl">{t.contactAndTradeIn}</h2>
+                  <div className="bg-[var(--lime)] text-white px-4 py-2 rounded-xl font-display text-2xl tracking-widest shadow-lg shadow-[var(--lime)]/20">
+                    $95
+                  </div>
+                </div>
+                <p className="text-[var(--mu2)] text-base mb-8">
+                  {carName ? t.depositDescCatalog : t.depositDescCalc}
+                </p>
                 
                 <div className="grid md:grid-cols-2 gap-6 mb-8">
                   <div className="space-y-6">
@@ -323,9 +333,7 @@ export const DepositModal = ({
                         placeholder="john@example.com" 
                       />
                     </div>
-                  </div>
 
-                  <div className="space-y-6">
                     <div className="space-y-4">
                       <label className="flex items-start gap-3 cursor-pointer group">
                         <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${clientInfo.tcpaConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-[var(--s1)] group-hover:border-[var(--lime)]'}`}>
@@ -348,96 +356,82 @@ export const DepositModal = ({
                       </label>
                     </div>
 
-                    <div className="p-5 border border-[var(--b2)] rounded-2xl bg-[var(--s1)]/50">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${tradeIn.hasTradeIn ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
-                          {tradeIn.hasTradeIn && <CheckCircle2 size={14} className="text-black" />}
-                        </div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">{t.hasTradeIn}</span>
-                        <input type="checkbox" className="hidden" checked={tradeIn.hasTradeIn} onChange={(e) => setTradeIn({...tradeIn, hasTradeIn: e.target.checked})} />
-                      </label>
-
-                      {tradeIn.hasTradeIn && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          className="mt-6 space-y-4"
-                        >
-                          <div className="grid grid-cols-2 gap-3">
-                            <input type="text" value={tradeIn.make} onChange={e => setTradeIn({...tradeIn, make: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder={t.make} />
-                            <input type="text" value={tradeIn.model} onChange={e => setTradeIn({...tradeIn, model: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder={t.model} />
-                            <input type="text" value={tradeIn.year} onChange={e => setTradeIn({...tradeIn, year: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder={t.year} />
-                            <input type="text" value={tradeIn.mileage} onChange={e => setTradeIn({...tradeIn, mileage: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder={t.mileage} />
+                    {/* Conditional Trade-In */}
+                    {!tradeIn.make && (
+                      <div className="pt-4 border-t border-[var(--b2)]">
+                        <label className="flex items-center gap-3 cursor-pointer group mb-4">
+                          <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${tradeIn.hasTradeIn ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-[var(--s1)] group-hover:border-[var(--lime)]'}`}>
+                            {tradeIn.hasTradeIn && <CheckCircle2 size={14} className="text-black" />}
                           </div>
-                          <input type="text" value={tradeIn.vin} onChange={e => setTradeIn({...tradeIn, vin: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all font-mono" placeholder={t.vin} />
-                        </motion.div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                          <span className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.hasTradeIn}</span>
+                          <input type="checkbox" className="hidden" checked={tradeIn.hasTradeIn} onChange={(e) => setTradeIn({...tradeIn, hasTradeIn: e.target.checked})} />
+                        </label>
 
-                <button 
-                  disabled={!clientInfo.name || !clientInfo.phone || !clientInfo.email || !clientInfo.tcpaConsent || !clientInfo.termsConsent}
-                  onClick={handleNext}
-                  className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
-                >
-                  {t.nextStep} <ChevronRight size={18} />
-                </button>
-              </motion.div>
-            )}
-
-            {step === 2 && (
-              <motion.div 
-                key="step2"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="flex-1 relative z-10"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display text-4xl">{t.depositTitle}</h2>
-                  <div className="bg-[var(--lime)] text-white px-4 py-2 rounded-xl font-display text-2xl tracking-widest shadow-lg shadow-[var(--lime)]/20">
-                    $95
-                  </div>
-                </div>
-                <p className="text-[var(--mu2)] text-base mb-8">{t.depositDesc}</p>
-                
-                <div className="grid md:grid-cols-2 gap-6 mb-8">
-                  <div className="space-y-4">
-                    <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.paymentMethod}</label>
-                    {(['z', 'v', 'c'] as const).map(m => (
-                      <button 
-                        key={m}
-                        onClick={() => setPayMethod(m)}
-                        className={`flex items-center justify-between p-4 rounded-xl border transition-all ${payMethod === m ? 'border-[var(--lime)] bg-[var(--lime)]/5' : 'border-[var(--b2)] bg-white hover:border-[var(--b3)]'}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{m === 'z' ? '💚' : m === 'v' ? '💙' : '💵'}</span>
-                          <div className="text-left">
-                            <div className="text-xs font-bold">{m === 'z' ? 'Zelle' : m === 'v' ? 'Venmo' : 'Cash App'}</div>
-                            <div className="text-[9px] text-[var(--mu)] font-mono mt-0.5">
-                              {m === 'z' ? '279-208-5707' : m === 'v' ? '@cargwin' : '$cargwin'}
+                        {tradeIn.hasTradeIn && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.make}</label>
+                                <input type="text" value={tradeIn.make} onChange={e => setTradeIn({...tradeIn, make: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.model}</label>
+                                <input type="text" value={tradeIn.model} onChange={e => setTradeIn({...tradeIn, model: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${payMethod === m ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b2)]'}`}>
-                          {payMethod === m && <CheckCircle2 size={12} className="text-black" />}
-                        </div>
-                      </button>
-                    ))}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.year}</label>
+                                <input type="text" value={tradeIn.year} onChange={e => setTradeIn({...tradeIn, year: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.mileage}</label>
+                                <input type="text" value={tradeIn.mileage} onChange={e => setTradeIn({...tradeIn, mileage: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-6">
-                    <div>
-                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.senderName}</label>
-                      <input 
-                        type="text" 
-                        value={paymentName} 
-                        onChange={e => setPaymentName(e.target.value)} 
-                        className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
-                        placeholder="e.g., John Smith" 
-                      />
+                    <div className="space-y-4">
+                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.paymentMethod}</label>
+                      {(['s', 'z', 'c'] as const).map(m => (
+                        <button 
+                          key={m}
+                          onClick={() => setPayMethod(m)}
+                          className={`flex items-center justify-between p-4 rounded-xl border transition-all w-full ${payMethod === m ? 'border-[var(--lime)] bg-[var(--lime)]/5' : 'border-[var(--b2)] bg-white hover:border-[var(--b3)]'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{m === 's' ? '💳' : m === 'z' ? '💚' : '💵'}</span>
+                            <div className="text-left">
+                              <div className="text-xs font-bold">{m === 's' ? 'Credit Card (Stripe)' : m === 'z' ? 'Zelle' : 'Cash App'}</div>
+                              <div className="text-[9px] text-[var(--mu)] font-mono mt-0.5">
+                                {m === 's' ? 'Secure Payment' : m === 'z' ? '279-208-5707' : '$cargwin'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${payMethod === m ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b2)]'}`}>
+                            {payMethod === m && <CheckCircle2 size={12} className="text-black" />}
+                          </div>
+                        </button>
+                      ))}
                     </div>
+
+                    {payMethod !== 's' && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.senderName}</label>
+                        <input 
+                          type="text" 
+                          value={paymentName} 
+                          onChange={e => setPaymentName(e.target.value)} 
+                          className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
+                          placeholder="e.g., John Smith" 
+                        />
+                      </div>
+                    )}
 
                     <div className="flex gap-3 items-start cursor-pointer bg-[var(--s1)]/50 p-4 rounded-xl border border-[var(--b2)] hover:border-[var(--lime)]/50 transition-colors" onClick={() => setIsConfirmed(!isConfirmed)}>
                       <div className={`w-5 h-5 rounded border shrink-0 mt-0.5 flex items-center justify-center transition-colors ${isConfirmed ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
@@ -448,10 +442,10 @@ export const DepositModal = ({
 
                     <div className="mt-4 p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
                       <div className="flex gap-3">
-                        <Info size={16} className="text-[var(--lime)] shrink-0 mt-0.5" />
+                        <ShieldCheck size={16} className="text-[var(--lime)] shrink-0 mt-0.5" />
                         <div>
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)] mb-1">{translations[language].legal.refundTitle}</div>
-                          <p className="text-[9px] text-[var(--mu2)] leading-relaxed">{translations[language].legal.refundText}</p>
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)] mb-1">{t.refundGuaranteeTitle}</div>
+                          <p className="text-[9px] text-[var(--mu2)] leading-relaxed">{t.refundGuaranteeDesc}</p>
                         </div>
                       </div>
                     </div>
@@ -459,7 +453,7 @@ export const DepositModal = ({
                 </div>
 
                 <button 
-                  disabled={!isConfirmed || isSubmitting || !paymentName}
+                  disabled={!clientInfo.name || !clientInfo.phone || !clientInfo.email || !clientInfo.tcpaConsent || !clientInfo.termsConsent || !isConfirmed || isSubmitting || (payMethod !== 's' && !paymentName)}
                   onClick={handleSubmit}
                   className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                 >
@@ -468,187 +462,86 @@ export const DepositModal = ({
               </motion.div>
             )}
 
-            {step === 3 && (
+            {step === 1.5 && (
               <motion.div 
-                key="step3"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex-1 flex flex-col items-center justify-center text-center py-6 relative z-10"
+                key="step1.5"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="flex-1 relative z-10"
               >
-                <div className="w-16 h-16 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mb-6">
-                  <CheckCircle2 size={32} className="text-[var(--lime)]" />
-                </div>
-                <h2 className="font-display text-4xl mb-2">{t.acceptedTitle}</h2>
-                <p className="text-[var(--mu2)] text-sm mb-8 max-w-md leading-relaxed" dangerouslySetInnerHTML={{ __html: t.acceptedDesc }} />
-
-                {/* 700Credit Soft Pull Section */}
-                {leadId && !creditCheckResult && (
-                  <div className="w-full max-w-md mb-8 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 text-left">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-[var(--lime)]/10 rounded-xl flex items-center justify-center">
-                        <ShieldCheck size={20} className="text-[var(--lime)]" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold">700Credit Check</h3>
-                        <p className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-bold">Soft Pull — No Impact on Your Score</p>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-[var(--mu2)] leading-relaxed mb-4">
-                      A soft credit inquiry helps us find you the best rates. This will NOT affect your credit score.
-                    </p>
-                    <div className="space-y-3 mb-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <input type="date" value={creditCheckData.dob} onChange={e => setCreditCheckData({...creditCheckData, dob: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="Date of Birth" />
-                        <input type="text" maxLength={4} value={creditCheckData.ssnLast4} onChange={e => setCreditCheckData({...creditCheckData, ssnLast4: e.target.value.replace(/\D/g, '').slice(0, 4)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all font-mono" placeholder="SSN last 4" />
-                      </div>
-                      <input type="text" value={creditCheckData.address} onChange={e => setCreditCheckData({...creditCheckData, address: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="Street Address" />
-                      <div className="grid grid-cols-3 gap-3">
-                        <input type="text" value={creditCheckData.city} onChange={e => setCreditCheckData({...creditCheckData, city: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="City" />
-                        <input type="text" maxLength={2} value={creditCheckData.state} onChange={e => setCreditCheckData({...creditCheckData, state: e.target.value.toUpperCase().slice(0, 2)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="State" />
-                        <input type="text" maxLength={5} value={creditCheckData.zip} onChange={e => setCreditCheckData({...creditCheckData, zip: e.target.value.replace(/\D/g, '').slice(0, 5)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] transition-all" placeholder="ZIP" />
-                      </div>
-                    </div>
-                    <label className="flex items-start gap-3 cursor-pointer group mb-4">
-                      <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${creditCheckConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
-                        {creditCheckConsent && <CheckCircle2 size={14} className="text-black" />}
-                      </div>
-                      <span className="text-[9px] text-[var(--mu2)] leading-relaxed">
-                        I authorize Hunter Lease to obtain my credit report through a soft inquiry via 700Credit. I understand this will not affect my credit score.
-                      </span>
-                      <input type="checkbox" className="hidden" checked={creditCheckConsent} onChange={(e) => setCreditCheckConsent(e.target.checked)} />
-                    </label>
-                    {creditCheckError && <p className="text-red-500 text-xs mb-3">{creditCheckError}</p>}
-                    <button
-                      onClick={handleCreditCheck}
-                      disabled={!creditCheckConsent || !creditCheckData.ssnLast4 || !creditCheckData.dob || isCreditCheckRunning}
-                      className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
-                    >
-                      {isCreditCheckRunning ? 'Running Credit Check...' : 'Check My Credit'}
-                      <ShieldCheck size={16} />
-                    </button>
+                <div className="mb-8">
+                  <div className="w-12 h-12 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mb-4">
+                    <span className="text-2xl">💳</span>
                   </div>
-                )}
-
-                {/* 700Credit Result */}
-                {creditCheckResult && (
-                  <div className="w-full max-w-md mb-8 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-2xl p-6 text-center">
-                    <ShieldCheck size={24} className="text-[var(--lime)] mx-auto mb-3" />
-                    <h3 className="text-sm font-bold mb-1">Credit Check Complete</h3>
-                    <div className="text-2xl font-display text-[var(--lime)] mb-1">{creditCheckResult.creditBand || creditCheckResult.tier || 'N/A'}</div>
-                    <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{creditCheckResult.scoreRange || ''}</p>
-                  </div>
-                )}
-                
-                <div className="flex flex-col gap-4 w-full max-w-md mb-8">
-                  <button 
-                    onClick={() => setStep(5)}
-                    className="w-full bg-[var(--lime)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[var(--lime)]/20"
-                  >
-                    <FileText size={18} /> {type === 'lease' ? t.startLeaseApp : t.startCreditApp}
-                  </button>
-                  
-                  {!user && (
-                    <button 
-                      onClick={() => {
-                        setAuthEmail(clientInfo.email);
-                        setIsAuthModalOpen(true);
-                      }}
-                      className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5"
-                    >
-                      <Lock size={18} /> {translations[language].calc.createAccount}
-                    </button>
-                  )}
-
-                  <button 
-                    onClick={onClose}
-                    className="w-full bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all"
-                  >
-                    {t.close}
-                  </button>
+                  <h2 className="font-display text-3xl mb-2">Secure Payment</h2>
+                  <p className="text-[var(--mu2)] text-sm">
+                    Complete your $95 refundable deposit to lock in this deal.
+                  </p>
                 </div>
 
-                {/* VIP Upsell */}
-                <div className="w-full bg-[var(--s1)] border border-[var(--lime)]/30 rounded-3xl p-8 mb-8 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Zap className="w-24 h-24 text-[var(--lime)]" />
-                  </div>
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-center gap-2 mb-4">
-                      <Zap className="w-4 h-4 text-[var(--lime)]" />
-                      <span className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">{pt.upgradeToVip}</span>
-                    </div>
-                    <h3 className="font-display text-3xl mb-2">{pt.upgradePrice}</h3>
-                    <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-6">{pt.upgradeDesc}</p>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                      {pt.vipFeatures.map((f: string, i: number) => (
-                        <div key={i} className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-left">
-                          <CheckCircle2 size={10} className="text-[var(--lime)]" />
-                          {f}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-col gap-3">
-                      <button 
-                        onClick={handleVipUpgrade}
-                        className="w-full bg-[var(--lime)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-lg shadow-[var(--lime)]/20"
-                      >
-                        {pt.upgradeToVip}
-                      </button>
-                      <button 
-                        onClick={onClose}
-                        className="text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--w)] transition-colors"
-                      >
-                        {pt.skipUpgrade}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <StripePaymentForm 
+                  leadId={leadId || localStorage.getItem('leadId') || ''} 
+                  amount={95}
+                  onSuccess={() => setStep(2)}
+                  onError={(err) => toast.error(`Payment failed: ${err}`)}
+                />
               </motion.div>
             )}
 
-            {step === 4 && (
+            {step === 2 && (
               <motion.div 
-                key="step4"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex-1 flex flex-col items-center justify-center text-center py-12 relative z-10"
-              >
-                <div className="w-20 h-20 bg-[var(--teal)]/20 rounded-full flex items-center justify-center mb-8">
-                  <Crown size={40} className="text-[var(--teal)]" />
-                </div>
-                <h2 className="font-display text-5xl mb-4">{t.vipActivatedTitle}</h2>
-                <p className="text-[var(--mu2)] text-base mb-12 max-w-md leading-relaxed">
-                  {t.vipActivatedDesc}
-                </p>
-                
-                <div className="flex flex-col gap-4 w-full max-w-xs">
-                  <button 
-                    onClick={() => setStep(5)}
-                    className="w-full bg-[var(--lime)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-lg shadow-[var(--lime)]/20"
-                  >
-                    {t.startCreditApp}
-                  </button>
-                  <button 
-                    onClick={onClose}
-                    className="w-full bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all shadow-sm"
-                  >
-                    {t.close}
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {step === 5 && (
-              <motion.div 
-                key="step5"
+                key="step2"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 className="flex-1 relative z-10 overflow-y-auto max-h-[70vh] pr-4 custom-scrollbar"
               >
-                {!isCreditAppSuccess ? (
+                {!isCreditAppSuccess && creditAppStep === 0 && (
+                  <div className="space-y-6">
+                    <div>
+                      <h2 className="font-display text-3xl mb-2">Credit Pre-Check</h2>
+                      <p className="text-[var(--mu2)] text-sm">A soft pull helps us find you the best rates. No impact on your credit score.</p>
+                    </div>
+                    {!creditCheckResult ? (
+                      <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 space-y-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <ShieldCheck size={20} className="text-[var(--lime)]" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest">700Credit Soft Pull</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input type="date" value={creditCheckData.dob} onChange={e => setCreditCheckData({...creditCheckData, dob: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="Date of Birth" />
+                          <input type="text" maxLength={4} value={creditCheckData.ssnLast4} onChange={e => setCreditCheckData({...creditCheckData, ssnLast4: e.target.value.replace(/\D/g,'').slice(0,4)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] font-mono" placeholder="SSN last 4" />
+                        </div>
+                        <input type="text" value={creditCheckData.address} onChange={e => setCreditCheckData({...creditCheckData, address: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="Street Address" />
+                        <div className="grid grid-cols-3 gap-3">
+                          <input type="text" value={creditCheckData.city} onChange={e => setCreditCheckData({...creditCheckData, city: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="City" />
+                          <input type="text" maxLength={2} value={creditCheckData.state} onChange={e => setCreditCheckData({...creditCheckData, state: e.target.value.toUpperCase().slice(0,2)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="State" />
+                          <input type="text" maxLength={5} value={creditCheckData.zip} onChange={e => setCreditCheckData({...creditCheckData, zip: e.target.value.replace(/\D/g,'').slice(0,5)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="ZIP" />
+                        </div>
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input type="checkbox" checked={creditCheckConsent} onChange={e => setCreditCheckConsent(e.target.checked)} className="mt-1" />
+                          <span className="text-[9px] text-[var(--mu2)] leading-relaxed">I authorize Hunter Lease to obtain my credit report via a soft inquiry. This will NOT affect my credit score.</span>
+                        </label>
+                        {creditCheckError && <p className="text-red-500 text-xs">{creditCheckError}</p>}
+                        <button type="button" onClick={handleCreditCheck} disabled={!creditCheckConsent || !creditCheckData.ssnLast4 || !creditCheckData.dob || isCreditCheckRunning} className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                          {isCreditCheckRunning ? 'Running...' : 'Check My Credit'} <ShieldCheck size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-2xl p-6 text-center">
+                        <ShieldCheck size={28} className="text-[var(--lime)] mx-auto mb-3" />
+                        <div className="text-2xl font-display text-[var(--lime)] mb-1">{creditCheckResult.creditBand || creditCheckResult.tier || 'Approved'}</div>
+                        <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-4">{creditCheckResult.scoreRange || 'Soft Pull Complete'}</p>
+                      </div>
+                    )}
+                    <button type="button" onClick={() => setCreditAppStep(1)} className="w-full bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all">
+                      {creditCheckResult ? 'Continue to Full Application →' : 'Skip & Continue →'}
+                    </button>
+                  </div>
+                )}
+
+                {!isCreditAppSuccess && creditAppStep > 0 ? (
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     
@@ -689,6 +582,39 @@ export const DepositModal = ({
                         <h2 className="font-display text-2xl">{type === 'lease' ? ct.leaseAppTitle : ct.title}</h2>
                         <p className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-bold">{ct.subtitle}</p>
                       </div>
+                    </div>
+
+                    {/* Cross-Device Handoff */}
+                    <div className="p-4 bg-[var(--s1)] border border-[var(--b2)] rounded-xl flex flex-col gap-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-[var(--b2)]">
+                            <Lock size={20} className="text-[var(--mu)]" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.continueOnPhone || "Continue on Phone"}</div>
+                            <div className="text-xs text-[var(--mu2)]">{t.scanQrCode || "Scan QR code to securely complete on your mobile device"}</div>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => setShowQrCode(!showQrCode)} className="px-4 py-2 bg-white border border-[var(--b2)] rounded-lg text-xs font-bold hover:border-[var(--lime)] transition-colors">
+                          {t.showQr || "Show QR"}
+                        </button>
+                      </div>
+                      
+                      <AnimatePresence>
+                        {showQrCode && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }} 
+                            animate={{ opacity: 1, height: 'auto' }} 
+                            exit={{ opacity: 0, height: 0 }}
+                            className="flex justify-center pt-4 border-t border-[var(--b2)] overflow-hidden"
+                          >
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-[var(--b2)]">
+                              <QRCodeSVG value={`${window.location.origin}/?creditApp=${leadId || 'pending'}`} size={160} />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     {/* Personal Info */}
@@ -966,19 +892,87 @@ export const DepositModal = ({
                     animate={{ opacity: 1, scale: 1 }}
                     className="flex flex-col items-center justify-center text-center py-12"
                   >
-                    <div className="w-20 h-20 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mb-8">
-                      <CheckCircle2 size={40} className="text-[var(--lime)]" />
-                    </div>
-                    <h2 className="font-display text-5xl mb-4">{ct.successTitle}</h2>
-                    <p className="text-[var(--mu2)] text-base mb-12 max-w-md leading-relaxed">
-                      {ct.successDesc}
-                    </p>
-                    <button 
-                      onClick={onClose}
-                      className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest px-12 py-4 rounded-xl hover:bg-white transition-all shadow-sm"
-                    >
-                      {t.close}
-                    </button>
+                    {waitingStatus < 3 ? (
+                      <div className="space-y-8 w-full max-w-sm">
+                        <div className="relative w-24 h-24 mx-auto">
+                          <div className="absolute inset-0 border-4 border-[var(--b2)] rounded-full" />
+                          <motion.div 
+                            className="absolute inset-0 border-4 border-[var(--lime)] rounded-full border-t-transparent"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="font-mono text-xl font-bold">{Math.min(99, waitingStatus * 33 + 15)}%</span>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-4 text-left">
+                          <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 0 ? 'opacity-100' : 'opacity-30'}`}>
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 0 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
+                              {waitingStatus > 0 && <CheckCircle2 size={12} />}
+                            </div>
+                            <span className="text-sm font-medium">{t.waitingStatus0}</span>
+                          </div>
+                          <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 1 ? 'opacity-100' : 'opacity-30'}`}>
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 1 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
+                              {waitingStatus > 1 && <CheckCircle2 size={12} />}
+                            </div>
+                            <span className="text-sm font-medium">{t.waitingStatus1}</span>
+                          </div>
+                          <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 2 ? 'opacity-100' : 'opacity-30'}`}>
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 2 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
+                              {waitingStatus > 2 && <CheckCircle2 size={12} />}
+                            </div>
+                            <span className="text-sm font-medium">{t.waitingStatus2}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full">
+                        <div className="w-20 h-20 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mx-auto mb-8">
+                          <CheckCircle2 size={40} className="text-[var(--lime)]" />
+                        </div>
+                        <h2 className="font-display text-4xl mb-4">{ct.successTitle}</h2>
+                        <p className="text-[var(--mu2)] text-sm mb-8 max-w-md mx-auto leading-relaxed">
+                          {ct.successDesc}
+                        </p>
+                        
+                        <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 text-left mb-8">
+                          <h3 className="font-bold text-[10px] uppercase tracking-widest text-[var(--lime)] mb-4">{t.prepareDocsTitle}</h3>
+                          <div className="space-y-6">
+                            <DocumentUploader 
+                              leadId={leadId || 'temp'} 
+                              documentType="insurance" 
+                              label={t.prepareDocsInsurance} 
+                              description="Upload a copy of your current auto insurance policy."
+                            />
+                            {creditAppData.incomeType === 'w2' && (
+                              <DocumentUploader 
+                                leadId={leadId || 'temp'} 
+                                documentType="w2" 
+                                label={t.prepareDocsW2} 
+                                description="Upload your most recent W2 or pay stubs."
+                              />
+                            )}
+                            {(creditAppData.incomeType === 'i1099' || creditAppData.incomeType === 'self') && (
+                              <DocumentUploader 
+                                leadId={leadId || 'temp'} 
+                                documentType="1099" 
+                                label={t.prepareDocs1099} 
+                                description="Upload your most recent 1099 or 6 months of bank statements."
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={onClose}
+                          className="bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest px-12 py-4 rounded-xl hover:bg-black transition-all shadow-sm w-full"
+                        >
+                          {t.close}
+                        </button>
+                      </motion.div>
+                    )}
                   </motion.div>
                 )}
               </motion.div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { useAuthStore } from '../store/authStore';
+import { auth } from '../firebase';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
@@ -34,9 +35,10 @@ export const Dashboard = () => {
   const fetchData = async () => {
     if (!user) return;
     try {
+      const token = await auth.currentUser?.getIdToken();
       const [leadsRes, notifsRes, photosRes] = await Promise.all([
-        fetch('/api/leads/my', { headers: { 'x-user-uid': user.uid } }),
-        fetch('/api/notifications/my', { headers: { 'x-user-uid': user.uid } }),
+        fetch('/api/leads/my', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/notifications/my', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetchWithCache('/api/car-photos')
       ]);
       

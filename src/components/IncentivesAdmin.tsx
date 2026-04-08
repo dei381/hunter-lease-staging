@@ -57,22 +57,33 @@ export const IncentivesAdmin = () => {
   const [selectedOemIncentives, setSelectedOemIncentives] = useState<Set<string>>(new Set());
   const [isBulkEditingOem, setIsBulkEditingOem] = useState(false);
   const [bulkOemAmount, setBulkOemAmount] = useState<string>('');
+  
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(page);
+  }, [page]);
 
-  const fetchData = async () => {
+  const fetchData = async (pageNum: number) => {
     setLoading(true);
     try {
       const headers = { 'Authorization': `Bearer ${await getAuthToken()}` };
       const [incRes, dealerRes, overrideRes] = await Promise.all([
-        fetch('/api/admin/incentives', { headers }),
+        fetch(`/api/admin/incentives?page=${pageNum}&limit=50`, { headers }),
         fetch('/api/admin/dealer-adjustments', { headers }),
         fetch('/api/admin/program-overrides', { headers })
       ]);
       
-      if (incRes.ok) setIncentives(await incRes.json());
+      if (incRes.ok) {
+        const data = await incRes.json();
+        if (data.data) {
+          setIncentives(data.data);
+          setTotalPages(Math.ceil(data.total / data.limit));
+        } else {
+          setIncentives(data);
+        }
+      }
       if (dealerRes.ok) setDealerDiscounts(await dealerRes.json());
       if (overrideRes.ok) setOverrides(await overrideRes.json());
     } catch (error) {
@@ -109,7 +120,7 @@ export const IncentivesAdmin = () => {
       if (response.ok) {
         setEditingId(null);
         setIsAdding(false);
-        fetchData();
+        fetchData(page);
         toast.success('Incentive saved');
       } else {
         const data = await response.json();
@@ -141,7 +152,7 @@ export const IncentivesAdmin = () => {
       setIsBulkEditingOem(false);
       setSelectedOemIncentives(new Set());
       setBulkOemAmount('');
-      fetchData();
+      fetchData(page);
       toast.success(`Updated ${selectedOemIncentives.size} incentives`);
     } catch (error) {
       console.error('Failed to bulk save incentives:', error);
@@ -174,7 +185,7 @@ export const IncentivesAdmin = () => {
       if (response.ok) {
         setEditingDealerId(null);
         setIsAddingDealer(false);
-        fetchData();
+        fetchData(page);
         toast.success('Dealer discount saved');
       } else {
         const data = await response.json();
@@ -213,7 +224,7 @@ export const IncentivesAdmin = () => {
       if (response.ok) {
         setEditingOverrideId(null);
         setIsAddingOverride(false);
-        fetchData();
+        fetchData(page);
         toast.success('Program override saved');
       } else {
         const data = await response.json();
@@ -236,7 +247,7 @@ export const IncentivesAdmin = () => {
       });
 
       if (response.ok) {
-        fetchData();
+        fetchData(page);
         toast.success('Deleted successfully');
       }
     } catch (error) {
@@ -751,6 +762,28 @@ export const IncentivesAdmin = () => {
               )}
             </tbody>
           </table>
+        )}
+
+        {activeTab === 'oem' && totalPages > 1 && (
+          <div className="flex justify-center gap-2 p-4 border-t border-slate-200">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2 text-sm text-slate-500 flex items-center">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              Next
+            </button>
+          </div>
         )}
 
         {activeTab === 'dealer' && (

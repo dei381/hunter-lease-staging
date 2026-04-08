@@ -248,22 +248,16 @@ model QuoteSnapshot {
 }
 
 model User {
-  id               String             @id @default(uuid())
-  email            String             @unique
-  name             String?
-  phone            String?
-  password         String?            @default("temporary-password")
-  role             String             @default("user")
-  status           String             @default("active")
-  firebaseUid      String?            @unique
-  dealerPartnerId  String?
-  dealerPartner    DealerPartner?     @relation(fields: [dealerPartnerId], references: [id])
-  createdAt        DateTime           @default(now())
-  leads            Lead[]             @relation("AssignedLeads")
-  auditLogs        AuditLog[]         @relation("UserAuditLogs")
-  creditChecks     CreditCheck[]
-  payments         Payment[]
-  notificationLogs NotificationLog[]
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  password  String?  @default("temporary-password")
+  role      String   @default("user")
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  leads     Lead[]   @relation("AssignedLeads")
+
+  @@index([role])
 }
 
 model Lead {
@@ -288,6 +282,9 @@ model Lead {
   calcPayment      Int?
   calcDown         Int?
   calcTier         String?
+  calcZip          String?
+  calcMileage      String?
+  calcTerm         String?
   payMethod        String?
   paymentName      String?
   isFirstTimeBuyer Boolean     @default(false)
@@ -308,19 +305,22 @@ model Lead {
   creditConsent    Boolean     @default(false)
   creditScore      Int?
   vin              String?
-  createdAt         DateTime           @default(now())
-  assignedToId      String?
-  dealId            String?
-  notes             String?
-  brokerFeeCents    Int                @default(0)
-  dealerReserveCents Int               @default(0)
-  complaints        Complaint[]
-  assignedTo        User?              @relation("AssignedLeads", fields: [assignedToId], references: [id])
-  deal              DealRecord?        @relation(fields: [dealId], references: [id])
-  offers            LeadOffer[]
-  creditChecks      CreditCheck[]
-  payments          Payment[]
-  dealerAssignments DealerAssignment[]
+  createdAt        DateTime    @default(now())
+  assignedToId     String?
+  dealId           String?
+  notes            String?
+  brokerFeeCents   Int         @default(0)
+  dealerReserveCents Int       @default(0)
+  complaints       Complaint[]
+  assignedTo       User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  deal             DealRecord? @relation(fields: [dealId], references: [id])
+  offers           LeadOffer[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([assignedToId])
+  @@index([dealId])
 }
 
 model Complaint {
@@ -349,18 +349,12 @@ model LeadOffer {
 
 model AuditLog {
   id        String   @id @default(uuid())
-  userId    String?
+  userId    String
   action    String
   entity    String
   entityId  String?
   details   String?
-  ipAddress String?
   createdAt DateTime @default(now())
-  user      User?    @relation("UserAuditLogs", fields: [userId], references: [id])
-
-  @@index([entity, entityId])
-  @@index([userId])
-  @@index([createdAt])
 }
 
 model Notification {
@@ -417,6 +411,11 @@ model DealRecord {
   // Team & Workflow
   dealerNotes              String?  // Internal note about which dealer/manager provided this
   leads                    Lead[]
+
+  @@index([publishStatus])
+  @@index([lenderId])
+  @@index([createdAt])
+  @@index([type])
 }
 
 model Review {
@@ -448,8 +447,6 @@ model ProgramBatch {
   status           String        @default("DRAFT")
   isValid          Boolean       @default(false)
   validationErrors String?
-  rollbackTargetId String?
-  description      String?
   importedAt       DateTime      @default(now())
   publishedAt      DateTime?
   createdAt        DateTime      @default(now())
@@ -480,23 +477,17 @@ model BankProgram {
 }
 
 model DealerPartner {
-  id           String              @id @default(uuid())
-  name         String
-  contactName  String?
-  email        String?
-  phone        String?
-  address      String?
-  city         String?
-  state        String?
-  zipCode      String?
-  notes        String?
-  slaHours     Int                 @default(24)
-  isActive     Boolean             @default(true)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  adjustments  DealerAdjustment[]
-  staff        User[]
-  assignments  DealerAssignment[]
+  id          String             @id @default(uuid())
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  adjustments DealerAdjustment[]
 }
 
 model DealerAdjustment {
@@ -623,105 +614,4 @@ model VehicleTrim {
   updatedAt      DateTime     @updatedAt
 
   @@unique([modelId, name])
-}
-
-// ============================================
-// Integration Models — Stripe, 700Credit, Notifications, Dealer Assignments
-// ============================================
-
-model Payment {
-  id                     String    @id @default(uuid())
-  userId                 String?
-  leadId                 String?
-  quoteId                String?
-  stripeSessionId        String?   @unique
-  stripePaymentIntentId  String?   @unique
-  amount                 Int       @default(9500)
-  currency               String    @default("usd")
-  status                 String    @default("pending")
-  refundedAt             DateTime?
-  refundReason           String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  user                   User?     @relation(fields: [userId], references: [id])
-  lead                   Lead?     @relation(fields: [leadId], references: [id])
-
-  @@index([userId])
-  @@index([leadId])
-  @@index([status])
-  @@index([stripeSessionId])
-}
-
-model CreditCheck {
-  id                String    @id @default(uuid())
-  leadId            String
-  userId            String?
-  provider          String    @default("700credit")
-  status            String    @default("pending")
-  consentGiven      Boolean   @default(false)
-  consentTimestamp   DateTime?
-  scoreRange        String?
-  creditBand        String?
-  rawResponse       String?
-  normalizedProfile String?
-  errorMessage      String?
-  createdAt         DateTime  @default(now())
-  lead              Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user              User?     @relation(fields: [userId], references: [id])
-
-  @@index([leadId])
-  @@index([status])
-}
-
-model NotificationTemplate {
-  id        String   @id @default(uuid())
-  key       String   @unique
-  channel   String
-  subject   String?
-  body      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model NotificationLog {
-  id          String    @id @default(uuid())
-  userId      String?
-  channel     String
-  templateKey String?
-  recipient   String
-  subject     String?
-  body        String?
-  status      String    @default("pending")
-  error       String?
-  sentAt      DateTime?
-  createdAt   DateTime  @default(now())
-  user        User?     @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model DealerAssignment {
-  id              String         @id @default(uuid())
-  leadId          String
-  dealerPartnerId String
-  staffId         String?
-  status          String         @default("pending")
-  slaDeadline     DateTime?
-  acceptedAt      DateTime?
-  rejectedAt      DateTime?
-  contactedAt     DateTime?
-  outcome         String?
-  comment         String?
-  counterOffer    String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  lead            Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  dealerPartner   DealerPartner  @relation(fields: [dealerPartnerId], references: [id])
-
-  @@index([leadId, dealerPartnerId])
-  @@index([status])
-  @@index([slaDeadline])
 }
