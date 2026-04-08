@@ -231,13 +231,16 @@ export const SyncPreviewModal: React.FC<SyncPreviewModalProps> = ({ isOpen, onCl
                                 <td className="p-3 text-[var(--w)]" rowSpan={Object.keys(item.changes).length}>
                                   <span className="font-bold">{item.make} {item.model}</span>
                                   <span className="text-[var(--mu2)] ml-2">{item.trim}</span>
+                                  {item.isNew && (
+                                    <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold uppercase">New</span>
+                                  )}
                                 </td>
                               ) : null}
                               <td className="p-3 text-[var(--w)] font-mono text-xs uppercase bg-[var(--s2)] rounded px-2 py-1 inline-block mt-2">
                                 {field}
                               </td>
                               <td className="p-3 text-red-400 font-mono line-through opacity-80">
-                                {field === 'msrp' || field === 'leaseCash' ? `$${values.old.toLocaleString()}` : values.old}
+                                {item.isNew ? <span className="text-[var(--mu2)] no-underline">—</span> : (field === 'msrp' || field === 'leaseCash' ? `$${values.old.toLocaleString()}` : values.old)}
                               </td>
                               <td className="p-3 text-green-400 font-mono font-bold">
                                 <div className="flex items-center gap-2">

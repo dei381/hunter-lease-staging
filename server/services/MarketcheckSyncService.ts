@@ -12,10 +12,109 @@ export class MarketcheckSyncService {
 
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+    // Helper to find most common value (mode)
+    const getMode = (arr: number[]) => {
+      const valid = arr.filter(v => v > 0);
+      if (valid.length === 0) return 0;
+      const counts = valid.reduce((acc, val) => {
+        acc[val] = (acc[val] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+      return parseFloat(Object.keys(counts).reduce((a, b) => counts[parseFloat(a)] > counts[parseFloat(b)] ? a : b));
+    };
+
     for (const makeObj of makesToProcess) {
       const modelsToProcess = targetModels && targetModels.length > 0
         ? (makeObj.models || []).filter((m: any) => targetModels.includes(m.name))
         : (makeObj.models || []);
+
+      // Discovery mode: when a brand has no models, query MarketCheck to discover them
+      if (modelsToProcess.length === 0) {
+        try {
+          const url = `https://mc-api.marketcheck.com/v2/search/car/active?api_key=${apiKey}&car_type=new&make=${encodeURIComponent(makeObj.name)}&zip=90012&radius=100&rows=50`;
+          const res = await fetch(url);
+          await sleep(300);
+
+          if (!res.ok) {
+            const errText = await res.text();
+            console.error(`Marketcheck discovery for ${makeObj.name}: ${res.status} ${errText}`);
+            throw new Error(`Marketcheck API Error (${res.status}) for ${makeObj.name}: ${errText}`);
+          }
+
+          const data: any = await res.json();
+          const discoveredModels = new Map<string, Map<string, { msrp: number, mf: number[], rv: number[] }>>();
+
+          for (const listing of data.listings || []) {
+            const dealer = listing.dealer;
+            if (dealer && dealer.name && !dealersMap.has(dealer.id || dealer.name)) {
+              dealersMap.set(dealer.id || dealer.name, {
+                name: dealer.name,
+                street: dealer.street || '',
+                city: dealer.city || '',
+                state: dealer.state || '',
+                zip: dealer.zip || '',
+                phone: dealer.phone || '',
+                website: dealer.website || ''
+              });
+            }
+
+            const modelName = listing.build?.model || '';
+            const trimName = listing.build?.trim || 'Base';
+            if (!modelName) continue;
+
+            let msrp = listing.msrp || 0;
+            if (typeof msrp === 'string') msrp = parseFloat(msrp.replace(/[^0-9.]/g, ''));
+            if (msrp > 0 && msrp < 1000) msrp = msrp * 1000;
+
+            let price = listing.price || 0;
+            if (typeof price === 'string') price = parseFloat(price.replace(/[^0-9.]/g, ''));
+            if (price > 0 && price < 1000) price = price * 1000;
+
+            if (msrp === 0 && price > 0) msrp = price;
+
+            const lease = listing.finance_details?.lease_details;
+            let mf = lease?.money_factor ? parseFloat(lease.money_factor) : 0;
+            let rvValue = lease?.residual_value ? parseFloat(lease.residual_value) : 0;
+            let rv = (rvValue > 0 && msrp > 0) ? rvValue / msrp : 0;
+
+            if (msrp > 0) {
+              if (!discoveredModels.has(modelName)) {
+                discoveredModels.set(modelName, new Map());
+              }
+              const trimMap = discoveredModels.get(modelName)!;
+              if (!trimMap.has(trimName)) {
+                trimMap.set(trimName, { msrp, mf: [mf], rv: [rv] });
+              } else {
+                const existing = trimMap.get(trimName)!;
+                if (mf > 0) existing.mf.push(mf);
+                if (rv > 0) existing.rv.push(rv);
+              }
+            }
+          }
+
+          for (const [modelName, trimMap] of discoveredModels) {
+            for (const [trimName, apiData] of trimMap) {
+              const finalMf = getMode(apiData.mf);
+              const finalRv = getMode(apiData.rv);
+              diff.push({
+                make: makeObj.name,
+                model: modelName,
+                trim: trimName,
+                isNew: true,
+                changes: {
+                  msrp: { old: 0, new: apiData.msrp },
+                  ...(finalMf > 0 ? { mf: { old: 0, new: finalMf } } : {}),
+                  ...(finalRv > 0 ? { rv: { old: 0, new: parseFloat(finalRv.toFixed(2)) } } : {})
+                }
+              });
+            }
+          }
+        } catch (e: any) {
+          console.error(`Error discovering ${makeObj.name}`, e);
+          throw e;
+        }
+        continue;
+      }
 
       for (const modelObj of modelsToProcess) {
         try {
@@ -139,17 +238,6 @@ export class MarketcheckSyncService {
             }
           }
 
-          // Helper to find most common value (mode)
-          const getMode = (arr: number[]) => {
-            const valid = arr.filter(v => v > 0);
-            if (valid.length === 0) return 0;
-            const counts = valid.reduce((acc, val) => {
-              acc[val] = (acc[val] || 0) + 1;
-              return acc;
-            }, {} as Record<number, number>);
-            return parseFloat(Object.keys(counts).reduce((a, b) => counts[parseFloat(a)] > counts[parseFloat(b)] ? a : b));
-          };
-
           // Compare with DB
           for (const [trimName, apiData] of trimData.entries()) {
             // Strict Trim Matching (Word Boundary)
@@ -218,6 +306,42 @@ export class MarketcheckSyncService {
       for (const item of cars) {
         const makeObj = carDb.makes?.find((m: any) => m.name === item.make);
         if (!makeObj) continue;
+
+        // Handle newly discovered models/trims
+        if (item.isNew) {
+          let modelObj = makeObj.models?.find((m: any) => m.name === item.model);
+          if (!modelObj) {
+            modelObj = {
+              id: item.model.toLowerCase().replace(/\s+/g, '-'),
+              name: item.model,
+              class: 'Unknown',
+              msrpRange: '',
+              years: [new Date().getFullYear()],
+              mf: 0.00150,
+              rv36: 0.60,
+              baseAPR: 4.9,
+              leaseCash: 0,
+              trims: []
+            };
+            makeObj.models = makeObj.models || [];
+            makeObj.models.push(modelObj);
+          }
+          const existingTrim = modelObj.trims?.find((t: any) => t.name === item.trim);
+          if (!existingTrim) {
+            modelObj.trims = modelObj.trims || [];
+            modelObj.trims.push({
+              name: item.trim,
+              msrp: item.changes.msrp?.new || 0,
+              mf: item.changes.mf?.new || 0,
+              apr: 0,
+              rv36: item.changes.rv?.new || 0,
+              leaseCash: 0
+            });
+            appliedCount++;
+          }
+          continue;
+        }
+
         const modelObj = makeObj.models?.find((m: any) => m.name === item.model);
         if (!modelObj) continue;
         const trimObj = modelObj.trims?.find((t: any) => t.name === item.trim);
