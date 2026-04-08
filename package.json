@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npx prisma db push && npx prisma generate && tsx server.ts",
     "start": "node dist/server.js",
-    "build": "npm run clean && prisma generate && vite build && npx esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js",
+    "build": "npm run clean && npx prisma generate && npx vite build && npx esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js",
     "preview": "vite preview",
     "test": "vitest run",
     "clean": "rm -rf dist",
