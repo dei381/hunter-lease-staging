@@ -316,8 +316,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
   return (
     <>
     <div className="bg-[var(--s1)] text-[var(--w)] rounded-2xl border border-[var(--b2)] overflow-hidden shadow-2xl">
-      {/* Header with Urgency Timer */}
-      {!isStandalone && (
+      {/* Header with Urgency Timer — only show for deals with timeLeft, not catalog */}
+      {!isStandalone && timeLeft && (
         <div className="p-4 border-b border-[var(--b2)] bg-[var(--w)]/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1 w-full">
             <div className="flex items-center gap-3 mb-1">
