@@ -96,6 +96,10 @@ router.get('/', async (req, res) => {
       prisma.financeProgram.findMany({ where: { isActive: true }, include: { lender: true } })
     ]);
 
+    // 2b. Fetch car photos
+    const photosRecord = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
+    const carPhotos: any[] = photosRecord?.data ? JSON.parse(photosRecord.data) : [];
+
     // 3. Fetch active incentives
     const now = new Date();
     const incentives = await prisma.oemIncentiveProgram.findMany({
@@ -132,6 +136,16 @@ router.get('/', async (req, res) => {
       const year = (trim.model as any).years?.[0] || new Date().getFullYear();
 
       const missingFields: string[] = [];
+
+      // Find matching photo
+      const makeKey = makeName.toLowerCase().replace(/\s+/g, '-');
+      const modelKey = modelName.toLowerCase().replace(/\s+/g, '-');
+      const matchedPhoto = carPhotos.find((p: any) =>
+        p.makeId === makeKey && p.modelId === modelKey && p.isDefault
+      ) || carPhotos.find((p: any) =>
+        p.makeId === makeKey && p.modelId === modelKey
+      );
+      const photoUrl = matchedPhoto?.imageUrl || null;
 
       // Find best lease program
       let leaseMF = trim.baseMF || 0;
@@ -263,7 +277,7 @@ router.get('/', async (req, res) => {
         year,
         msrp: msrpCents / 100,
         bodyStyle: (trim as any).bodyStyle || null,
-        imageUrl: trim.model.imageUrl || null,
+        imageUrl: photoUrl || trim.model.imageUrl || null,
         leasePayment: leasePaymentCents ? leasePaymentCents / 100 : null,
         leaseTerm: requestedTerm,
         leaseMileage: requestedMileage,
@@ -318,6 +332,14 @@ router.get('/:trimId', async (req, res) => {
     const makeName = trim.model.make.name;
     const modelName = trim.model.name;
 
+    // Find matching photo
+    const photosRec = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
+    const photos: any[] = photosRec?.data ? JSON.parse(photosRec.data) : [];
+    const mk = makeName.toLowerCase().replace(/\s+/g, '-');
+    const md = modelName.toLowerCase().replace(/\s+/g, '-');
+    const detailPhoto = photos.find((p: any) => p.makeId === mk && p.modelId === md && p.isDefault)
+      || photos.find((p: any) => p.makeId === mk && p.modelId === md);
+
     // Find incentives
     const now = new Date();
     const matchedIncentives = await prisma.oemIncentiveProgram.findMany({
@@ -340,7 +362,7 @@ router.get('/:trimId', async (req, res) => {
       year: (trim.model as any).years?.[0] || new Date().getFullYear(),
       msrpCents: trim.msrpCents,
       bodyStyle: (trim as any).bodyStyle || null,
-      imageUrl: trim.model.imageUrl || null,
+      imageUrl: detailPhoto?.imageUrl || trim.model.imageUrl || null,
       baseMF: trim.baseMF,
       baseAPR: trim.baseAPR,
       rv36: trim.rv36,
