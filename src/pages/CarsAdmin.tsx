@@ -970,7 +970,38 @@ export const CarsAdmin = () => {
                                 <div key={`${trim.name}-${idx}`} className="bg-[var(--bg)] border border-[var(--b2)] rounded-lg p-4 space-y-4">
                                   <div className="flex justify-between items-center">
                                     <div className="flex flex-col">
-                                      <h5 className="font-bold text-[var(--w)]">{trim.name}</h5>
+                                      <div className="flex items-center gap-2">
+                                        <h5 className="font-bold text-[var(--w)]">{trim.name}</h5>
+                                        {trim.trimId && (
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              try {
+                                                const token = await getAuthToken();
+                                                const res = await fetch(`/api/v2/catalog/${trim.trimId}/toggle`, {
+                                                  method: 'PATCH',
+                                                  headers: { Authorization: `Bearer ${token}` }
+                                                });
+                                                const data = await res.json();
+                                                if (res.ok) {
+                                                  trim._catalogActive = data.isActive;
+                                                  setCarDb({ ...carDb });
+                                                  toast.success(`Catalog: ${data.isActive ? 'Active' : 'Hidden'}`);
+                                                }
+                                              } catch (err) {
+                                                toast.error('Toggle failed');
+                                              }
+                                            }}
+                                            className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider transition-colors ${
+                                              trim._catalogActive === false
+                                                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                                                : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                                            }`}
+                                          >
+                                            {trim._catalogActive === false ? '⊘ Hidden' : '● Catalog'}
+                                          </button>
+                                        )}
+                                      </div>
                                       {trim.lastUpdated && (
                                         <span className="text-[8px] text-[var(--mu2)] italic">
                                           Synced: {new Date(trim.lastUpdated).toLocaleString()}

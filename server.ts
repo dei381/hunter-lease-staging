@@ -14,6 +14,7 @@ import { AuditLogger } from './server/services/AuditLogger';
 import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth, dealerAuth, userAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
+import catalogRoutes from "./server/routes/catalogRoutes";
 
 import { JobQueue } from './server/services/JobQueue';
 
@@ -528,6 +529,7 @@ async function startServer() {
 
   // MVP Calculator Routes
   app.use("/api/v2", quoteRoutes);
+  app.use("/api/v2/catalog", catalogRoutes);
   app.use("/api/admin/calculator", calculatorAdminRoutes);
 
   // Security: Rate limiting for lead submission and feedback

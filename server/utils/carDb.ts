@@ -43,6 +43,7 @@ export const getCarDb = async () => {
         baseAPR: 4.9,
         leaseCash: 0,
         trims: model.trims.map(trim => ({
+          trimId: trim.id,
           name: trim.name,
           msrp: trim.msrpCents / 100,
           mf: trim.baseMF,

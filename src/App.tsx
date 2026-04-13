@@ -66,6 +66,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ defau
 const DealerPortal = lazy(() => import('./pages/DealerPortal').then(module => ({ default: module.DealerPortal })));
 const LeaseTransfersPage = lazy(() => import('./pages/LeaseTransfersPage').then(module => ({ default: module.LeaseTransfersPage })));
 const SavedDealsPage = lazy(() => import('./pages/SavedDealsPage').then(module => ({ default: module.SavedDealsPage })));
+const CatalogPage = lazy(() => import('./pages/CatalogPage').then(module => ({ default: module.CatalogPage })));
+const VehicleDetailPage = lazy(() => import('./pages/VehicleDetailPage').then(module => ({ default: module.VehicleDetailPage })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
@@ -819,6 +821,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const navLinks = [
     { to: '/#calc', label: t.nav.calculator, id: 'calc' },
+    { to: '/catalog', label: language === 'ru' ? 'Каталог' : 'Catalog' },
     { to: '/deals', label: t.nav.dealsCatalog },
     { to: '/lease-transfers', label: t.nav.leaseTransfers },
     { to: '/saved', label: t.nav.savedDeals },
@@ -990,6 +993,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Layout><MainApp /></Layout>} />
           <Route path="/deals" element={<Layout><DealsPage /></Layout>} />
+          <Route path="/catalog" element={<Layout><CatalogPage /></Layout>} />
+          <Route path="/catalog/:trimId" element={<Layout><VehicleDetailPage /></Layout>} />
           <Route path="/lease-transfers" element={<Layout><LeaseTransfersPage /></Layout>} />
           <Route path="/compare" element={<Layout><ComparePage /></Layout>} />
           <Route path="/deal/:id" element={<Layout><DealPage /></Layout>} />
