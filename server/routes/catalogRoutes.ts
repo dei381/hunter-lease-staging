@@ -4,7 +4,7 @@ import NodeCache from 'node-cache';
 import { PureMathEngine } from '../services/engine/PureMathEngine';
 
 const router = express.Router();
-const catalogCache = new NodeCache({ stdTTL: 1800 }); // 30 min cache
+const catalogCache = new NodeCache({ stdTTL: 300 }); // 5 min cache
 
 interface CatalogEntry {
   id: string;
@@ -99,6 +99,7 @@ router.get('/', async (req, res) => {
     // 2b. Fetch car photos
     const photosRecord = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
     const carPhotos: any[] = photosRecord?.data ? JSON.parse(photosRecord.data) : [];
+    console.log(`[Catalog] Loaded ${carPhotos.length} car photos`);
 
     // 3. Fetch active incentives
     const now = new Date();
