@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { SEO } from '../components/SEO';
 import { Calculator } from '../components/Calculator';
 import { DepositModal } from '../components/DepositModal';
@@ -10,11 +11,9 @@ import { CompareBar } from '../components/CompareBar';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
-import { ArrowLeft, Heart, Tag, ShieldCheck, Info, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Heart, Tag, ShieldCheck, Zap, Star, Info, Loader2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { auth } from '../firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
 import { toast } from 'react-hot-toast';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
@@ -23,8 +22,9 @@ export const VehicleDetailPage = () => {
   const { trimId } = useParams<{ trimId: string }>();
   const navigate = useNavigate();
   const { language } = useLanguageStore();
-  const { toggleDeal, isSaved } = useGarageStore();
+  const { toggleDeal, isSaved, addToCompare, removeFromCompare, isInCompare } = useGarageStore();
   const t = translations[language];
+  const td = t.dealPage;
 
   const [vehicle, setVehicle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +85,8 @@ export const VehicleDetailPage = () => {
     setSelectedConfig(data);
   }, []);
 
-  const handleGetDeal = () => {
+  const handleProceed = (config: any) => {
+    setSelectedConfig(config);
     setIsDepositOpen(true);
   };
 
@@ -145,19 +146,21 @@ export const VehicleDetailPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
-        <Loader2 size={32} className="animate-spin text-[var(--lime)]" />
+      <div className="min-h-screen bg-[var(--bg)] pt-32 pb-20 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[var(--lime)] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (error || !vehicle) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] gap-4">
-        <p className="text-red-400">{error || 'Vehicle not found'}</p>
-        <button onClick={() => navigate('/catalog')} className="px-4 py-2 bg-[var(--lime)] text-black rounded-lg text-sm font-bold">
-          Back to Catalog
-        </button>
+      <div className="min-h-screen bg-[var(--bg)] pt-32 pb-20 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="font-display text-4xl mb-4 text-[var(--w)] uppercase">{td?.dealNotFound || 'Vehicle Not Found'}</h1>
+          <button onClick={() => navigate('/catalog')} className="text-[var(--lime)] hover:underline font-bold uppercase tracking-widest text-xs">
+            {language === 'ru' ? 'Назад к каталогу' : 'Back to Catalog'}
+          </button>
+        </div>
       </div>
     );
   }
@@ -167,131 +170,262 @@ export const VehicleDetailPage = () => {
   const sellingPrice = msrp - totalIncentives;
 
   return (
-    <>
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pb-32 lg:pb-20 selection:bg-[var(--lime)] selection:text-black">
       <SEO
         title={`${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim} | AutoBandit`}
         description={`Lease or finance a ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}. MSRP ${fmt(msrp)}. Verified pricing, no hidden fees.`}
+        ogImage={vehicle.imageUrl}
       />
 
-      <div className="min-h-screen bg-[var(--bg)]">
-        {/* Top bar */}
-        <div className="border-b border-[var(--b1)] bg-[var(--s1)]">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-            <button onClick={() => navigate('/catalog')} className="flex items-center gap-2 text-[var(--mu)] hover:text-white transition-colors text-sm">
-              <ArrowLeft size={16} />
-              Back to Catalog
-            </button>
-            <button
-              onClick={() => toggleDeal(trimId || '')}
-              className="p-2 rounded-full hover:bg-[var(--s2)] transition-colors"
-            >
-              <Heart size={18} className={isSaved(trimId || '') ? "fill-[var(--lime)] text-[var(--lime)]" : "text-[var(--mu)]"} />
-            </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
+        <div className="flex flex-col gap-2">
+          {/* Compact Header Area */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 py-1">
+            <div className="space-y-1">
+              {/* Breadcrumb */}
+              <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--mu2)] uppercase tracking-widest">
+                <button onClick={() => navigate('/catalog')} className="hover:text-[var(--lime)] transition-colors flex items-center gap-1">
+                  <ArrowLeft size={12} />
+                  {language === 'ru' ? 'Каталог' : 'Catalog'}
+                </button>
+                <span>/</span>
+                <span>{vehicle.make}</span>
+                <span>/</span>
+                <span className="text-[var(--w)]">{vehicle.model}</span>
+              </div>
+              <h1 className="font-display text-4xl md:text-5xl leading-none tracking-tight uppercase">
+                {vehicle.make} <span className="text-[var(--mu2)]">{vehicle.model}</span>
+              </h1>
+              <div className="flex items-center gap-4 text-[var(--mu2)]">
+                <span className="font-mono text-[10px] tracking-widest">{vehicle.year} {td?.modelYear || 'Model Year'}</span>
+                <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
+                <span className="font-mono text-[10px] tracking-widest">{vehicle.trim}</span>
+                <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
+                <div className="flex items-center gap-1">
+                  <ShieldCheck size={12} className="text-[var(--lime)]" />
+                  <span className="font-mono text-[10px] tracking-widest">{td?.passedAudit || 'Verified'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (isInCompare(trimId || '')) removeFromCompare(trimId || '');
+                  else addToCompare(vehicle);
+                }}
+                className={`p-2 rounded-xl transition-colors flex items-center justify-center border ${
+                  isInCompare(trimId || '')
+                    ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]'
+                    : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
+                }`}
+              >
+                <Heart size={16} className={isInCompare(trimId || '') ? "fill-current" : ""} />
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left: Vehicle Info */}
-            <div>
+          {/* Sticky Navigation */}
+          <div className="sticky top-[var(--nh)] z-40 bg-[var(--bg)]/90 backdrop-blur-md border-b border-[var(--b2)] py-1.5 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <nav className="flex items-center gap-4 overflow-x-auto no-scrollbar">
+              {[
+                { id: 'gallery', label: language === 'ru' ? 'Фото' : 'Photo' },
+                { id: 'calculator', label: language === 'ru' ? 'Калькулятор' : 'Calculator' },
+                { id: 'process', label: language === 'ru' ? 'Процесс' : 'Process' }
+              ].map(item => (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  className="text-[9px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--lime)] whitespace-nowrap transition-colors"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+          </div>
+
+          {/* Main Content Grid */}
+          <div className="flex flex-col-reverse lg:grid lg:grid-cols-12 gap-8 relative items-start">
+            {/* Left Column: Photo & Vehicle Info */}
+            <div className="lg:col-span-7 space-y-8">
               {/* Image */}
-              <div className="aspect-video bg-[var(--s1)] rounded-2xl overflow-hidden mb-6">
-                {vehicle.imageUrl ? (
-                  <img src={vehicle.imageUrl} alt={`${vehicle.make} ${vehicle.model}`} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="text-[var(--mu2)] text-sm uppercase font-bold tracking-widest">No Image</span>
+              <motion.div
+                id="gallery"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="relative aspect-video bg-[var(--s1)] rounded-2xl overflow-hidden border border-[var(--b2)]">
+                  {vehicle.imageUrl ? (
+                    <img src={vehicle.imageUrl} alt={`${vehicle.make} ${vehicle.model}`} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-[var(--mu2)] text-sm uppercase font-bold tracking-widest">No Image</span>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Technical Trust Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  {
+                    icon: ShieldCheck,
+                    title: td?.auditTitle || 'Verified Deal',
+                    desc: td?.auditDesc || 'Every number has been independently verified.',
+                    color: 'text-[var(--lime)]'
+                  },
+                  {
+                    icon: Zap,
+                    title: td?.fleetTitle || 'Fleet Pricing',
+                    desc: td?.fleetDesc || 'Access to dealer fleet and volume discounts.',
+                    color: 'text-blue-400'
+                  },
+                  {
+                    icon: Star,
+                    title: td?.matchTitle || 'Best Match',
+                    desc: td?.matchDesc || 'AI-matched to your requirements and budget.',
+                    color: 'text-orange-400'
+                  }
+                ].map((item, i) => (
+                  <div key={i} className="bg-[var(--s2)] border border-[var(--b2)] p-5 rounded-2xl space-y-3 hover:bg-[var(--b1)] transition-colors">
+                    <div className={cn("w-8 h-8 rounded-lg bg-[var(--w)]/5 flex items-center justify-center", item.color)}>
+                      <item.icon size={16} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-widest">{item.title}</div>
+                      <div className="text-[10px] text-[var(--mu2)] leading-relaxed">{item.desc}</div>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
 
-              {/* Title */}
-              <h1 className="font-display text-3xl md:text-4xl tracking-tight mb-2">
-                {vehicle.year} {vehicle.make} {vehicle.model}
-              </h1>
-              <p className="text-[var(--mu)] text-sm uppercase font-bold tracking-widest mb-6">{vehicle.trim}</p>
+              {/* Pricing & Incentives Block */}
+              <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
+                <h3 className="font-display text-2xl uppercase tracking-tighter">
+                  {language === 'ru' ? 'Цена и скидки' : 'Pricing & Incentives'}
+                </h3>
 
-              {/* Price block */}
-              <div className="bg-[var(--s1)] border border-[var(--b1)] rounded-2xl p-6 mb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <span className="text-xs text-[var(--mu)] uppercase tracking-wider">MSRP</span>
-                    <div className={cn("text-2xl font-bold", totalIncentives > 0 && "line-through text-[var(--mu)]")}>{fmt(msrp)}</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
+                    <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">MSRP</div>
+                    <div className={cn("text-2xl font-display", totalIncentives > 0 ? "line-through text-[var(--mu)]" : "text-[var(--w)]")}>{fmt(msrp)}</div>
                   </div>
                   {totalIncentives > 0 && (
-                    <div className="text-right">
-                      <span className="text-xs text-[var(--grn)] uppercase tracking-wider">Your Price</span>
-                      <div className="text-2xl font-bold text-[var(--grn)]">{fmt(sellingPrice)}</div>
+                    <div className="bg-[var(--lime)]/10 p-4 rounded-2xl border border-[var(--lime)]/20 space-y-1">
+                      <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">
+                        {language === 'ru' ? 'Ваша цена' : 'Your Price'}
+                      </div>
+                      <div className="text-2xl font-display text-[var(--lime)]">{fmt(sellingPrice)}</div>
                     </div>
                   )}
                 </div>
 
                 {/* Incentives list */}
                 {vehicle.incentives && vehicle.incentives.length > 0 && (
-                  <div className="border-t border-[var(--b1)] pt-4">
-                    <h3 className="text-xs text-[var(--mu)] uppercase tracking-wider font-bold mb-2 flex items-center gap-1">
-                      <Tag size={12} />
-                      Available Incentives
-                    </h3>
-                    <div className="space-y-2">
-                      {vehicle.incentives.map((inc: any) => (
-                        <div key={inc.id} className="flex justify-between items-center text-sm">
-                          <span className="text-white">{inc.name}</span>
-                          <span className="text-[var(--grn)] font-bold">−{fmt(inc.amountCents / 100)}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="border-t border-[var(--b1)] mt-3 pt-3 flex justify-between items-center">
-                      <span className="text-sm font-bold text-[var(--lime)]">Total Savings</span>
-                      <span className="text-lg font-bold text-[var(--lime)]">−{fmt(totalIncentives)}</span>
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest flex items-center gap-2">
+                      <Tag size={12} className="text-[var(--lime)]" />
+                      {language === 'ru' ? 'Доступные скидки' : 'Available Incentives'}
+                    </h4>
+                    {vehicle.incentives.map((inc: any) => (
+                      <div key={inc.id} className="flex justify-between items-center bg-[var(--b1)] p-3 rounded-xl border border-[var(--b2)]">
+                        <span className="text-xs text-[var(--w)]">{inc.name}</span>
+                        <span className="text-[var(--grn)] font-bold text-sm font-mono">−{fmt(inc.amountCents / 100)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center border-t border-[var(--b2)] pt-3">
+                      <span className="text-sm font-bold text-[var(--lime)]">
+                        {language === 'ru' ? 'Итого экономия' : 'Total Savings'}
+                      </span>
+                      <span className="text-lg font-bold text-[var(--lime)] font-mono">−{fmt(totalIncentives)}</span>
                     </div>
                   </div>
                 )}
               </div>
-
-              {/* Trust */}
-              <div className="flex flex-wrap gap-3 mb-6">
-                <div className="flex items-center gap-2 bg-[var(--s1)] border border-[var(--b1)] rounded-xl px-3 py-2 text-xs">
-                  <ShieldCheck size={14} className="text-[var(--lime)]" />
-                  Verified Pricing
-                </div>
-                <div className="flex items-center gap-2 bg-[var(--s1)] border border-[var(--b1)] rounded-xl px-3 py-2 text-xs">
-                  <Info size={14} className="text-blue-400" />
-                  No Hidden Fees
-                </div>
-              </div>
             </div>
 
-            {/* Right: Calculator */}
-            <div>
-              <div className="sticky top-4">
-                <div className="bg-[var(--s1)] border border-[var(--b1)] rounded-2xl p-6 mb-4">
-                  <h2 className="font-display text-xl mb-4">Calculate Your Payment</h2>
+            {/* Right Column: Calculator (sticky) */}
+            <div id="calculator" className="lg:col-span-5 relative scroll-mt-24">
+              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6">
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                >
                   <Calculator
                     deal={dealForCalc}
                     onChange={handleCalculatorChange}
+                    onProceed={handleProceed}
                     mode="offer"
                   />
-                </div>
-
-                {/* CTA */}
-                <button
-                  onClick={handleGetDeal}
-                  className="w-full py-4 bg-[var(--lime)] text-black font-bold text-lg rounded-2xl hover:brightness-110 transition-all"
-                >
-                  Get This Deal →
-                </button>
+                </motion.div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Bottom sections */}
-          <div className="mt-12 space-y-12">
-            <ProcessTimeline />
-            <TrustSection />
-            <FAQ />
+      {/* Lower Page Journey */}
+      <div className="mt-32 space-y-32">
+        {/* Process */}
+        <section id="process" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 scroll-mt-24">
+          <div className="flex items-center gap-4 mb-24">
+            <h2 className="font-display text-5xl uppercase tracking-tighter">
+              {td?.protocolTitle || 'Our'} <span className="text-[var(--lime)] italic">{td?.protocolSubtitle || 'Process'}</span>
+            </h2>
+            <div className="flex-1 h-px bg-[var(--b2)]" />
+          </div>
+          <ProcessTimeline />
+        </section>
+
+        {/* FAQ */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+          <FAQ />
+        </section>
+
+        {/* Final CTA */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
+          <div className="bg-[var(--s2)] rounded-3xl p-12 md:p-24 text-center space-y-8 border border-[var(--b2)]">
+            <div className="space-y-4">
+              <h2 className="font-display text-5xl md:text-8xl uppercase tracking-tight">
+                {td?.finalCtaTitle || 'Get Your'} <span className="text-[var(--lime)]">{vehicle.model}</span>
+              </h2>
+              <p className="text-lg text-[var(--mu2)] font-medium max-w-xl mx-auto">
+                {td?.finalCtaText || 'Lock in your deal today with a verified, transparent payment.'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-4 pt-8">
+              <button
+                onClick={() => handleProceed(selectedConfig || dealForCalc)}
+                className="bg-[var(--lime)] text-black px-12 py-6 rounded-xl font-display text-2xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
+              >
+                <span>{td?.lockInDeal || 'Lock In This Deal'}</span>
+                <ArrowRight size={24} />
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* Mobile Sticky CTA */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="flex flex-col">
+          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">
+            {selectedConfig?.type === 'finance' ? (language === 'ru' ? 'Кредит' : 'Finance') : (language === 'ru' ? 'Лизинг' : 'Lease')}
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-display text-2xl text-[var(--w)] leading-none">{selectedConfig?.payment ? fmt(selectedConfig.payment) : '—'}</span>
+            <span className="text-[10px] text-[var(--mu2)]">/mo</span>
           </div>
         </div>
+        <button
+          onClick={() => handleProceed(selectedConfig || dealForCalc)}
+          className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
+        >
+          <span>{td?.lockInDeal || 'Lock In Deal'}</span>
+          <ArrowRight size={18} />
+        </button>
       </div>
 
       {/* Deposit Modal */}
@@ -316,6 +450,6 @@ export const VehicleDetailPage = () => {
       />
 
       <CompareBar />
-    </>
+    </div>
   );
 };
