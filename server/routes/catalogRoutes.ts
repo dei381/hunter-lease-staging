@@ -138,15 +138,21 @@ router.get('/', async (req, res) => {
 
       const missingFields: string[] = [];
 
-      // Find matching photo
+      // Find matching photo — priority: trim photoLinks > SiteSettings car_photos > model imageUrl
       const makeKey = makeName.toLowerCase().replace(/\s+/g, '-');
       const modelKey = modelName.toLowerCase().replace(/\s+/g, '-');
+      
+      let trimPhotos: string[] = [];
+      try {
+        if (trim.photoLinks) trimPhotos = JSON.parse(trim.photoLinks);
+      } catch {}
+
       const matchedPhoto = carPhotos.find((p: any) =>
         p.makeId === makeKey && p.modelId === modelKey && p.isDefault
       ) || carPhotos.find((p: any) =>
         p.makeId === makeKey && p.modelId === modelKey
       );
-      const photoUrl = matchedPhoto?.imageUrl || null;
+      const photoUrl = trimPhotos[0] || matchedPhoto?.imageUrl || (trim.model as any).imageUrl || null;
 
       // Find best lease program
       let leaseMF = trim.baseMF || 0;
@@ -333,13 +339,20 @@ router.get('/:trimId', async (req, res) => {
     const makeName = trim.model.make.name;
     const modelName = trim.model.name;
 
-    // Find matching photo
+    // Find matching photo — priority: trim photoLinks > SiteSettings > model imageUrl
     const photosRec = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
     const photos: any[] = photosRec?.data ? JSON.parse(photosRec.data) : [];
     const mk = makeName.toLowerCase().replace(/\s+/g, '-');
     const md = modelName.toLowerCase().replace(/\s+/g, '-');
     const detailPhoto = photos.find((p: any) => p.makeId === mk && p.modelId === md && p.isDefault)
       || photos.find((p: any) => p.makeId === mk && p.modelId === md);
+
+    let trimPhotos: string[] = [];
+    try {
+      if (trim.photoLinks) trimPhotos = JSON.parse(trim.photoLinks);
+    } catch {}
+
+    const primaryImage = trimPhotos[0] || detailPhoto?.imageUrl || trim.model.imageUrl || null;
 
     // Find incentives
     const now = new Date();
@@ -363,7 +376,8 @@ router.get('/:trimId', async (req, res) => {
       year: (trim.model as any).years?.[0] || new Date().getFullYear(),
       msrpCents: trim.msrpCents,
       bodyStyle: (trim as any).bodyStyle || null,
-      imageUrl: detailPhoto?.imageUrl || trim.model.imageUrl || null,
+      imageUrl: primaryImage,
+      photos: trimPhotos.length > 0 ? trimPhotos : (detailPhoto ? [detailPhoto.imageUrl] : []),
       baseMF: trim.baseMF,
       baseAPR: trim.baseAPR,
       rv36: trim.rv36,

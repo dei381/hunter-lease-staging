@@ -315,12 +315,35 @@ model Lead {
   assignedTo       User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
   deal             DealRecord? @relation(fields: [dealId], references: [id])
   offers           LeadOffer[]
+  payments         Payment[]
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
   @@index([assignedToId])
   @@index([dealId])
+}
+
+model Payment {
+  id                    String    @id @default(uuid())
+  leadId                String?
+  lead                  Lead?     @relation(fields: [leadId], references: [id])
+  userId                String?
+  quoteId               String?
+  stripeSessionId       String?   @unique
+  stripePaymentIntentId String?
+  amountCents           Int
+  currency              String    @default("usd")
+  status                String    @default("pending")
+  refundedAt            DateTime?
+  refundReason          String?
+  metadata              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([leadId])
+  @@index([stripeSessionId])
+  @@index([status])
 }
 
 model Complaint {
@@ -609,6 +632,7 @@ model VehicleTrim {
   baseAPR        Float        @default(0)
   rv36           Float        @default(0)
   leaseCashCents Int          @default(0)
+  photoLinks     String?      // JSON array of MarketCheck photo URLs
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

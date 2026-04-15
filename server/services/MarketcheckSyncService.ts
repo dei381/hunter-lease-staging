@@ -77,17 +77,26 @@ export class MarketcheckSyncService {
             let rvValue = lease?.residual_value ? parseFloat(lease.residual_value) : 0;
             let rv = (rvValue > 0 && msrp > 0) ? rvValue / msrp : 0;
 
+            // Extract photos (skip first photo - often has dealer branding)
+            const photoLinks = (listing.media?.photo_links || []).slice(1, 11);
+
             if (msrp > 0) {
               if (!discoveredModels.has(modelName)) {
                 discoveredModels.set(modelName, new Map());
               }
               const trimMap = discoveredModels.get(modelName)!;
               if (!trimMap.has(trimName)) {
-                trimMap.set(trimName, { msrp, mf: [mf], rv: [rv] });
+                trimMap.set(trimName, { msrp, mf: [mf], rv: [rv], photos: [...photoLinks] });
               } else {
                 const existing = trimMap.get(trimName)!;
                 if (mf > 0) existing.mf.push(mf);
                 if (rv > 0) existing.rv.push(rv);
+                // Collect unique photos
+                for (const url of photoLinks) {
+                  if (existing.photos.length < 15 && !existing.photos.includes(url)) {
+                    existing.photos.push(url);
+                  }
+                }
               }
             }
           }
@@ -101,6 +110,7 @@ export class MarketcheckSyncService {
                 model: modelName,
                 trim: trimName,
                 isNew: true,
+                photos: apiData.photos || [],
                 changes: {
                   msrp: { old: 0, new: apiData.msrp },
                   ...(finalMf > 0 ? { mf: { old: 0, new: finalMf } } : {}),
@@ -226,14 +236,22 @@ export class MarketcheckSyncService {
               }
             }
 
+            // Extract photos from existing model listings too
+            const listingPhotos = (listing.media?.photo_links || []).slice(1, 11);
+
             if (msrp > 0) {
               if (!trimData.has(trimName)) {
-                trimData.set(trimName, { msrp, mf: [mf], rv: [rv], rebates: [rebates] });
+                trimData.set(trimName, { msrp, mf: [mf], rv: [rv], rebates: [rebates], photos: [...listingPhotos] });
               } else {
                 const existing = trimData.get(trimName);
                 if (mf > 0) existing.mf.push(mf);
                 if (rv > 0) existing.rv.push(rv);
                 if (rebates > 0) existing.rebates.push(rebates);
+                for (const url of listingPhotos) {
+                  if ((existing.photos || []).length < 15 && !(existing.photos || []).includes(url)) {
+                    (existing.photos = existing.photos || []).push(url);
+                  }
+                }
               }
             }
           }
@@ -335,7 +353,8 @@ export class MarketcheckSyncService {
               mf: item.changes.mf?.new || 0,
               apr: 0,
               rv36: item.changes.rv?.new || 0,
-              leaseCash: 0
+              leaseCash: 0,
+              photoLinks: item.photos || []
             });
             appliedCount++;
           }

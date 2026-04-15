@@ -70,7 +70,7 @@ export class StripeService {
         userId: params.userId || null,
         quoteId: params.quoteId || null,
         stripeSessionId: session.id,
-        amount: 9500,
+        amountCents: 9500,
         currency: 'usd',
         status: 'pending',
       },

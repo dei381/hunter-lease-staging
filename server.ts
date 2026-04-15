@@ -532,6 +532,15 @@ async function startServer() {
   app.use("/api/v2/catalog", catalogRoutes);
   app.use("/api/admin/calculator", calculatorAdminRoutes);
 
+  // Security headers
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
   // Security: Rate limiting for lead submission and feedback
   const standardLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1992,6 +2001,84 @@ You must return the response as a JSON array of objects. Each object must have t
 
   app.get("/api/admin/jobs", adminAuth, (req, res) => {
     res.json(JobQueue.getAllJobs());
+  });
+
+  // Bulk discovery: sync all major brands at once
+  app.post("/api/admin/sync-external/discover-all", adminAuth, async (req, res) => {
+    try {
+      const apiKey = (process.env.MARKETCHECK_API_KEY || process.env.API_KEY || '').trim();
+      if (!apiKey) {
+        return res.status(400).json({ error: "Marketcheck API Key is not configured." });
+      }
+
+      const DEFAULT_MAKES = [
+        'Toyota', 'Honda', 'Nissan', 'Hyundai', 'Kia',
+        'BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Acura',
+        'Chevrolet', 'Ford', 'Jeep', 'Subaru', 'Mazda',
+        'Volkswagen', 'Volvo', 'Genesis', 'Infiniti', 'Cadillac',
+        'Lincoln', 'Buick', 'GMC', 'Ram', 'Dodge'
+      ];
+
+      const { makes: requestedMakes } = req.body || {};
+      const makesToSync = (requestedMakes && requestedMakes.length > 0) ? requestedMakes : DEFAULT_MAKES;
+
+      // Ensure all requested makes exist in carDb
+      const carDb = await getCarDb();
+      for (const makeName of makesToSync) {
+        const existing = carDb.makes.find((m: any) => m.name === makeName);
+        if (!existing) {
+          carDb.makes.push({
+            id: makeName.toLowerCase().replace(/\s+/g, '-'),
+            name: makeName,
+            tiers: [],
+            baseMF: 0.002,
+            baseAPR: 6.9,
+            models: []
+          });
+        }
+      }
+
+      const diff = await MarketcheckSyncService.fetchDiff(apiKey, carDb, makesToSync, undefined, {
+        msrp: true, mf: true, rv: true, rebates: true
+      });
+
+      // Auto-apply if requested
+      const autoApply = req.body?.autoApply !== false;
+      if (autoApply && diff.cars && diff.cars.length > 0) {
+        const appliedCount = await MarketcheckSyncService.applyDiff(carDb, diff, db);
+        await saveCarDb(carDb);
+        clearCarCache();
+        
+        const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid || 'system';
+        await AuditLogger.log(userId, 'BULK_DISCOVERY', 'CarDatabase', undefined, {
+          makes: makesToSync,
+          discovered: diff.cars.length,
+          applied: appliedCount,
+          dealers: diff.dealers?.length || 0,
+          incentives: diff.incentives?.length || 0
+        });
+
+        return res.json({
+          message: `Bulk discovery complete`,
+          makes: makesToSync.length,
+          discovered: diff.cars.length,
+          applied: appliedCount,
+          dealers: diff.dealers?.length || 0,
+          incentives: diff.incentives?.length || 0,
+          diff: diff.cars.slice(0, 50) // Preview first 50
+        });
+      }
+
+      res.json({
+        message: "Discovery preview",
+        makes: makesToSync.length,
+        discovered: diff.cars?.length || 0,
+        diff
+      });
+    } catch (error: any) {
+      console.error("Bulk discovery failed:", error);
+      res.status(502).json({ error: "Bulk discovery failed", details: error.message });
+    }
   });
 
   app.get("/api/admin/jobs/:id", adminAuth, (req, res) => {

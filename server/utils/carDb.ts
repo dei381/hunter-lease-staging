@@ -155,7 +155,8 @@ export const saveCarDb = async (data: any) => {
               baseMF: Number(trimData.mf || 0),
               baseAPR: Number(trimData.apr || 0),
               rv36: Number(trimData.rv36 || 0),
-              leaseCashCents: Math.round(Number(trimData.leaseCash || 0) * 100)
+              leaseCashCents: Math.round(Number(trimData.leaseCash || 0) * 100),
+              ...(trimData.photoLinks ? { photoLinks: JSON.stringify(trimData.photoLinks) } : {})
             },
             create: {
               modelId: model.id,
@@ -165,6 +166,7 @@ export const saveCarDb = async (data: any) => {
               baseAPR: Number(trimData.apr || 0),
               rv36: Number(trimData.rv36 || 0),
               leaseCashCents: Math.round(Number(trimData.leaseCash || 0) * 100),
+              photoLinks: trimData.photoLinks ? JSON.stringify(trimData.photoLinks) : null,
               isActive: true
             }
           });
