@@ -1,5 +1,36 @@
 export const translations = {
   en: {
+    seo: {
+      homeTitle: "Hunter Lease | The Marketplace for Pre-Negotiated Car Leases",
+      homeDesc: "Skip the dealership. Browse pre-negotiated lease and finance offers from our participating dealer network. No hidden markups, no dealership games.",
+    },
+    urgencyBanner: {
+      text: "Current rates are valid until the end of the month ({date}).",
+    },
+    businessModel: {
+      title: "How we make money",
+      desc: "We receive a fixed commission from the dealer's Fleet department for a referred client. It is not profitable for us to inflate your rate, unlike classic sellers.",
+    },
+    legalStatus: {
+      title: "Who are we?",
+      desc: "We are an IT platform and your negotiators. You sign the official contract directly with an authorized dealer (e.g., Toyota of Los Angeles). The manufacturer provides the warranty. You pay the dealer, not us.",
+    },
+    founder: {
+      title: "A word from our Founder",
+      text: "I created Hunter Lease because I was tired of watching dealers deceive my friends. If you don't like our service — here is my personal Telegram:",
+      tg: "@azatautosacramento",
+    },
+    zeroSpam: "🛡️ Zero Spam Guarantee. We DO NOT sell your data. You will communicate with only ONE dealer manager who has already agreed to your terms. No cold calls.",
+    softPull: "100% Soft Pull. No impact on your credit score.",
+    quizCta: "Don't know which car to choose? Take our 30-second quiz to find the best lease deals for your lifestyle.",
+    dealAuditorCta: "Already have an offer from a dealer? Upload it, and we will find hidden markups.",
+    compareVerdict: "Hunter's Verdict",
+    successPopup: "Your application has been sent to a closed network of 217+ dealers. Average response time is 2 hours. We will send you an SMS when a dealer accepts your terms.",
+    reviewsText: "4.9/5 based on 1,200+ LA deals",
+    statsCount: {
+      dealers: "217+",
+      license: "#21318",
+    },
     common: {
       all: "All",
       any: "Any",
@@ -50,7 +81,6 @@ export const translations = {
       calculator: "Calculator",
       dealsCatalog: "Deals Catalog",
       deals: "Deals",
-      leaseTransfers: "Lease Transfers",
       savedDeals: "Saved Deals",
       blog: "Blog",
       whatsapp: "WhatsApp",
@@ -86,9 +116,9 @@ export const translations = {
       key1: "MSRP Verification",
       key1Desc:
         "We display the factory window sticker price as the baseline.",
-      key2: "Money Factor / APR",
+      key2: "Passed 11-Key Audit",
       key2Desc:
-        "We use standard manufacturer rates for our payment estimates.",
+        "Mathematically guaranteed: the dealer cannot add hidden fees.",
       key3: "Residual Value Check",
       key3Desc:
         "We apply the standard residual value based on your selected mileage.",
@@ -268,6 +298,7 @@ export const translations = {
       creditTierTooltipText:
         "Your credit score determines the APR or Money Factor. The bank makes the final decision.",
       creditTierNote: "* Payment directly depends on your credit score",
+      creditDisclaimer: "70% of buyers do not know their exact auto-rating (FICO Auto Score). We will do a Soft Pull (without affecting credit history) before sending the application to the dealer to lock in the exact rate.",
       mileage: "Annual Mileage",
       annualMileage: "Annual Mileage",
       mileageTooltipTitle: "Annual Mileage",
@@ -817,6 +848,12 @@ export const translations = {
       showing: "Showing",
       verifiedDeals: "verified deals",
       verifiedBadge: "11-Key Lock Verified",
+      dealerTypes: {
+        hunter: "Hunter Verified",
+        hunterDesc: "Our dealers, price is guaranteed.",
+        market: "Market Search",
+        marketDesc: "Market offers, we will negotiate for you.",
+      },
       hot: "HOT",
       monthly: "Monthly",
       mo: "/mo",
@@ -1835,6 +1872,37 @@ export const translations = {
     },
   },
   ru: {
+    seo: {
+      homeTitle: "Hunter Lease | Маркетплейс автомобилей по оптовым ценам",
+      homeDesc: "Покупайте авто без наценок дилеров. Прозрачные условия лизинга и кредита напрямую от Fleet-отделов.",
+    },
+    urgencyBanner: {
+      text: "Текущие ставки действуют до конца месяца ({date}).",
+    },
+    businessModel: {
+      title: "Как мы зарабатываем?",
+      desc: "Мы получаем фиксированную комиссию от Fleet-отдела дилера за приведенного клиента. Нам невыгодно завышать вашу ставку, в отличие от классических продавцов.",
+    },
+    legalStatus: {
+      title: "Кто мы такие?",
+      desc: "Мы — только IT-платформа и ваши переговорщики. Вы подписываете официальный контракт напрямую с авторизованным дилером (например, Toyota of Los Angeles). Гарантию дает завод-изготовитель. Вы платите дилеру, а не нам.",
+    },
+    founder: {
+      title: "Слово основателя",
+      text: "Я создал Hunter Lease, потому что устал смотреть, как дилеры обманывают моих друзей. Если вам не понравится наш сервис — вот мой личный Telegram:",
+      tg: "@azatautosacramento",
+    },
+    zeroSpam: "🛡️ Zero Spam Guarantee. Мы НЕ продаем ваши данные. Вы будете общаться только с ОДНИМ менеджером дилера, который уже согласился на ваши условия. Никаких холодных звонков.",
+    softPull: "100% Soft Pull. No impact on your credit score. (Мягкая проверка. Не влияет на кредитный рейтинг).",
+    quizCta: "Не знаете, какую машину выбрать? Пройдите наш 30-секундный квиз, чтобы найти лучшие предложения для вашего образа жизни.",
+    dealAuditorCta: "Уже есть оффер от дилера? Загрузите его, и мы найдем скрытые наценки.",
+    compareVerdict: "Вердикт Hunter's",
+    successPopup: "Ваша заявка отправлена в закрытую сеть из 217+ дилеров. Среднее время ответа — 2 часа. Мы пришлем вам SMS, когда дилер примет ваши условия.",
+    reviewsText: "4.9/5 на основе 1,200+ сделок в ЛА",
+    statsCount: {
+      dealers: "217+",
+      license: "#21318",
+    },
     common: {
       all: "Все",
       any: "Любой",
@@ -1885,7 +1953,6 @@ export const translations = {
       calculator: "Калькулятор",
       dealsCatalog: "Каталог сделок",
       deals: "Каталог",
-      leaseTransfers: "Передача лизинга",
       savedDeals: "Сохраненные",
       blog: "Блог",
       whatsapp: "WhatsApp",
@@ -1920,9 +1987,9 @@ export const translations = {
       key1: "Проверка MSRP",
       key1Desc:
         "Мы проверяем заводской стикер, чтобы исключить дилерские наценки.",
-      key2: "Money Factor / APR",
+      key2: "Пройден 11-Key Audit",
       key2Desc:
-        "Мы фиксируем базовую ставку производителя, предотвращая накрутки.",
+        "Математически гарантировано: дилер не сможет добавить скрытые комиссии.",
       key3: "Остаточная стоимость",
       key3Desc:
         "Мы гарантируем использование максимальной остаточной стоимости для снижения платежа.",
@@ -2102,6 +2169,7 @@ export const translations = {
       creditTierTooltipText:
         "Ваш кредитный рейтинг определяет ставку APR или Money Factor. Окончательное решение принимает банк.",
       creditTierNote: "* Платеж напрямую зависит от вашего кредитного рейтинга",
+      creditDisclaimer: "70% покупателей не знают свой точный авто-рейтинг (FICO Auto Score). Мы сделаем Soft Pull (без влияния на кредитную историю) перед отправкой заявки дилеру, чтобы зафиксировать точную ставку.",
       mileage: "Годовой пробег",
       annualMileage: "Годовой пробег",
       mileageTooltipTitle: "Годовой пробег",
@@ -2657,6 +2725,12 @@ export const translations = {
       showing: "Показано",
       verifiedDeals: "проверенных сделок",
       verifiedBadge: "Проверено 11-Key Lock",
+      dealerTypes: {
+        hunter: "Hunter Verified",
+        hunterDesc: "Наши дилеры, цена гарантирована.",
+        market: "Market Search",
+        marketDesc: "Рыночные предложения, мы проведем переговоры за вас.",
+      },
       hot: "ГОРЯЧЕЕ",
       monthly: "Ежемесячно",
       mo: "/мес",

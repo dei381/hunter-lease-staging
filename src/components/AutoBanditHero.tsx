@@ -259,6 +259,24 @@ export const AutoBanditHero = () => {
         </div>
       </div>
 
+      {/* Quiz CTA */}
+      <div className="max-w-7xl mx-auto px-4 mb-20">
+        <div className="bg-[#F8F9FA] border border-gray-200 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group hover:border-blue-500/50 transition-colors cursor-pointer">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="relative z-10 flex-1">
+            <h3 className="text-2xl font-display mb-2 text-[#002C5F]">
+              Don't know which car to choose?
+            </h3>
+            <p className="text-gray-500 text-base">
+              Take our 30-second quiz to find the best lease deals for your lifestyle.
+            </p>
+          </div>
+          <button className="relative z-10 shrink-0 bg-[#002C5F] text-white px-8 py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#001F44] transition-colors flex items-center gap-2">
+            Take Quiz <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
       {/* Floating Chat Widget */}
       <div className="fixed bottom-6 right-6 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
         <div className="bg-[#E63946] p-4 flex items-center gap-3">

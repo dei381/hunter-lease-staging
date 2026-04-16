@@ -1,3 +1,5 @@
+import dotenv from "dotenv";
+dotenv.config({ override: true });
 import { GoogleGenAI, Type } from "@google/genai";
 import { NotificationService } from './server/services/NotificationService';
 import express from "express";
@@ -14,6 +16,7 @@ import { AuditLogger } from './server/services/AuditLogger';
 import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth, dealerAuth, userAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
+import { MarketcheckInventoryService } from "./server/services/MarketcheckInventoryService";
 
 import { JobQueue } from './server/services/JobQueue';
 
@@ -1931,6 +1934,99 @@ You must return the response as a JSON array of objects. Each object must have t
     }
   });
 
+  app.get("/api/marketcheck/search", async (req, res) => {
+    try {
+      const { make, model, rows = 55, start = 0 } = req.query;
+      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      
+      let url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&latitude=34.0522&longitude=-118.2437&radius=100&car_type=new&rows=${rows}&start=${start}`;
+      
+      const TARGET_MAKES = 'Acura,Chevrolet,Ford,Genesis,Hyundai,Kia,Lexus,RAM,Toyota,Volvo';
+      
+      if (make && make !== 'All') {
+        url += `&make=${encodeURIComponent(make as string)}`;
+      } else {
+        url += `&make=${encodeURIComponent(TARGET_MAKES)}`;
+      }
+      
+      if (model && model !== 'All') url += `&model=${encodeURIComponent(model as string)}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Marketcheck API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching marketcheck data:", error);
+      res.status(500).json({ error: "Failed to fetch marketcheck data" });
+    }
+  });
+
+  app.get("/api/marketcheck/listing/:vin", async (req, res) => {
+    try {
+      const { vin } = req.params;
+      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      const url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&vins=${vin}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      
+      const data = await response.json();
+      if (data.listings && data.listings.length > 0) {
+        res.json(data.listings[0]);
+      } else {
+        res.status(404).json({ error: "Listing not found" });
+      }
+    } catch (error) {
+      console.error("Error fetching marketcheck listing:", error);
+      res.status(500).json({ error: "Failed to fetch listing" });
+    }
+  });
+
+  app.get("/api/marketcheck/incentives", async (req, res) => {
+    try {
+      const { make, zip = '90210' } = req.query;
+      if (!make) return res.status(400).json({ error: "Make is required" });
+      
+      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      const url = `https://api.marketcheck.com/v2/search/car/incentive/${(make as string).toLowerCase()}/${zip}?api_key=${API_KEY}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      
+      const data = await response.json();
+      res.json(data.incentives || []);
+    } catch (error) {
+      console.error("Error fetching marketcheck incentives:", error);
+      res.status(500).json({ error: "Failed to fetch incentives" });
+    }
+  });
+
+  app.get("/api/marketcheck/stats", async (req, res) => {
+    try {
+      const { make, model, year } = req.query;
+      if (!make || !model || !year) {
+        return res.status(400).json({ error: "Missing make, model, or year" });
+      }
+      
+      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      const url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&latitude=34.0522&longitude=-118.2437&radius=100&car_type=new&make=${encodeURIComponent(make as string)}&model=${encodeURIComponent(model as string)}&year=${year}&rows=0&stats=price,miles`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Marketcheck API error: ${response.status}`);
+      }
+      
+      const data: any = await response.json();
+      res.json(data.stats || { error: "No stats available" });
+    } catch (error) {
+      console.error("Error fetching marketcheck stats:", error);
+      res.status(500).json({ error: "Failed to fetch marketcheck stats" });
+    }
+  });
+
   app.get("/api/admin/test-marketcheck", adminAuth, async (req, res) => {
     try {
       const apiKey = (process.env.MARKETCHECK_API_KEY || '').trim();
@@ -2421,6 +2517,364 @@ You must return the response as a JSON array of objects. Each object must have t
     } catch (error) {
       console.error("Failed to set default photo:", error);
       res.status(500).json({ error: "Failed to set default photo" });
+    }
+  });
+
+  // Promo AI Endpoints
+  app.get("/api/admin/promo-ai/settings", adminAuth, async (req, res) => {
+    try {
+      const record = await prisma.siteSettings.findUnique({ where: { id: 'promo_ai_settings' } });
+      res.json(record ? JSON.parse(record.data) : {});
+    } catch (error) {
+      console.error("Error fetching promo AI settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.post("/api/admin/promo-ai/settings", adminAuth, express.json(), async (req, res) => {
+    try {
+      const data = req.body;
+      await prisma.siteSettings.upsert({
+        where: { id: 'promo_ai_settings' },
+        update: { data: JSON.stringify(data) },
+        create: { id: 'promo_ai_settings', data: JSON.stringify(data) }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving promo AI settings:", error);
+      res.status(500).json({ error: "Failed to save settings" });
+    }
+  });
+
+  app.get("/api/admin/promo-ai/posts", adminAuth, async (req, res) => {
+    try {
+      const posts = await prisma.promoAIPost.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 50
+      });
+      res.json(posts);
+    } catch (error: any) {
+      console.error("Error fetching promo posts:", error);
+      res.status(500).json({ error: "Failed to fetch promo posts", details: error.message });
+    }
+  });
+
+  app.patch("/api/admin/promo-ai/posts/:id", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, telegramText, facebookText } = req.body;
+      
+      const updateData: any = { status };
+      if (telegramText !== undefined) updateData.telegramText = telegramText;
+      if (facebookText !== undefined) updateData.facebookText = facebookText;
+
+      const post = await prisma.promoAIPost.update({
+        where: { id },
+        data: updateData
+      });
+
+      // Send to Telegram if published
+      if (status === 'published') {
+        const settingsRecord = await prisma.siteSettings.findUnique({ where: { id: 'promo_ai_settings' } });
+        const settings = settingsRecord ? JSON.parse(settingsRecord.data) : {};
+        
+        const errors: string[] = [];
+        const details: any[] = [];
+
+        // 1. Telegram
+        const botToken = settings.tgBotToken || process.env.TELEGRAM_BOT_TOKEN;
+        const chatId = settings.tgChatId || process.env.TELEGRAM_CHAT_ID;
+        
+        if (botToken && chatId) {
+          try {
+            const textToSend = post.telegramText;
+            const imageUrl = post.imageUrl;
+            
+            let tgRes;
+
+            if (imageUrl) {
+              if (imageUrl.startsWith('data:image/')) {
+                const base64Data = imageUrl.split(',')[1];
+                const buffer = Buffer.from(base64Data, 'base64');
+                const blob = new Blob([buffer]);
+                
+                const formData = new FormData();
+                formData.append('chat_id', chatId);
+                formData.append('caption', textToSend);
+                formData.append('parse_mode', 'HTML');
+                formData.append('photo', blob, 'photo.jpg');
+
+                tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+                  method: 'POST',
+                  body: formData
+                });
+              } else {
+                const tgBody = {
+                  chat_id: chatId,
+                  photo: imageUrl,
+                  caption: textToSend,
+                  parse_mode: 'HTML'
+                };
+                tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(tgBody)
+                });
+              }
+            } else {
+              const tgBody = {
+                chat_id: chatId,
+                text: textToSend,
+                parse_mode: 'HTML'
+              };
+              tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(tgBody)
+              });
+            }
+
+            if (!tgRes.ok) {
+              const tgError = await tgRes.text();
+              console.error('Telegram API Error:', tgError);
+              errors.push("Telegram API Error");
+              details.push({ platform: 'Telegram', error: tgError });
+            }
+          } catch (e: any) {
+            console.error('Failed to send to Telegram:', e);
+            errors.push("Telegram Request Failed");
+            details.push({ platform: 'Telegram', error: e.message });
+          }
+        }
+
+        // 2. Facebook
+        const fbAccessToken = settings.fbPageAccessToken;
+        const fbPageId = settings.fbPageId;
+
+        if (fbAccessToken && fbPageId) {
+          try {
+            const textToSend = post.facebookText;
+            const imageUrl = post.imageUrl;
+
+            let fbRes;
+
+            if (imageUrl) {
+              if (imageUrl.startsWith('data:image/')) {
+                const base64Data = imageUrl.split(',')[1];
+                const buffer = Buffer.from(base64Data, 'base64');
+                const blob = new Blob([buffer]);
+
+                const formData = new FormData();
+                formData.append('access_token', fbAccessToken);
+                formData.append('message', textToSend);
+                formData.append('source', blob, 'photo.jpg');
+
+                fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
+                  method: 'POST',
+                  body: formData
+                });
+              } else {
+                fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    access_token: fbAccessToken,
+                    message: textToSend,
+                    url: imageUrl
+                  })
+                });
+              }
+            } else {
+              fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/feed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  access_token: fbAccessToken,
+                  message: textToSend
+                })
+              });
+            }
+
+            if (!fbRes.ok) {
+              const fbError = await fbRes.text();
+              console.error('Facebook API Error:', fbError);
+              errors.push("Facebook API Error");
+              details.push({ platform: 'Facebook', error: fbError });
+            }
+          } catch (e: any) {
+            console.error('Failed to send to Facebook:', e);
+            errors.push("Facebook Request Failed");
+            details.push({ platform: 'Facebook', error: e.message });
+          }
+        }
+
+        if (errors.length > 0) {
+          // Revert status if ANY failed? Or maybe only if ALL failed?
+          // User wants to know about ANY error.
+          await prisma.promoAIPost.update({ where: { id }, data: { status: 'pending' } });
+          return res.status(500).json({
+            error: "Publishing Error",
+            message: `Failed to publish to: ${errors.join(', ')}`,
+            details: JSON.stringify(details, null, 2)
+          });
+        }
+      }
+
+      res.json(post);
+    } catch (error) {
+      console.error("Error updating promo post:", error);
+      res.status(500).json({ error: "Failed to update promo post" });
+    }
+  });
+
+  app.post("/api/admin/promo-ai/generate", adminAuth, async (req, res) => {
+    try {
+      // 1. Fetch active deals
+      const deals = await prisma.dealRecord.findMany({
+        where: { publishStatus: 'PUBLISHED' }
+      });
+
+      // 2. Calculate discount percentage and sort
+      const scoredDeals = deals.map(deal => {
+        try {
+          const payload = JSON.parse(deal.financialData);
+          const msrp = payload.msrp?.value || 0;
+          const sellingPrice = payload.salePrice?.value || msrp;
+          const rebates = (payload.manufacturerRebate?.value || 0) + (payload.rebates?.value || 0);
+          const hunterDiscount = payload.hunterDiscount?.value || 0;
+          
+          const totalDiscount = (msrp - sellingPrice) + rebates + hunterDiscount;
+          const discountPercent = msrp > 0 ? (totalDiscount / msrp) * 100 : 0;
+          
+          return { deal, payload, discountPercent, totalDiscount };
+        } catch (e) {
+          return { deal, payload: {}, discountPercent: 0, totalDiscount: 0 };
+        }
+      }).filter(d => {
+        const msrp = d.payload.msrp?.value || 0;
+        return msrp > 0;
+      }).sort((a, b) => b.discountPercent - a.discountPercent);
+
+      console.log(`Found ${scoredDeals.length} deals with MSRP > 0`);
+
+      // 3. Take top 3 deals
+      const topDeals = scoredDeals.slice(0, 3);
+      console.log(`Top deals:`, topDeals.map(d => d.deal.id));
+      
+      const generatedPosts = [];
+
+      const cachedMaps = await getCachedCarDbMaps();
+      const cachedPhotos = await getCachedCarPhotosMap();
+      const { makeMap: carDbMakeMap, modelMap: carDbModelMap } = cachedMaps;
+      const { map: carPhotosMap } = cachedPhotos;
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+      // 4. Generate posts for each deal
+      for (const { deal, payload, discountPercent, totalDiscount } of topDeals) {
+        // Check if we already generated a post for this deal recently
+        const existing = await prisma.promoAIPost.findFirst({
+          where: { dealId: deal.id }
+        });
+        
+        if (existing) continue; // Skip if already generated
+
+        const make = payload.make || '';
+        const model = payload.model || '';
+        const trim = payload.trim || '';
+        const msrp = payload.msrp?.value || 0;
+        const payment = payload.monthlyPayment?.value || 0;
+        const term = payload.term?.value || 36;
+        const mileage = payload.mileage?.value || 10000;
+        const dueAtSigning = payload.downPayment?.value || payload.dueAtSigning?.value || 0;
+        
+        let imageUrl = payload.image || payload.imageUrl || '';
+        if (!imageUrl && make && model) {
+          const makeObj = carDbMakeMap.get(make.toLowerCase());
+          if (makeObj) {
+            const modelObj = carDbModelMap.get(`${makeObj.id}-${model.toLowerCase()}`);
+            if (modelObj) {
+              const photoKey = `${makeObj.id}-${modelObj.id}`;
+              const modelPhotos = carPhotosMap.get(photoKey) || [];
+              if (modelPhotos.length > 0) {
+                modelPhotos.sort((a: any, b: any) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+                imageUrl = modelPhotos[0].imageUrl;
+              }
+            }
+          }
+        }
+
+        const settingsRecord = await prisma.siteSettings.findUnique({ where: { id: 'promo_ai_settings' } });
+        const settings = settingsRecord ? JSON.parse(settingsRecord.data) : {};
+        
+        const deepLink = `https://hunter.lease/deal/${deal.id}`;
+        
+        let prompt = `You are an expert automotive copywriter. Write two short, highly engaging social media posts for a car leasing deal.
+        
+Car: ${make} ${model} ${trim}
+MSRP: $${msrp}
+Total Discount & Rebates: $${totalDiscount} (${discountPercent.toFixed(1)}% off)
+Monthly Payment: $${payment}/mo
+Term: ${term} months
+Mileage: ${mileage} miles/year
+Due at Signing (DAS): $${dueAtSigning}
+Deep Link to Offer: ${deepLink}
+
+CRITICAL: You MUST include the Deep Link in both posts so users can click it to view the offer and place a deposit. Do NOT use generic links like [Link/Contact Info].
+
+`;
+
+        if (settings.promptRu) {
+          prompt += `\nInstructions for Telegram (Russian):\n${settings.promptRu}\n`;
+        } else {
+          prompt += `\nPost 1 (Telegram - Russian): Short, punchy, use emojis, create urgency (FOMO). Mention the huge discount percentage, the term, mileage, DAS, and include the Deep Link.\n`;
+        }
+
+        if (settings.promptEn) {
+          prompt += `\nInstructions for Facebook (English):\n${settings.promptEn}\n`;
+        } else {
+          prompt += `\nPost 2 (Facebook - English): Slightly longer, more conversational, explain why this is a great deal, use emojis. Mention the term, mileage, DAS, and include the Deep Link.\n`;
+        }
+
+        prompt += `\nOutput format MUST be exactly:
+TELEGRAM:
+[telegram text here]
+FACEBOOK:
+[facebook text here]`;
+
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: prompt,
+        });
+
+        const text = result.text || '';
+        const tgMatch = text.match(/TELEGRAM:\n([\s\S]*?)FACEBOOK:/);
+        const fbMatch = text.match(/FACEBOOK:\n([\s\S]*)/);
+
+        const telegramText = tgMatch ? tgMatch[1].trim() : '🔥 Super deal on ' + make + ' ' + model;
+        const facebookText = fbMatch ? fbMatch[1].trim() : 'Check out this amazing deal on ' + make + ' ' + model;
+
+        const post = await prisma.promoAIPost.create({
+          data: {
+            dealId: deal.id,
+            make,
+            model,
+            trim,
+            discountPercent,
+            telegramText,
+            facebookText,
+            imageUrl,
+            status: 'pending'
+          }
+        });
+        
+        generatedPosts.push(post);
+      }
+
+      res.json({ success: true, generated: generatedPosts.length });
+    } catch (error: any) {
+      console.error("Error generating promo posts:", error);
+      res.status(500).json({ error: "Failed to generate promo posts", details: error.message });
     }
   });
 
@@ -3980,7 +4434,7 @@ const mapDealsForFrontend = (
         whereClause.id = queryId as string;
       } else if (queryIds) {
         const idsArray = (queryIds as string).split(',');
-        whereClause.id = { in: idsArray };
+        whereClause.id = { in: idsArray.filter(id => id.length !== 17) }; // Filter out VINs for Prisma
       }
 
       if (queryMake) {
@@ -4011,11 +4465,27 @@ const mapDealsForFrontend = (
 
       console.time('fetchDeals');
       // Fetch deals that are APPROVED or PUBLISHED from Prisma
-      const [dbDeals, cachedMaps, cachedPhotos, settingsRecord] = await Promise.all([
+      const [dbDeals, cachedMaps, cachedPhotos, settingsRecord, mcDeals] = await Promise.all([
         prisma.dealRecord.findMany(queryOptions),
         getCachedCarDbMaps(),
         getCachedCarPhotosMap(),
-        prisma.siteSettings.findUnique({ where: { id: 'global' } })
+        prisma.siteSettings.findUnique({ where: { id: 'global' } }),
+        (queryIds || queryId) ? (async () => {
+          const ids = (queryIds as string || queryId as string).split(',');
+          const vins = ids.filter(id => id.length === 17);
+          if (vins.length === 0) return [];
+          
+          const mcSnapshots = await admin.firestore().collection('mc_inventory')
+            .where('vin', 'in', vins)
+            .get();
+          
+          return mcSnapshots.docs.map(doc => ({
+            ...doc.data(),
+            id: doc.data().vin,
+            type: 'marketcheck',
+            status: 'active'
+          }));
+        })() : Promise.resolve([])
       ]);
       console.timeEnd('fetchDeals');
 
@@ -4069,8 +4539,8 @@ const mapDealsForFrontend = (
       const mappedDeals = mapDealsForFrontend(finalDealsToProcess, cachedMaps, cachedPhotos, settings, req.query);
       console.timeEnd('mapDeals');
 
-      // Return database deals only
-      res.json(mappedDeals);
+      // Return database deals merged with Marketcheck deals
+      res.json([...mappedDeals, ...(mcDeals || [])]);
     } catch (error) {
       console.error("Failed to fetch published deals:", error);
       res.status(500).json({ error: "Failed to fetch deals" });
@@ -4081,6 +4551,19 @@ const mapDealsForFrontend = (
   app.get("/api/deals/:id", async (req, res) => {
     try {
       const { id } = req.params;
+
+      // Check if it's a Marketcheck deal (VIN)
+      if (id.length === 17) {
+        const mcDoc = await admin.firestore().collection('mc_inventory').doc(id).get();
+        if (mcDoc.exists) {
+          return res.json({
+            ...mcDoc.data(),
+            id: mcDoc.data()?.vin,
+            type: 'marketcheck',
+            status: 'active'
+          });
+        }
+      }
       
       console.time(`fetchDeal-${id}`);
       const [dbDeal, cachedMaps, cachedPhotos, settingsRecord] = await Promise.all([
@@ -4230,11 +4713,36 @@ const mapDealsForFrontend = (
     }
   });
 
+  // Marketcheck Sync Route
+  app.post("/api/admin/marketcheck/sync", adminAuth, async (req, res) => {
+    try {
+      const result = await MarketcheckInventoryService.syncInventory();
+      res.json(result);
+    } catch (error: any) {
+      console.error("Marketcheck sync failed:", error);
+      res.status(500).json({ error: "Sync failed", message: error.message });
+    }
+  });
+
+  // Marketcheck Incentives Sync Route
+  app.post("/api/admin/marketcheck/sync-incentives", adminAuth, async (req, res) => {
+    try {
+      const { make, year, zip } = req.body;
+      if (!make || !year) {
+        return res.status(400).json({ error: "Make and year are required" });
+      }
+      const result = await MarketcheckInventoryService.syncIncentives(make, year, zip);
+      res.json({ success: true, incentives: result });
+    } catch (error: any) {
+      console.error("Marketcheck incentives sync failed:", error);
+      res.status(500).json({ error: "Sync failed", message: error.message });
+    }
+  });
+
   // Audit endpoint for DealAuditor
   app.post("/api/audit", async (req, res) => {
     try {
       const { imagePart, language } = req.body;
-      
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",

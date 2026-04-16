@@ -519,6 +519,21 @@ model ProgramOverride {
   updatedAt       DateTime       @updatedAt
 }
 
+model PromoAIPost {
+  id              String   @id @default(uuid())
+  dealId          String
+  make            String
+  model           String
+  trim            String
+  discountPercent Float
+  telegramText    String
+  facebookText    String
+  imageUrl        String?
+  status          String   @default("pending") // pending, published, rejected
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+}
+
 model PromoCode {
   id             String    @id @default(uuid())
   code           String    @unique

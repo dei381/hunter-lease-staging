@@ -19,9 +19,10 @@ interface ImageGalleryProps {
   images?: string[];
   viewCount?: string;
   dealId?: string;
+  isMarketcheck?: boolean;
 }
 
-export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId }) => {
+export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId, isMarketcheck }) => {
   const { language } = useLanguageStore();
   const t = translations[language];
   const [activeIndex, setActiveIndex] = useState(0);
@@ -71,6 +72,14 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
               referrerPolicy="no-referrer"
             />
           </AnimatePresence>
+
+          {/* Obscure dealer info on top and bottom for Marketcheck deals */}
+          {isMarketcheck && (
+            <>
+              <div className="absolute top-0 left-0 right-0 h-16 bg-transparent backdrop-blur-xl [mask-image:linear-gradient(to_bottom,black_50%,transparent_100%)] pointer-events-none z-10" />
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-transparent backdrop-blur-xl [mask-image:linear-gradient(to_top,black_50%,transparent_100%)] pointer-events-none z-10" />
+            </>
+          )}
 
           {/* Expand Button */}
           <button className="absolute bottom-4 right-4 p-2 bg-black/40 backdrop-blur-md border border-white/10 rounded-lg text-white hover:text-[var(--lime)] transition-colors">

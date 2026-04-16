@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { DragDropUploader } from './DragDropUploader';
 import { DealEditor } from './DealEditor';
-import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator, Target, Sparkles } from 'lucide-react';
 import { doc, getDoc, setDoc, collection, getDocs, orderBy, query, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -27,6 +27,8 @@ const BulkEditAdmin = lazy(() => import('./BulkEditAdmin').then(m => ({ default:
 const DealersAdmin = lazy(() => import('./DealersAdmin').then(m => ({ default: m.DealersAdmin })));
 const PromoCodesAdmin = lazy(() => import('./PromoCodesAdmin').then(m => ({ default: m.PromoCodesAdmin })));
 const CalculatorAuditAdmin = lazy(() => import('./admin/CalculatorAuditAdmin').then(m => ({ default: m.CalculatorAuditAdmin })));
+const CalibratorLeadsAdmin = lazy(() => import('./admin/CalibratorLeadsAdmin').then(m => ({ default: m.CalibratorLeadsAdmin })));
+const PromoAIAdmin = lazy(() => import('./admin/PromoAIAdmin').then(m => ({ default: m.PromoAIAdmin })));
 const OfferBuilderModal = lazy(() => import('./admin/OfferBuilderModal').then(m => ({ default: m.OfferBuilderModal })));
 const VinDecoderModal = lazy(() => import('./admin/VinDecoderModal').then(m => ({ default: m.VinDecoderModal })));
 const BulkGenerateModal = lazy(() => import('./admin/BulkGenerateModal').then(m => ({ default: m.BulkGenerateModal })));
@@ -66,7 +68,7 @@ interface Deal {
 }
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos' | 'calculator-audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'calibrator' | 'promo-ai' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos' | 'calculator-audit'>('overview');
   const [deals, setDeals] = useState<Deal[]>([]);
   const [dealsPage, setDealsPage] = useState(1);
   const [dealsTotalPages, setDealsTotalPages] = useState(1);
@@ -1100,6 +1102,28 @@ export function AdminDashboard() {
               >
                 <Activity className="w-4 h-4" />
                 <span>{t.leads}</span>
+              </button>
+              )}
+              {canAccess('leads') && (
+              <button
+                onClick={() => setActiveTab('calibrator')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'calibrator' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Target className="w-4 h-4" />
+                <span>Калибратор</span>
+              </button>
+              )}
+              {canAccess('deals') && (
+              <button
+                onClick={() => setActiveTab('promo-ai')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'promo-ai' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Promo AI</span>
               </button>
               )}
               {canAccess('users') && (
@@ -2721,6 +2745,22 @@ export function AdminDashboard() {
                 </ul>
               )}
             </div>
+          </section>
+        )}
+
+        {activeTab === 'calibrator' && (
+          <section className="animate-fade-in">
+            <Suspense fallback={<AdminLoader />}>
+              <CalibratorLeadsAdmin />
+            </Suspense>
+          </section>
+        )}
+
+        {activeTab === 'promo-ai' && (
+          <section className="animate-fade-in">
+            <Suspense fallback={<AdminLoader />}>
+              <PromoAIAdmin />
+            </Suspense>
           </section>
         )}
         

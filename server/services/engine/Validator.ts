@@ -3,8 +3,13 @@ import { QuoteContextSchema, QuoteContext } from './types';
 export class Validator {
   static parseConsumerRequest(body: any): QuoteContext {
     // Strip adminOverrides if present in consumer request to prevent manipulation
+    // EXCEPT if it's a Marketcheck request where we might need some overrides
     const safeBody = { ...body };
-    delete safeBody.adminOverrides;
+    
+    // If it's not a marketcheck request, delete adminOverrides
+    if (!safeBody.marketcheckData) {
+      delete safeBody.adminOverrides;
+    }
     
     // Map frontend fields to backend schema
     if (safeBody.type && !safeBody.quoteType) {

@@ -30,9 +30,11 @@ interface CalculatorProps {
   onProceed?: (data: any) => void;
   onChange?: (data: any) => void;
   onMileageChange?: (mileage: string) => void;
-  mode?: 'standalone' | 'offer';
+  mode?: 'standalone' | 'offer' | 'calibrator';
   initialIsFirstTimeBuyer?: boolean;
   initialHasCosigner?: boolean;
+  vehiclePrice?: number;
+  incentiveCashBack?: number;
 }
 
 export const Calculator: React.FC<CalculatorProps> = ({ 
@@ -44,7 +46,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
   onMileageChange,
   mode = 'offer',
   initialIsFirstTimeBuyer = false,
-  initialHasCosigner = false
+  initialHasCosigner = false,
+  vehiclePrice,
+  incentiveCashBack
 }) => {
   const { language } = useLanguageStore();
   const { settings, fetchSettings } = useSettingsStore();
@@ -52,6 +56,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const t = translations[language].calc;
 
   const isStandalone = mode === 'standalone';
+  const isCalibrator = mode === 'calibrator';
+  const isCustomCar = isStandalone || isCalibrator;
 
   const [calcType, setCalcType] = useState<'lease' | 'finance'>(deal?.displayType || deal?.type || 'lease');
   const [tier, setTier] = useState('t1');
@@ -74,7 +80,18 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [carDbError, setCarDbError] = useState(false);
   const [lenderOptions, setLenderOptions] = useState<any[]>([]);
   const [isLenderLoading, setIsLenderLoading] = useState(false);
+  const [deepLinkProcessed, setDeepLinkProcessed] = useState({ make: false, model: false, trim: false });
   const isCalculating = isLenderLoading;
+  
+  // Mobile Wizard State
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [wizardStep, setWizardStep] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   
 
@@ -130,7 +147,16 @@ export const Calculator: React.FC<CalculatorProps> = ({
             selectedIncentives,
             isFirstTimeBuyer,
             hasCosigner,
-            isStandalone
+            isStandalone: isCustomCar,
+            adminOverrides: (vehiclePrice || incentiveCashBack) ? {
+              dealerDiscountCents: vehiclePrice ? (currentCar.msrp * 100 - vehiclePrice * 100) : undefined,
+              // We'll handle incentiveCashBack separately in the backend or just add it to selectedIncentives
+            } : undefined,
+            marketcheckData: (vehiclePrice || incentiveCashBack || currentCar.msrp) ? {
+              priceCents: vehiclePrice ? vehiclePrice * 100 : undefined,
+              msrpCents: currentCar.msrp ? currentCar.msrp * 100 : undefined,
+              cashBackCents: incentiveCashBack ? incentiveCashBack * 100 : undefined
+            } : undefined
           })
         });
         const data = await response.json();
@@ -187,41 +213,77 @@ export const Calculator: React.FC<CalculatorProps> = ({
     
     if (makesData) {
       setMakes(makesData);
+      
+      const searchParams = new URLSearchParams(window.location.search);
+      const dlMake = searchParams.get('make');
+
       if (!deal && makesData.length > 0 && !selectedMake) {
-        setSelectedMake(makesData[0]);
+        if (dlMake && !deepLinkProcessed.make) {
+          const foundMake = makesData.find(m => m.name.toLowerCase() === dlMake.toLowerCase());
+          if (foundMake) {
+            setSelectedMake(foundMake);
+          } else {
+            setSelectedMake(makesData[0]);
+          }
+          setDeepLinkProcessed(prev => ({ ...prev, make: true }));
+        } else {
+          setSelectedMake(makesData[0]);
+        }
       } else if (!deal && makesData.length === 0) {
         setCarDbError(true);
       }
     }
-  }, [makesData, makesLoading, makesError, deal]);
+  }, [makesData, makesLoading, makesError, deal, selectedMake, deepLinkProcessed.make]);
 
   useEffect(() => {
     if (modelsData) {
       setModels(modelsData);
+      
+      const searchParams = new URLSearchParams(window.location.search);
+      const dlModel = searchParams.get('model');
+
       if (!deal && modelsData.length > 0) {
-        // Only auto-select if we don't already have a selected model for this make
-        if (!selectedModel || selectedModel.makeId !== selectedMake?.id) {
+        if (dlModel && !deepLinkProcessed.model) {
+          const foundModel = modelsData.find(m => m.name.toLowerCase() === dlModel.toLowerCase());
+          if (foundModel) {
+            setSelectedModel(foundModel);
+          } else {
+            setSelectedModel(modelsData[0]);
+          }
+          setDeepLinkProcessed(prev => ({ ...prev, model: true }));
+        } else if (!selectedModel || selectedModel.makeId !== selectedMake?.id) {
           setSelectedModel(modelsData[0]);
         }
       }
     } else if (!selectedMake?.id) {
       setModels([]);
     }
-  }, [modelsData, deal, selectedMake?.id]);
+  }, [modelsData, deal, selectedMake?.id, selectedModel, deepLinkProcessed.model]);
 
   useEffect(() => {
     if (trimsData) {
       setTrims(trimsData);
+      
+      const searchParams = new URLSearchParams(window.location.search);
+      const dlTrim = searchParams.get('trim');
+
       if (!deal && trimsData.length > 0) {
-        // Only auto-select if we don't already have a selected trim for this model
-        if (!selectedTrim || selectedTrim.modelId !== selectedModel?.id) {
+        if (dlTrim && !deepLinkProcessed.trim) {
+          const foundTrim = trimsData.find(t => t.name.toLowerCase() === dlTrim.toLowerCase());
+          if (foundTrim) {
+            setSelectedTrim(foundTrim);
+          } else {
+            setSelectedTrim(trimsData[0]);
+          }
+          setDeepLinkProcessed(prev => ({ ...prev, trim: true }));
+        } else if (!selectedTrim || selectedTrim.modelId !== selectedModel?.id) {
           setSelectedTrim(trimsData[0]);
         }
       }
     } else if (!selectedModel?.id) {
       setTrims([]);
     }
-  }, [trimsData, deal, selectedModel?.id]);
+  }, [trimsData, deal, selectedModel?.id, selectedTrim, deepLinkProcessed.trim]);
 
   const effectiveIncentives = useMemo(() => {
     return deal?.availableIncentives || quoteData?.availableIncentives || currentCar?.availableIncentives || [];
@@ -231,7 +293,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
     if (effectiveIncentives.length > 0) {
       const defaultIds = effectiveIncentives
         .filter((inc: any) => {
-          if (isStandalone && inc.type === 'dealer') return false;
+          if (isCustomCar && inc.type === 'dealer') return false;
           return inc.isDefault || inc.type === 'dealer';
         })
         .map((inc: any) => inc.id);
@@ -245,11 +307,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
     } else {
       setSelectedIncentives(prev => prev.length === 0 ? prev : []);
     }
-  }, [currentCar?.id, currentCar?.trim, isStandalone, effectiveIncentives]);
+  }, [currentCar?.id, currentCar?.trim, isCustomCar, effectiveIncentives]);
 
   const toggleIncentive = (id: string) => {
     const incentive = effectiveIncentives.find((inc: any) => inc.id === id);
-    if (incentive?.isDefault && role !== 'admin') return;
+    // Only block deselection for dealer discounts, allow toggling manufacturer rebates
+    if (incentive?.isDefault && (incentive?.type === 'dealer' || incentive?.type === 'DEALER_DISCOUNT') && role !== 'admin') return;
     
     setSelectedIncentives(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -273,10 +336,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
         tier,
         mileage,
         zip: zipCode,
-        source: isStandalone ? 'custom_calculator' : 'catalog_deal'
+        source: isCustomCar ? 'custom_calculator' : 'catalog_deal'
       });
     }
-  }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, zipCode, isStandalone, onChange]);
+  }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, zipCode, isCustomCar, onChange]);
 
   const totalIncentives = useMemo(() => {
     if (quoteData?.totalIncentivesCents !== undefined) {
@@ -316,7 +379,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
     <>
     <div className="bg-[var(--s1)] text-[var(--w)] rounded-2xl border border-[var(--b2)] overflow-hidden shadow-2xl">
       {/* Header with Urgency Timer */}
-      {!isStandalone && (
+      {!isCustomCar && (
         <div className="p-4 border-b border-[var(--b2)] bg-[var(--w)]/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1 w-full">
             <div className="flex items-center gap-3 mb-1">
@@ -324,11 +387,15 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 <Eye size={12} className="text-[var(--lime)]" />
                 <span>{viewCount} {translations[language].dealPage.viewingNow}</span>
               </div>
-              <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-              <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                <Zap size={12} className="text-orange-500" />
-                <span>{translations[language].dealPage.highDemand}</span>
-              </div>
+              {viewCount > 100 && deal?.createdAt && (viewCount / Math.max(1, (new Date().getTime() - new Date(deal.createdAt).getTime()) / (1000 * 60 * 60 * 24))) > 33 && (
+                <>
+                  <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
+                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+                    <Zap size={12} className="text-orange-500" />
+                    <span>{translations[language].dealPage.highDemand}</span>
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span className="px-1.5 py-0.5 bg-[var(--lime)] text-black text-[10px] font-bold uppercase tracking-tighter rounded">{t.liveDeal}</span>
@@ -488,9 +555,29 @@ export const Calculator: React.FC<CalculatorProps> = ({
           ))}
         </div>
 
+        {/* Mobile Wizard Navigation */}
+        {isMobile && (
+          <div className="flex items-center justify-between p-4 border-b border-[var(--b2)] bg-[var(--s2)]">
+            <div className="flex gap-1">
+              {[0, 1, 2].map(step => (
+                <div 
+                  key={step} 
+                  className={cn(
+                    "h-1.5 rounded-full transition-all",
+                    wizardStep === step ? "w-8 bg-[var(--lime)]" : "w-4 bg-[var(--b3)]"
+                  )}
+                />
+              ))}
+            </div>
+            <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+              {wizardStep === 0 ? "Step 1: Terms" : wizardStep === 1 ? "Step 2: Details" : "Step 3: Results"}
+            </div>
+          </div>
+        )}
+
         {/* Parameters Grid - Compact Style */}
         <div className="p-4 sm:p-5 flex flex-col gap-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 order-2 sm:order-1">
+          <div className={cn("grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 order-2 sm:order-1", isMobile && wizardStep !== 0 && "hidden")}>
             <div className="relative bg-[var(--s2)] rounded-xl border border-[var(--b2)] hover:border-[var(--b3)] transition-all group p-2.5">
               <label className="text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest block mb-0.5">{t.term}</label>
               <div className="relative">
@@ -578,8 +665,23 @@ export const Calculator: React.FC<CalculatorProps> = ({
             </div>
           </div>
 
+          <div className={cn("text-[9px] text-[var(--mu2)] px-2", isMobile && wizardStep !== 0 && "hidden")}>
+            {language === 'ru' 
+              ? '70% покупателей не знают свой точный авто-рейтинг (FICO Auto Score). Мы сделаем Soft Pull (без влияния на кредитную историю) перед отправкой заявки дилеру, чтобы зафиксировать точную ставку.' 
+              : '70% of buyers don\'t know their exact FICO Auto Score. We will do a Soft Pull (no impact on your credit score) before submitting the application to the dealer to lock in the exact rate.'}
+          </div>
+
+          {isMobile && wizardStep === 0 && (
+            <button 
+              onClick={() => setWizardStep(1)}
+              className="w-full bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:border-[var(--lime)] transition-colors mt-2"
+            >
+              Next: Details
+            </button>
+          )}
+
           {/* Results Block & CTA */}
-          <div className="p-4 sm:p-5 bg-[var(--s2)] rounded-xl border border-[var(--lime)]/30 shadow-[0_0_20px_rgba(204,255,0,0.05)] order-1 sm:order-2">
+          <div className={cn("p-4 sm:p-5 bg-[var(--s2)] rounded-xl border border-[var(--lime)]/30 shadow-[0_0_20px_rgba(204,255,0,0.05)] order-1 sm:order-2", isMobile && wizardStep !== 2 && "hidden")}>
             <div className="flex items-center justify-between mb-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-[var(--w)]">
@@ -622,35 +724,43 @@ export const Calculator: React.FC<CalculatorProps> = ({
               </div>
             </div>
 
-            <button 
-              onClick={() => currentCar && onProceed?.({ 
-                ...currentCar, 
-                payment: calculatedPayment, 
-                type: calcType, 
-                down, 
-                term: `${term} mo`, 
-                tier, 
-                mileage,
-                source: isStandalone ? 'custom_calculator' : 'catalog_deal'
-              })}
-              className="w-full bg-[var(--lime)] hover:bg-[var(--lime2)] text-black py-3 sm:py-4 rounded-xl text-base font-display tracking-widest uppercase transition-all flex items-center justify-center gap-2 group relative overflow-hidden shadow-[0_0_20px_rgba(204,255,0,0.2)] hover:shadow-[0_0_40px_rgba(204,255,0,0.4)]"
-            >
-              <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
-              <span className="relative z-10">{isStandalone ? (language === 'ru' ? 'Оформить заявку' : 'Submit Request') : t.lockIn}</span>
-              <Zap size={18} fill="currentColor" className="relative z-10" />
-            </button>
+            {!isCalibrator && (
+              <div className="space-y-2 mt-4">
+                <button 
+                  onClick={() => currentCar && onProceed?.({ 
+                    ...currentCar, 
+                    payment: calculatedPayment, 
+                    type: calcType, 
+                    down, 
+                    term: `${term} mo`, 
+                    tier, 
+                    mileage,
+                    source: isCustomCar ? 'custom_calculator' : 'catalog_deal'
+                  })}
+                  className="w-full bg-[var(--lime)] hover:bg-[var(--lime2)] text-black py-3 sm:py-4 rounded-xl text-base font-display tracking-widest uppercase transition-all flex items-center justify-center gap-2 group relative overflow-hidden shadow-[0_0_20px_rgba(204,255,0,0.2)] hover:shadow-[0_0_40px_rgba(204,255,0,0.4)]"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
+                  <span className="relative z-10">{isCustomCar ? (language === 'ru' ? 'Отправить заявку дилерам' : 'Submit Request to Dealers') : t.lockIn}</span>
+                  <Zap size={18} fill="currentColor" className="relative z-10" />
+                </button>
+                <div className="text-center">
+                  <span className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-bold">
+                    {language === 'ru' ? 'Возвращаемый депозит $95 на следующем шаге' : 'Fully refundable $95 deposit on the next step'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+        <div className={cn("space-y-4", isMobile && wizardStep !== 1 && "hidden")}>
+          <TradeInEstimator onEquityCalculated={setTradeInEquity} />
 
-        
-        <TradeInEstimator onEquityCalculated={setTradeInEquity} />
-
-        <div className="p-4 sm:p-6 space-y-4">
-          {/* Incentives Toggle - Competitor Style */}
-          {!isStandalone && (
-            <div className="space-y-4">
+          <div className="p-4 sm:p-6 space-y-4">
+            {/* Incentives Toggle - Competitor Style */}
+            {!isStandalone && (
+              <div className="space-y-4">
               <div className="flex p-1 bg-[var(--s2)] rounded-xl border border-[var(--b2)]">
                 <button
                   onClick={() => setShowIncentives(false)}
@@ -739,27 +849,47 @@ export const Calculator: React.FC<CalculatorProps> = ({
             </div>
           )}
 
-          {/* Incentive Modal */}
-          <IncentivesModal
-            isOpen={isIncentivesModalOpen}
-            onClose={() => setIsIncentivesModalOpen(false)}
-            deal={{ ...currentCar, availableIncentives: effectiveIncentives }}
-            selectedIncentives={selectedIncentives}
-            toggleIncentive={toggleIncentive}
-            isFirstTimeBuyer={isFirstTimeBuyer}
-            quoteResult={quoteData}
-            role={role}
-          />
+            {/* Incentive Modal */}
+            <IncentivesModal
+              isOpen={isIncentivesModalOpen}
+              onClose={() => setIsIncentivesModalOpen(false)}
+              deal={{ ...currentCar, availableIncentives: effectiveIncentives }}
+              selectedIncentives={selectedIncentives}
+              toggleIncentive={toggleIncentive}
+              isFirstTimeBuyer={isFirstTimeBuyer}
+              quoteResult={quoteData}
+              role={role}
+            />
 
-        {/* Price Breakdown */}
+            {isMobile && wizardStep === 1 && (
+              <div className="flex gap-2 mt-4">
+                <button 
+                  onClick={() => setWizardStep(0)}
+                  className="flex-1 bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:border-[var(--lime)] transition-colors"
+                >
+                  Back
+                </button>
+                <button 
+                  onClick={() => setWizardStep(2)}
+                  className="flex-1 bg-[var(--lime)] text-black py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors"
+                >
+                  See Results
+                </button>
+              </div>
+            )}
+
+          {/* Price Breakdown */}
           {!isStandalone && (
             <div className="space-y-3 pt-4 border-t border-[var(--b2)]">
               <div className="space-y-2">
-                {/* Dealer Discount */}
+                {/* Dealer Discount / Markup */}
                 <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
-                  <span className="text-blue-400">{t.hunterLeaseDiscount}</span>
-                  <span className="font-mono text-blue-400">
-                    -{fmt(quoteData?.dealerDiscountCents !== undefined ? Math.abs(quoteData.dealerDiscountCents) / 100 : (currentCar?.savings || 0))}
+                  <span className={(quoteData?.dealerDiscountCents < 0 || (!quoteData && currentCar?.savings < 0)) ? "text-red-400" : "text-blue-400"}>
+                    {(quoteData?.dealerDiscountCents < 0 || (!quoteData && currentCar?.savings < 0)) ? "Dealer Markup" : t.hunterLeaseDiscount}
+                  </span>
+                  <span className={`font-mono ${(quoteData?.dealerDiscountCents < 0 || (!quoteData && currentCar?.savings < 0)) ? "text-red-400" : "text-blue-400"}`}>
+                    {(quoteData?.dealerDiscountCents < 0 || (!quoteData && currentCar?.savings < 0)) ? "+" : "-"}
+                    {fmt(quoteData?.dealerDiscountCents !== undefined ? Math.abs(quoteData.dealerDiscountCents) / 100 : Math.abs(currentCar?.savings || 0))}
                   </span>
                 </div>
 
@@ -793,11 +923,20 @@ export const Calculator: React.FC<CalculatorProps> = ({
             </div>
           )}
 
-
+          {isMobile && wizardStep === 2 && (
+            <div className="flex gap-2 mt-4">
+              <button 
+                onClick={() => setWizardStep(1)}
+                className="w-full bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:border-[var(--lime)] transition-colors"
+              >
+                Back to Details
+              </button>
+            </div>
+          )}
 
           {/* Lender Comparison */}
           {lenderOptions.length > 0 && (
-            <div className="pt-6 border-t border-[var(--b2)] space-y-4">
+            <div className={cn("pt-6 border-t border-[var(--b2)] space-y-4", isMobile && wizardStep !== 2 && "hidden")}>
               <div className="flex items-center justify-between">
                 <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest flex items-center gap-2">
                   <TrendingDown size={14} className="text-[var(--lime)]" />
@@ -846,7 +985,17 @@ export const Calculator: React.FC<CalculatorProps> = ({
         </div>
       </div>
 
-      {/* Transparency Modal */}
+      <IncentivesModal
+        isOpen={isIncentivesModalOpen}
+        onClose={() => setIsIncentivesModalOpen(false)}
+        deal={{ ...currentCar, availableIncentives: effectiveIncentives }}
+        selectedIncentives={selectedIncentives}
+        toggleIncentive={toggleIncentive}
+        isFirstTimeBuyer={isFirstTimeBuyer}
+        quoteResult={quoteData}
+        role={role}
+      />
+
       <TransparencyModal 
         isOpen={isTransparencyOpen}
         onClose={() => setIsTransparencyOpen(false)}
@@ -864,6 +1013,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
         mileage={mileage}
         quoteResult={quoteData}
       />
+    </div>
     </>
   );
 };

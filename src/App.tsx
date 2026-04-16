@@ -50,6 +50,7 @@ import ReactGA from 'react-ga4';
 
 // Lazy loaded pages
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(module => ({ default: module.AdminDashboard })));
+const Calibrator = lazy(() => import('./pages/Calibrator').then(module => ({ default: module.Calibrator })));
 const DealsPage = lazy(() => import('./pages/DealsPage').then(module => ({ default: module.DealsPage })));
 const ComparePage = lazy(() => import('./pages/ComparePage').then(module => ({ default: module.ComparePage })));
 const DealPage = lazy(() => import('./pages/DealPage').then(module => ({ default: module.DealPage })));
@@ -66,6 +67,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ defau
 const DealerPortal = lazy(() => import('./pages/DealerPortal').then(module => ({ default: module.DealerPortal })));
 const LeaseTransfersPage = lazy(() => import('./pages/LeaseTransfersPage').then(module => ({ default: module.LeaseTransfersPage })));
 const SavedDealsPage = lazy(() => import('./pages/SavedDealsPage').then(module => ({ default: module.SavedDealsPage })));
+const MarketcheckDealPage = lazy(() => import('./pages/MarketcheckDealPage').then(module => ({ default: module.MarketcheckDealPage })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
@@ -100,7 +102,6 @@ function MainApp() {
   const [clientInfo, setClientInfo] = useState({ name: '', phone: '', email: '', tcpaConsent: false, termsConsent: false });
   const [tradeIn, setTradeIn] = useState({ hasTradeIn: false, make: '', model: '', year: '', mileage: '', vin: '', hasLoan: false, payoff: '' });
   const [paymentName, setPaymentName] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -170,7 +171,9 @@ function MainApp() {
         });
       } catch (error) {
         console.error("Shadow registration failed:", error);
-        // Continue without user ID if anonymous auth fails
+        toast.error("Authentication failed. Please try again or sign in.");
+        setIsSubmitting(false);
+        return false;
       }
     }
 
@@ -316,11 +319,17 @@ function MainApp() {
     }
   };
 
+  const getEndOfMonth = () => {
+    const date = new Date();
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    return lastDay.toLocaleDateString(language === 'ru' ? 'ru-RU' : 'en-US', { month: 'long', day: 'numeric' });
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] selection:bg-[var(--lime)] selection:text-black">
       <SEO 
-        title="Hunter Lease | The Marketplace for Pre-Negotiated Car Leases"
-        description="Skip the dealership. Browse pre-negotiated new car lease deals, customize your payment online, and secure your vehicle with zero hidden markups."
+        title={t.seo?.homeTitle || "Hunter Lease | The Marketplace for Pre-Negotiated Car Leases"}
+        description={t.seo?.homeDesc || "Skip the dealership. Browse pre-negotiated new car lease deals, customize your payment online, and secure your vehicle with zero hidden markups."}
         ogImage="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=1200&h=630"
         schema={{
           "@context": "https://schema.org",
@@ -360,18 +369,67 @@ function MainApp() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-4">
-              <button onClick={() => navigate('/deals')} className="group bg-[var(--lime)] text-black font-display text-xl tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center w-full sm:w-auto">
-                <div className="flex items-center gap-2">
-                  <span>{t.hero.btnCalc}</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </div>
-                <span className="text-[10px] font-sans font-bold uppercase opacity-70 mt-1">{t.hero.btnCalcSub}</span>
-              </button>
-              <button onClick={() => scrollToSection('how-it-works')} className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-6 py-4 md:px-10 md:py-5 rounded-xl hover:border-[var(--b3)] transition-all flex flex-col items-center justify-center w-full sm:w-auto">
-                <span>{t.hero.btnDeals}</span>
-                <span className="text-[10px] font-sans font-normal text-[var(--mu2)] mt-1">{t.hero.btnDealsSub}</span>
-              </button>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button 
+                  onClick={() => navigate('/deals')} 
+                  className="flex flex-col items-start text-left bg-[var(--lime)] text-black p-6 rounded-2xl hover:bg-[var(--lime2)] transition-all group relative overflow-hidden shadow-[0_0_30px_rgba(204,255,0,0.15)] hover:shadow-[0_0_50px_rgba(204,255,0,0.3)]"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
+                  <div className="text-[10px] font-bold uppercase tracking-widest mb-2 opacity-80">
+                    {language === 'ru' ? 'Путь А' : 'Path A'}
+                  </div>
+                  <div className="text-xl font-display uppercase leading-tight mb-2">
+                    {language === 'ru' ? 'Каталог оптовых цен' : 'Wholesale Catalog'}
+                  </div>
+                  <div className="text-xs opacity-80 font-medium">
+                    {language === 'ru' ? 'Выбери готовую машину по оптовой цене из каталога.' : 'Choose a pre-negotiated car at wholesale price from our catalog.'}
+                  </div>
+                  <ArrowRight className="w-5 h-5 mt-4 group-hover:translate-x-2 transition-transform" />
+                </button>
+
+                <button 
+                  onClick={() => scrollToSection('calc')} 
+                  className="flex flex-col items-start text-left bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] p-6 rounded-2xl hover:border-[var(--lime)] transition-all group"
+                >
+                  <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-2 group-hover:text-[var(--lime)] transition-colors">
+                    {language === 'ru' ? 'Путь Б' : 'Path B'}
+                  </div>
+                  <div className="text-xl font-display uppercase leading-tight mb-2">
+                    {language === 'ru' ? 'Калькулятор сделки' : 'Custom Deal Calculator'}
+                  </div>
+                  <div className="text-xs text-[var(--mu2)] font-medium">
+                    {language === 'ru' ? 'Собери свои условия и отправь заявку дилерам.' : 'Build your own terms and submit a request to dealers.'}
+                  </div>
+                  <ArrowRight className="w-5 h-5 mt-4 text-[var(--mu2)] group-hover:text-[var(--lime)] group-hover:translate-x-2 transition-all" />
+                </button>
+              </div>
+
+              <div className="mt-2 p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
+                <p className="text-xs text-[var(--w)] leading-relaxed">
+                  <span className="font-bold text-[var(--lime)]">{language === 'ru' ? 'Как мы зарабатываем: ' : 'How we make money: '}</span> 
+                  {language === 'ru' ? 'Мы получаем фиксированную комиссию от Fleet-отдела дилера за приведенного клиента. Нам невыгодно завышать вашу ставку, в отличие от классических продавцов.' : 'We receive a fixed commission from the dealer\'s Fleet department for a referred client. It is not profitable for us to inflate your rate, unlike classic sellers.'}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 mt-2">
+                <button onClick={() => scrollToSection('quiz')} className="flex-1 bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest px-4 py-3 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {t.quizCta || "Take our 30-second quiz"}
+                </button>
+                <button onClick={() => scrollToSection('auditor')} className="flex-1 bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest px-4 py-3 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all flex items-center justify-center gap-2">
+                  <FileCheck className="w-4 h-4" />
+                  {t.dealAuditorCta || "Upload dealer offer"}
+                </button>
+              </div>
+              <div className="text-center mt-2">
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest">
+                  <ShieldCheck className="w-3 h-3 text-[var(--grn)]" />
+                  {t.softPull || "100% Soft Pull. No impact on your credit score."}
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-8 border-t border-[var(--b2)]">
@@ -407,7 +465,7 @@ function MainApp() {
                     <ShieldCheck className="w-3 h-3" /> {t.hero.lockLink}
                   </button>
                 </div>
-                <div className="text-[var(--mu2)] font-medium">4.9/5 based on 1,200+ LA deals</div>
+                <div className="text-[var(--mu2)] font-medium">{t.reviewsText || "4.9/5 based on 1,200+ LA deals"}</div>
               </div>
             </div>
           </div>
@@ -419,15 +477,84 @@ function MainApp() {
               </div>
               <div className="space-y-2 relative z-10">
                 <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">{t.stats.companyName}</div>
-                <div className="text-4xl font-display">200+</div>
+                <div className="text-4xl font-display">{t.statsCount?.dealers || "217+"}</div>
                 <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{t.stats.dealers}</div>
               </div>
               <div className="h-px bg-[var(--b2)]" />
               <div className="space-y-2 relative z-10">
                 <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">{t.stats.license}</div>
-                <div className="text-xl font-mono">#21318</div>
+                <div className="text-xl font-mono">{t.statsCount?.license || "#21318"}</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Quiz CTA */}
+        <div className="mb-16 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group hover:border-[var(--lime)]/50 transition-colors cursor-pointer" onClick={() => scrollToSection('quiz')}>
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--lime)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="relative z-10 flex-1">
+            <h3 className="text-xl font-display mb-2">
+              {language === 'ru' ? 'Не знаете, какую машину выбрать?' : 'Don\'t know which car to choose?'}
+            </h3>
+            <p className="text-[var(--mu2)] text-sm">
+              {language === 'ru' 
+                ? 'Пройдите наш 30-секундный квиз, чтобы найти лучшие предложения по лизингу для вашего образа жизни.' 
+                : 'Take our 30-second quiz to find the best lease deals for your lifestyle.'}
+            </p>
+          </div>
+          <button className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors flex items-center gap-2">
+            {language === 'ru' ? 'Пройти квиз' : 'Take Quiz'} <ArrowRight size={16} />
+          </button>
+        </div>
+
+        {/* Founder's Letter & Legal Status */}
+        <div className="mb-32 grid md:grid-cols-2 gap-8">
+          <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--lime)]/5 rounded-full blur-3xl group-hover:bg-[var(--lime)]/10 transition-colors" />
+            <div className="flex items-center gap-4 mb-6">
+              <img src="/azat-photo.jpg" alt="Azat" className="w-16 h-16 rounded-full object-cover border-2 border-[var(--lime)]/20" onError={(e) => { e.currentTarget.src = 'https://picsum.photos/seed/azat/200/200' }} />
+              <div>
+                <h3 className="font-display text-2xl">{language === 'ru' ? 'Слово основателя' : 'A word from our Founder'}</h3>
+                <p className="text-[10px] text-[var(--lime)] uppercase tracking-widest font-bold">Azat Cutliahmetov</p>
+              </div>
+            </div>
+            <p className="text-[var(--mu2)] leading-relaxed mb-6 italic">
+              "{language === 'ru' ? 'Я создал Hunter Lease, потому что устал смотреть, как дилеры обманывают моих друзей. Если вам не понравится наш сервис — вот мой личный Telegram:' : 'I created Hunter Lease because I was tired of watching dealers deceive my friends. If you don\'t like our service — here is my personal Telegram:'}"
+            </p>
+            <a href="https://t.me/azatautosacramento" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[var(--w)] font-bold hover:text-[var(--lime)] transition-colors">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.188-2.85 5.18-4.686c.223-.195-.054-.296-.346-.105l-6.4 4.026-2.76-.86c-.6-.188-.61-.621.126-.91l10.784-4.16c.5-.188.943.116.826.85z"/></svg>
+              @azatautosacramento
+            </a>
+          </div>
+
+          <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 relative overflow-hidden">
+            <div className="mb-6">
+              <div className="w-12 h-12 bg-[var(--lime)]/10 rounded-xl flex items-center justify-center mb-4">
+                <ShieldCheck className="w-6 h-6 text-[var(--lime)]" />
+              </div>
+              <h3 className="font-display text-2xl">{language === 'ru' ? 'Кто мы такие?' : 'Who are we?'}</h3>
+            </div>
+            <p className="text-[var(--mu2)] leading-relaxed">
+              {language === 'ru' 
+                ? 'Мы — только IT-платформа и ваши переговорщики. Вы подписываете официальный контракт напрямую с авторизованным дилером (например, Toyota of Los Angeles). Гарантию дает завод-изготовитель. Вы платите дилеру, а не нам.' 
+                : 'We are an IT platform and your negotiators. You sign the official contract directly with an authorized dealer (e.g., Toyota of Los Angeles). The manufacturer provides the warranty. You pay the dealer, not us.'}
+            </p>
+          </div>
+        </div>
+
+        {/* Catalog right after Hero */}
+        <div id="market" className="mb-32">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12">
+            <div className="flex items-center gap-4 flex-1">
+              <h2 className="font-display text-4xl tracking-widest uppercase whitespace-nowrap">{t.market?.title || "Marketplace"}</h2>
+              <div className="flex-1 h-px bg-[var(--b2)]" />
+            </div>
+          </div>
+          <DealsGrid limit={6} />
+          <div className="mt-8 text-center">
+            <button onClick={() => navigate('/deals')} className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-10 py-4 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all">
+              {t.market?.viewAll || "View All Deals"}
+            </button>
           </div>
         </div>
 
@@ -441,7 +568,7 @@ function MainApp() {
             <div>
               <div className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Банковские программы обновляются' : 'Bank Programs Updating'}</div>
               <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest mt-0.5">
-                {language === 'ru' ? 'Текущие ставки действуют до конца месяца и могут быть отозваны банком в любой момент. Зафиксируйте условия сегодня.' : 'Current rates are valid until end of month and subject to change. Lock your terms today.'}
+                {t.urgencyBanner?.text?.replace('{date}', getEndOfMonth()) || `Current rates are valid until ${getEndOfMonth()} and subject to change.`}
               </div>
             </div>
           </div>
@@ -466,15 +593,18 @@ function MainApp() {
         </div>
 
         {/* Brand Logos Strip */}
-        <div className="mb-32 overflow-hidden">
-          <div className="flex items-center gap-8 opacity-30 grayscale hover:grayscale-0 transition-all">
-            {['BMW', 'Audi', 'Mercedes-Benz', 'Toyota', 'Kia', 'Hyundai', 'Porsche', 'Lexus', 'Volkswagen', 'Range Rover'].map((brand) => (
-              <div key={brand} className="font-display text-2xl tracking-tighter whitespace-nowrap">{brand}</div>
+        <div className="mb-32 overflow-hidden relative">
+          <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[var(--bg)] to-transparent z-10" />
+          <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[var(--bg)] to-transparent z-10" />
+          <motion.div 
+            animate={{ x: [0, -1035] }}
+            transition={{ repeat: Infinity, ease: "linear", duration: 20 }}
+            className="flex items-center gap-12 opacity-30 grayscale hover:grayscale-0 transition-all w-max"
+          >
+            {['BMW', 'Audi', 'Mercedes-Benz', 'Toyota', 'Kia', 'Hyundai', 'Porsche', 'Lexus', 'Volkswagen', 'Range Rover', 'BMW', 'Audi', 'Mercedes-Benz', 'Toyota', 'Kia', 'Hyundai', 'Porsche', 'Lexus', 'Volkswagen', 'Range Rover'].map((brand, i) => (
+              <div key={i} className="font-display text-2xl tracking-tighter whitespace-nowrap">{brand}</div>
             ))}
-            {['BMW', 'Audi', 'Mercedes-Benz', 'Toyota', 'Kia', 'Hyundai', 'Porsche', 'Lexus', 'Volkswagen', 'Range Rover'].map((brand) => (
-              <div key={brand + '_2'} className="font-display text-2xl tracking-tighter whitespace-nowrap">{brand}</div>
-            ))}
-          </div>
+          </motion.div>
         </div>
 
         <div id="calc" className="mb-32">
@@ -560,7 +690,7 @@ function MainApp() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-display text-[var(--lime)]">217+</div>
+                  <div className="text-2xl font-display text-[var(--lime)]">{t.statsCount?.dealers || "217+"}</div>
                   <div className="text-[8px] text-[var(--mu2)] uppercase font-bold tracking-widest">{t.stats.activeDealers}</div>
                 </div>
               </div>
@@ -577,26 +707,28 @@ function MainApp() {
           <ProcessTimeline />
         </div>
 
+        {/* Transparency & Trust Section */}
         <div className="mb-32">
+          <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 flex flex-col justify-center max-w-3xl mx-auto text-center">
+            <div className="w-12 h-12 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center mx-auto mb-6">
+              <svg className="w-6 h-6 text-[var(--lime)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="font-display text-2xl mb-4">{t.businessModel?.title || "How we make money"}</h3>
+            <p className="text-[var(--mu2)] leading-relaxed">
+              {t.businessModel?.desc || "We receive a fixed commission from the dealer's Fleet department for a referred client. It is not profitable for us to inflate your rate, unlike classic sellers."}
+            </p>
+          </div>
+        </div>
+
+        <div id="quiz" className="mb-32">
           <CarQuiz onSelect={handleSelect} />
         </div>
 
         {language === 'ru' && <SpecialBenefits />}
 
-        <div id="market" className="mb-32">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12">
-            <div className="flex items-center gap-4 flex-1">
-              <h2 className="font-display text-4xl tracking-widest uppercase whitespace-nowrap">{t.market.title}</h2>
-              <div className="flex-1 h-px bg-[var(--b2)]" />
-            </div>
-          </div>
-          <DealsGrid filter={searchQuery} limit={3} />
-          <div className="mt-8 text-center">
-            <button onClick={() => navigate('/deals')} className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-10 py-4 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all">
-              {t.market.viewAll}
-            </button>
-          </div>
-        </div>
+
 
         <div className="mb-32">
           <div className="flex items-center gap-4 mb-12">
@@ -820,7 +952,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const navLinks = [
     { to: '/#calc', label: t.nav.calculator, id: 'calc' },
     { to: '/deals', label: t.nav.dealsCatalog },
-    { to: '/lease-transfers', label: t.nav.leaseTransfers },
     { to: '/saved', label: t.nav.savedDeals },
     { to: '/blog', label: t.nav.blog },
     ...(user ? [{ to: '/dashboard', label: t.nav.dashboard }] : []),
@@ -993,12 +1124,14 @@ export default function App() {
           <Route path="/lease-transfers" element={<Layout><LeaseTransfersPage /></Layout>} />
           <Route path="/compare" element={<Layout><ComparePage /></Layout>} />
           <Route path="/deal/:id" element={<Layout><DealPage /></Layout>} />
+          <Route path="/deal/mc/:vin" element={<Layout><MarketcheckDealPage /></Layout>} />
           <Route path="/saved" element={<Layout><SavedDealsPage /></Layout>} />
           <Route path="/blog" element={<Layout><BlogPage /></Layout>} />
           <Route path="/blog/:id" element={<Layout><BlogPost /></Layout>} />
           <Route path="/glossary" element={<Layout><GlossaryPage /></Layout>} />
           <Route path="/about" element={<Layout><AboutPage /></Layout>} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/calibrator" element={<Calibrator />} />
           <Route path="/privacy" element={<Layout><PrivacyPolicy /></Layout>} />
           <Route path="/terms" element={<Layout><TermsConditions /></Layout>} />
           <Route path="/legal-disclosure" element={<Layout><LegalDisclosure /></Layout>} />

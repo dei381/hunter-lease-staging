@@ -257,6 +257,9 @@ export const DealCalculatorModal = ({
                             <option key={tierObj.id} value={tierObj.id}>{tierObj.label} ({tierObj.score})</option>
                           ))}
                         </select>
+                        <p className="mt-2 text-[9px] text-[var(--mu2)] leading-relaxed italic">
+                          {t.creditDisclaimer}
+                        </p>
                       </div>
                       {calcType === 'lease' && (
                         <div>
@@ -589,12 +592,19 @@ export const DealCalculatorModal = ({
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => setIsProcessing(true)}
-                    className="w-full mt-8 bg-[var(--lime)] text-black font-bold text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 relative z-10"
-                  >
-                    {t.lockIn}
-                  </button>
+                  <div className="mt-8 relative z-10">
+                    <button 
+                      onClick={() => setIsProcessing(true)}
+                      className="w-full bg-[var(--lime)] text-black font-bold text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                    >
+                      {language === 'ru' ? 'Отправить заявку дилерам' : 'Submit Request to Dealers'}
+                    </button>
+                    <div className="mt-3 text-center">
+                      <span className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-bold">
+                        {language === 'ru' ? 'Возвращаемый депозит $95 на следующем шаге' : 'Fully refundable $95 deposit on the next step'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -190,6 +190,10 @@ service cloud.firestore {
                     ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin());
                     
       allow delete: if isAdmin();
+
+      match /saved_listings/{listingId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     match /leads/{leadId} {
@@ -279,6 +283,10 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidBlogPost(request.resource.data);
       allow update: if isAdmin() && isValidBlogPost(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin();
+    }
+
+    match /calibrator_leads/{id} {
+      allow read, write: if isAdmin();
     }
   }
 }
