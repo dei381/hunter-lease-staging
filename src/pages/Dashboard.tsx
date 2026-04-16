@@ -105,8 +105,7 @@ export const Dashboard = () => {
 
   const tabs = [
     { id: 'applications', label: language === 'ru' ? 'Заявки' : 'Applications', icon: Car },
-    { id: 'saved', label: language === 'ru' ? 'Сохраненные' : 'Saved Deals', icon: Heart },
-    { id: 'listings', label: language === 'ru' ? 'Мои авто' : 'My Listings', icon: List }
+    { id: 'saved', label: language === 'ru' ? 'Сохраненные' : 'Saved Deals', icon: Heart }
   ];
 
   return (
@@ -348,28 +347,6 @@ export const Dashboard = () => {
                     </Link>
                   </div>
                 )}
-              </>
-            )}
-
-            {activeTab === 'listings' && (
-              <>
-                <h2 className="text-xl font-bold uppercase tracking-widest text-[var(--mu)] mb-6">
-                  {language === 'ru' ? 'Мои авто (Передача лизинга)' : 'My Listings (Lease Transfers)'}
-                </h2>
-                <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-12 text-center">
-                  <List className="w-12 h-12 text-[var(--mu2)] mx-auto mb-4 opacity-50" />
-                  <h3 className="text-xl font-display mb-2">
-                    {language === 'ru' ? 'Нет выставленных авто' : 'No Active Listings'}
-                  </h3>
-                  <p className="text-[var(--mu2)] mb-6">
-                    {language === 'ru' 
-                      ? 'У вас пока нет активных объявлений о передаче лизинга.' 
-                      : 'You don\'t have any active lease transfer listings yet.'}
-                  </p>
-                  <Link to="/lease-transfers" className="inline-flex items-center gap-2 bg-[var(--lime)] text-black font-bold uppercase tracking-widest px-6 py-3 rounded-xl hover:bg-[var(--lime2)] transition-colors">
-                    {language === 'ru' ? 'Выставить авто' : 'List Your Lease'} <ChevronRight size={16} />
-                  </Link>
-                </div>
               </>
             )}
           </div>

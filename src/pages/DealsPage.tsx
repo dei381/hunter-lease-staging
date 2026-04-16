@@ -10,17 +10,16 @@ import { translations } from '../translations';
 import { getCarImage, CarPhoto } from '../utils/carImage';
 import { getVal } from '../utils/finance';
 import { useDebounce } from '../hooks/useDebounce';
+import { useMarketcheck } from '../hooks/useMarketcheck';
+import { CompareBar } from '../components/CompareBar';
+import { logEvent } from '../components/VisitTracker';
+import { fetchWithCache } from '../utils/fetchWithCache';
 
 const fmt = (n: any) => {
   const num = Number(n);
   if (isNaN(num)) return '$0';
   return '$' + Math.round(num).toLocaleString('en-US');
 };
-
-import { CompareBar } from '../components/CompareBar';
-import { logEvent } from '../components/VisitTracker';
-
-import { fetchWithCache } from '../utils/fetchWithCache';
 
 export const DealsPage = () => {
   const navigate = useNavigate();
@@ -39,6 +38,11 @@ export const DealsPage = () => {
   const [maxPayment, setMaxPayment] = useState(1500);
   const [selectedMake, setSelectedMake] = useState(initialMake);
   const [selectedModel, setSelectedModel] = useState(initialModel || 'All');
+  
+  const { mcInventory, mcTotalCount, isLoading: isMcLoading } = useMarketcheck(useMemo(() => ({
+    make: selectedMake,
+    model: selectedModel
+  }), [selectedMake, selectedModel]));
   const [selectedTrim, setSelectedTrim] = useState('All');
   const [selectedClass, setSelectedClass] = useState('All');
   const [displayMode, setDisplayMode] = useState<'lease' | 'finance'>('lease');
@@ -46,7 +50,9 @@ export const DealsPage = () => {
   const [hasCosigner, setHasCosigner] = useState(false);
   const [selectedQuickFilter, setSelectedQuickFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(initialModel);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [showFilters, setShowFilters] = useState(false);
+  const debouncedMaxPayment = useDebounce(maxPayment, 300);
   
   const [selectedTerm, setSelectedTerm] = useState<number>(36);
   const [selectedMileage, setSelectedMileage] = useState<string>('10k');
@@ -75,50 +81,67 @@ export const DealsPage = () => {
       term: selectedTerm.toString(),
       down: debouncedDownPayment.toString(),
       mileage: selectedMileage,
-      displayMode: displayMode
+      displayMode: displayMode,
+      limit: '50' // Limit to 50 deals as requested to improve performance
     });
 
-    Promise.all([
+    Promise.allSettled([
       fetchWithCache(`/api/deals?${params.toString()}`),
       fetchWithCache('/api/car-photos'),
       fetchWithCache(`/api/v2/quotes?zipCode=${debouncedZipCode || '90210'}&uxTier=${tier === 't1' ? 'TIER_1_PLUS' : 'TIER_1'}&isFirstTimeBuyer=${isFirstTimeBuyer}`)
     ])
-      .then(([data, photosData, snapshots]: any) => {
-        setPhotos(photosData);
-        setQuoteSnapshots(snapshots || []);
+      .then((results: any[]) => {
+        const data = results[0].status === 'fulfilled' ? results[0].value : [];
+        const photosData = results[1].status === 'fulfilled' ? results[1].value : [];
+        const snapshots = results[2].status === 'fulfilled' ? results[2].value : [];
+
+        setPhotos(photosData as CarPhoto[] || []);
+        setQuoteSnapshots(snapshots as any[] || []);
         
+        if (!Array.isArray(data)) {
+          console.error('Expected array of deals, got:', data);
+          setDeals([]);
+          setIsLoading(false);
+          return;
+        }
+
         // Deduplicate deals by make + model + trim
         const uniqueDealsMap = new Map();
         data.forEach((deal: any) => {
-          const key = `${deal.make}-${deal.model}-${deal.trim}`;
+          if (!deal || !deal.make || !deal.model) return;
+          const key = `${deal.make}-${deal.model}-${deal.trim || 'base'}`;
           if (!uniqueDealsMap.has(key) || deal.type === 'lease') {
             uniqueDealsMap.set(key, deal);
           }
         });
         const uniqueDeals = Array.from(uniqueDealsMap.values());
 
+        // Optimize snapshots lookup with a Map
+        const snapshotsMap = new Map();
+        if (Array.isArray(snapshots)) {
+          snapshots.forEach((s: any) => {
+            if (!s?.vehicle?.make || !s?.vehicle?.model) return;
+            const key = `${s.vehicle.make}-${s.vehicle.model}-${s.vehicle.trim || 'base'}-${s.quoteType}`;
+            snapshotsMap.set(key, s);
+          });
+        }
+
         // Merge with snapshots if available
         const recalculated = uniqueDeals.map((deal: any) => {
-          const leaseSnapshot = snapshots?.find((s: any) => 
-            s.vehicle.make === deal.make && 
-            s.vehicle.model === deal.model && 
-            s.vehicle.trim === deal.trim &&
-            s.quoteType === 'LEASE'
-          );
+          const trimKey = deal.trim || 'base';
+          const leaseKey = `${deal.make}-${deal.model}-${trimKey}-LEASE`;
+          const financeKey = `${deal.make}-${deal.model}-${trimKey}-FINANCE`;
           
-          const financeSnapshot = snapshots?.find((s: any) => 
-            s.vehicle.make === deal.make && 
-            s.vehicle.model === deal.model && 
-            s.vehicle.trim === deal.trim &&
-            s.quoteType === 'FINANCE'
-          );
+          const leaseSnapshot = snapshotsMap.get(leaseKey);
+          const financeSnapshot = snapshotsMap.get(financeKey);
 
           if (leaseSnapshot || financeSnapshot) {
+            const snapshot = leaseSnapshot || financeSnapshot;
             return {
               ...deal,
               payment: leaseSnapshot ? leaseSnapshot.monthlyPaymentCents / 100 : deal.payment,
               financePayment: financeSnapshot ? financeSnapshot.monthlyPaymentCents / 100 : deal.financePayment,
-              msrp: (leaseSnapshot || financeSnapshot).vehicle.msrpCents / 100,
+              msrp: snapshot?.vehicle?.msrpCents ? snapshot.vehicle.msrpCents / 100 : deal.msrp,
               isFromSnapshot: true
             };
           }
@@ -135,32 +158,94 @@ export const DealsPage = () => {
         setIsLoading(false);
       })
       .catch(err => {
-        console.error('Failed to fetch data:', err);
+        console.error('Critical error in catalog loading:', err);
         setIsLoading(false);
       });
   }, [debouncedZipCode, isFirstTimeBuyer, tier, selectedTerm, debouncedDownPayment, selectedMileage, displayMode]);
 
-  const makes = useMemo(() => ['All', ...Array.from(new Set(deals.map(d => d.make)))].sort(), [deals]);
+  const TARGET_MAKES = ['Acura', 'Chevrolet', 'Ford', 'Genesis', 'Hyundai', 'Kia', 'Lexus', 'RAM', 'Toyota', 'Volvo'];
+  const makes = useMemo(() => ['All', ...TARGET_MAKES].sort(), []);
   const availableModels = useMemo(() => {
     if (selectedMake === 'All') return ['All'];
     const filtered = deals.filter(d => d.make === selectedMake);
-    return ['All', ...Array.from(new Set(filtered.map(d => d.model)))].sort();
-  }, [deals, selectedMake]);
+    const mcFiltered = mcInventory.filter(d => d.make === selectedMake);
+    return ['All', ...Array.from(new Set([...filtered.map(d => d.model), ...mcFiltered.map(d => d.model)]))].sort();
+  }, [deals, mcInventory, selectedMake]);
 
   const availableTrims = useMemo(() => {
     if (selectedMake === 'All' || selectedModel === 'All') return ['All'];
     const filtered = deals.filter(d => d.make === selectedMake && d.model === selectedModel);
-    return ['All', ...Array.from(new Set(filtered.map(d => d.trim)))].sort();
-  }, [deals, selectedMake, selectedModel]);
+    const mcFiltered = mcInventory.filter(d => d.make === selectedMake && d.model === selectedModel);
+    return ['All', ...Array.from(new Set([...filtered.map(d => d.trim), ...mcFiltered.map(d => d.trim)]))].sort();
+  }, [deals, mcInventory, selectedMake, selectedModel]);
   const classes = useMemo(() => ['All', ...Array.from(new Set(deals.map(d => d.class)))], [deals]);
 
   const processedDeals = useMemo(() => {
-    return deals.map(deal => {
+    // Map Marketcheck inventory to deal structure
+    const mcDealsMap = new Map();
+    
+    mcInventory.forEach(item => {
+      // Skip listings that have neither price nor msrp
+      if (!item.price && !item.msrp) return;
+      
+      const price = item.price || item.msrp || 0;
+      const msrp = item.msrp || price;
+      
+      const amountToFinance = Math.max(0, price - downPayment);
+      const estimatedLease = Math.round((amountToFinance / selectedTerm) + (price * 0.00125));
+      const estimatedFinance = Math.round((amountToFinance / selectedTerm) * 1.05);
+      
+      // Robust image extraction
+      let image = null;
+      if (item.media?.photo_links?.[0]) {
+        image = item.media.photo_links[0];
+      } else if (Array.isArray(item.media) && item.media[0]) {
+        image = typeof item.media[0] === 'string' ? item.media[0] : (item.media[0] as any).url;
+      }
+
+      const deal = {
+        id: item.vin, // Use VIN as ID for Marketcheck
+        vin: item.vin,
+        make: item.make,
+        model: item.model,
+        year: item.year,
+        trim: item.trim,
+        msrp: msrp,
+        price: price,
+        payment: estimatedLease, // Estimated lease payment
+        financePayment: estimatedFinance, // Estimated finance payment
+        savings: Math.max(0, msrp - price),
+        image,
+        dealer: item.dealer?.name,
+        type: 'marketcheck',
+        status: 'active',
+        hot: false,
+        class: 'Other',
+        fuelType: (item as any).fuel_type || (item as any).build?.fuel_type,
+        bodyStyle: (item as any).body_style || (item as any).build?.body_type,
+        driveType: (item as any).drive_type || (item as any).build?.drivetrain,
+        transmission: (item as any).transmission || (item as any).build?.transmission,
+        engine: (item as any).engine || (item as any).build?.engine,
+        miles: item.miles
+      };
+      
+      const key = `${deal.make}-${deal.model}-${deal.trim || 'base'}`;
+      // Deduplicate: keep the one with the lowest price
+      if (!mcDealsMap.has(key) || mcDealsMap.get(key).price > price) {
+        mcDealsMap.set(key, deal);
+      }
+    });
+    
+    const mcDeals = Array.from(mcDealsMap.values());
+
+    const allDeals = [...deals, ...mcDeals];
+
+    return allDeals.map(deal => {
       const msrp = getVal(deal.msrp);
       let currentPayment = displayMode === 'lease' ? deal.payment : deal.financePayment || deal.payment;
       let currentMarketAvg = displayMode === 'lease' ? Math.round(currentPayment * 1.267) : Math.round(currentPayment * 1.15);
 
-      const totalCost = currentPayment * selectedTerm;
+      const totalCost = (currentPayment * selectedTerm) + downPayment;
       const valueScore = totalCost > 0 ? (msrp / totalCost).toFixed(2) : '0';
 
       return {
@@ -173,14 +258,16 @@ export const DealsPage = () => {
         valueScore: parseFloat(valueScore)
       };
     });
-  }, [deals, displayMode, selectedTerm]);
+  }, [deals, mcInventory, displayMode, selectedTerm, downPayment]);
 
   const filteredDeals = useMemo(() => {
     let result = processedDeals.filter(deal => {
       const finalPayment = Number(deal.displayPayment) || 0;
-      const matchesSearch = deal.make.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           deal.model.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesPayment = finalPayment <= maxPayment;
+      const makeStr = deal.make || '';
+      const modelStr = deal.model || '';
+      const matchesSearch = makeStr.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) || 
+                           modelStr.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+      const matchesPayment = finalPayment <= debouncedMaxPayment;
       const matchesMake = selectedMake === 'All' || deal.make === selectedMake;
       const matchesModel = selectedModel === 'All' || deal.model === selectedModel;
       const matchesTrim = selectedTrim === 'All' || deal.trim === selectedTrim;
@@ -199,15 +286,16 @@ export const DealsPage = () => {
       const matchesBody = selectedBodyStyle === 'All' || deal.bodyStyle === selectedBodyStyle;
       const matchesFuel = selectedFuelType === 'All' || deal.fuelType === selectedFuelType;
       const matchesDrive = selectedDriveType === 'All' || deal.driveType === selectedDriveType;
-      const matchesSeats = selectedSeats === 'All' || deal.seats >= parseInt(selectedSeats);
+      const matchesSeats = selectedSeats === 'All' || (deal.seats || 0) >= parseInt(selectedSeats);
 
       // Quick Filters logic
       if (selectedQuickFilter) {
+        const dealClass = (deal.class || '').toLowerCase();
         if (selectedQuickFilter === 'hybrids' && !(deal.fuelType === 'Hybrid' && finalPayment <= 400)) return false;
         if (selectedQuickFilter === 'suvs' && !(deal.bodyStyle === 'SUV' && finalPayment <= 600)) return false;
         if (selectedQuickFilter === 'evs' && !(deal.fuelType === 'Electric' && finalPayment <= 600)) return false;
-        if (selectedQuickFilter === 'luxury' && !(deal.class.toLowerCase().includes('luxury') && finalPayment <= 800)) return false;
-        if (selectedQuickFilter === 'threeRow' && !(deal.seats >= 7)) return false;
+        if (selectedQuickFilter === 'luxury' && !(dealClass.includes('luxury') && finalPayment <= 800)) return false;
+        if (selectedQuickFilter === 'threeRow' && !((deal.seats || 0) >= 7)) return false;
       }
       
       return matchesSearch && matchesPayment && matchesMake && matchesModel && matchesTrim && matchesClass && matchesFTB && 
@@ -221,11 +309,29 @@ export const DealsPage = () => {
       if (sortBy === 'value') return b.valueScore - a.valueScore;
       return 0;
     });
-  }, [processedDeals, searchQuery, maxPayment, selectedMake, selectedModel, selectedTrim, selectedClass, isFirstTimeBuyer, hasCosigner, selectedQuickFilter, selectedBodyStyle, selectedFuelType, selectedDriveType, selectedSeats, sortBy]);
+  }, [processedDeals, debouncedSearchQuery, debouncedMaxPayment, selectedMake, selectedModel, selectedTrim, selectedClass, isFirstTimeBuyer, hasCosigner, selectedQuickFilter, selectedBodyStyle, selectedFuelType, selectedDriveType, selectedSeats, sortBy]);
+
+  const displayedDeals = useMemo(() => filteredDeals.slice(0, 55), [filteredDeals]);
+
+  useEffect(() => {
+    console.log('DealsPage Debug:', {
+      localDeals: deals.length,
+      mcInventory: mcInventory.length,
+      processed: processedDeals.length,
+      filtered: filteredDeals.length,
+      displayed: displayedDeals.length,
+      mcTotalCount
+    });
+  }, [deals, mcInventory, processedDeals, filteredDeals, displayedDeals, mcTotalCount]);
 
   const handleCardClick = (deal: any) => {
     logEvent('select_item', { item_list_name: 'deals_catalog', items: [{ item_id: deal.id, item_name: `${deal.make} ${deal.model}` }] });
-    navigate(`/deal/${deal.id}`, { state: { isFirstTimeBuyer, hasCosigner } });
+    if (deal.type === 'marketcheck') {
+      const originalListing = mcInventory.find(item => item.vin === deal.vin);
+      navigate(`/deal/mc/${deal.vin}`, { state: { isFirstTimeBuyer, hasCosigner, listing: originalListing } });
+    } else {
+      navigate(`/deal/${deal.id}`, { state: { isFirstTimeBuyer, hasCosigner } });
+    }
   };
 
   const itemListSchema = {
@@ -234,7 +340,7 @@ export const DealsPage = () => {
     "itemListElement": filteredDeals.slice(0, 10).map((deal, index) => ({
       "@type": "ListItem",
       "position": index + 1,
-      "url": `${window.location.origin}/deal/${deal.id}`,
+      "url": `${window.location.origin}${deal.type === 'marketcheck' ? '/deal/mc/' + deal.vin : '/deal/' + deal.id}`,
       "name": `${deal.year} ${deal.make} ${deal.model} ${deal.trim}`
     }))
   };
@@ -588,7 +694,9 @@ export const DealsPage = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <h2 className="text-xl font-display tracking-tight">
-                    <span className="text-[var(--w)]">{filteredDeals.length}</span> <span className="text-[var(--mu2)]">{t.verifiedDeals}</span>
+                    <span className="text-[var(--w)]">
+                      {mcTotalCount > 0 ? mcTotalCount.toLocaleString() : (filteredDeals.length >= 55 ? '55+' : filteredDeals.length)}
+                    </span> <span className="text-[var(--mu2)]">{t.verifiedDeals}</span>
                   </h2>
                   <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
                     <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{displayMode === 'lease' ? t.lease : t.finance}</span>
@@ -644,7 +752,7 @@ export const DealsPage = () => {
             {/* Grid */}
             <div className="grid md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               <AnimatePresence mode="popLayout">
-                {isLoading ? (
+                {(isLoading || isMcLoading) ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <motion.div
                       key={`skeleton-${i}`}
@@ -673,9 +781,9 @@ export const DealsPage = () => {
                       </div>
                     </motion.div>
                   ))
-                ) : filteredDeals.length > 0 ? filteredDeals.map(deal => (
+                ) : displayedDeals.length > 0 ? displayedDeals.map((deal, idx) => (
                   <motion.div 
-                    key={deal.id}
+                    key={deal.id || deal.vin || idx}
                     layout
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -686,24 +794,45 @@ export const DealsPage = () => {
                     {/* Image Section - Top */}
                     <div className="relative w-full aspect-[16/10] bg-[var(--s2)] overflow-hidden shrink-0">
                       <img 
-                        src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} 
+                        src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year) || 'https://picsum.photos/seed/car/1200/800'} 
                         alt={`${deal.year} ${deal.make} ${deal.model} ${deal.trim} - Hunter Lease`} 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" 
                         referrerPolicy="no-referrer" 
                         loading="lazy"
+                        onError={(e) => { e.currentTarget.src = 'https://picsum.photos/seed/car/1200/800'; }}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                      
+                      {/* Obscure dealer info on top and bottom for Marketcheck deals */}
+                      {deal.type === 'marketcheck' && (
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-12 bg-transparent backdrop-blur-xl [mask-image:linear-gradient(to_bottom,black_50%,transparent_100%)] pointer-events-none z-10" />
+                          <div className="absolute bottom-0 left-0 right-0 h-12 bg-transparent backdrop-blur-xl [mask-image:linear-gradient(to_top,black_50%,transparent_100%)] pointer-events-none z-10" />
+                        </>
+                      )}
+
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-10" />
                       
                       {/* Badges */}
-                      <div className="absolute top-3 left-3 flex flex-col gap-2">
+                      <div className="absolute top-3 left-3 flex flex-col gap-2 z-20">
                         {deal.hot && (
                           <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
                             {t.hot}
                           </span>
                         )}
-                        <span className="bg-white/90 backdrop-blur-sm text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
-                          Verified
-                        </span>
+                        {deal.type === 'marketcheck' ? (
+                          <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
+                            LIVE INVENTORY
+                          </span>
+                        ) : (
+                          <span className="bg-white/90 backdrop-blur-sm text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
+                            Verified
+                          </span>
+                        )}
+                        {deal.savings > 0 && (
+                          <span className="bg-[var(--grn)] text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit animate-pulse">
+                            SAVE {fmt(deal.savings)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -747,10 +876,16 @@ export const DealsPage = () => {
                           </div>
                           <span className="font-mono text-[var(--w)]">{fmt(deal.msrp)}</span>
                         </div>
-                        {(deal.savings > 0 || deal.valueScore > 0) && (
+                        {deal.savings > 0 && (
                           <div className="flex flex-col text-right">
-                            <span className="text-[10px] text-[var(--grn)] uppercase tracking-widest font-bold">{deal.savings > 0 ? t.totalSavings : 'Value Score'}</span>
-                            <span className="font-mono text-[var(--grn)] font-bold bg-[var(--grn)]/10 px-2 py-0.5 rounded">{deal.savings > 0 ? fmt(deal.savings) : deal.valueScore}</span>
+                            <span className="text-[10px] text-[var(--grn)] uppercase tracking-widest font-bold">{t.totalSavings}</span>
+                            <span className="font-mono text-[var(--grn)] font-bold bg-[var(--grn)]/10 px-2 py-0.5 rounded">{fmt(deal.savings)}</span>
+                          </div>
+                        )}
+                        {deal.type !== 'marketcheck' && deal.savings <= 0 && deal.valueScore > 0 && (
+                          <div className="flex flex-col text-right">
+                            <span className="text-[10px] text-[var(--grn)] uppercase tracking-widest font-bold">Value Score</span>
+                            <span className="font-mono text-[var(--grn)] font-bold bg-[var(--grn)]/10 px-2 py-0.5 rounded">{deal.valueScore}</span>
                           </div>
                         )}
                       </div>
@@ -760,27 +895,27 @@ export const DealsPage = () => {
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isInCompare(deal.id.toString())) {
-                              removeFromCompare(deal.id.toString());
+                            if (isInCompare(String(deal.id))) {
+                              removeFromCompare(String(deal.id));
                             } else {
                               addToCompare(deal);
                             }
                           }}
                           className={`w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border ${
-                            isInCompare(deal.id.toString()) 
+                            isInCompare(String(deal.id)) 
                               ? 'bg-[var(--s2)] text-[var(--w)] border-[var(--lime)]' 
                               : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)]'
                           }`}
                         >
-                          <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-colors ${isInCompare(deal.id.toString()) ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--mu2)]'}`}>
-                            {isInCompare(deal.id.toString()) && <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2 h-2 text-black"><path d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-colors ${isInCompare(String(deal.id)) ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--mu2)]'}`}>
+                            {isInCompare(String(deal.id)) && <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2 h-2 text-black"><path d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                           </div>
-                          {isInCompare(deal.id.toString()) ? 'Added to Compare' : 'Compare'}
+                          {isInCompare(String(deal.id)) ? 'Added to Compare' : 'Compare'}
                         </button>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/deal/${deal.id}`);
+                            handleCardClick(deal);
                           }}
                           className="w-full py-3 bg-[var(--lime)] text-black rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors flex items-center justify-center gap-2 shadow-lg shadow-[var(--lime)]/10"
                         >
@@ -798,26 +933,34 @@ export const DealsPage = () => {
                     <Search className="w-12 h-12 text-[var(--mu2)] mb-4 opacity-20" />
                     <h3 className="text-2xl font-display mb-2">{t.noDeals}</h3>
                     <p className="text-sm text-[var(--mu)] max-w-sm mx-auto">{t.noDealsDesc}</p>
-                    <button 
-                      onClick={() => {
-                        setSelectedMake('All');
-                        setSelectedModel('All');
-                        setSelectedTrim('All');
-                        setSelectedClass('All');
-                        setSelectedBodyStyle('All');
-                        setSelectedFuelType('All');
-                        setSelectedDriveType('All');
-                        setSelectedSeats('All');
-                        setMaxPayment(3000);
-                        setSearchQuery('');
-                        setSelectedQuickFilter(null);
-                        setTier('t1');
-                        setDownPayment(3000);
-                      }}
-                      className="mt-6 px-6 py-3 bg-[var(--s2)] hover:bg-[var(--b2)] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
-                    >
-                      {t.clearFilters}
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                      <button 
+                        onClick={() => {
+                          setSelectedMake('All');
+                          setSelectedModel('All');
+                          setSelectedTrim('All');
+                          setSelectedClass('All');
+                          setSelectedBodyStyle('All');
+                          setSelectedFuelType('All');
+                          setSelectedDriveType('All');
+                          setSelectedSeats('All');
+                          setMaxPayment(3000);
+                          setSearchQuery('');
+                          setSelectedQuickFilter(null);
+                          setTier('t1');
+                          setDownPayment(3000);
+                        }}
+                        className="px-8 py-3 bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] rounded-xl text-[10px] font-bold uppercase tracking-widest hover:border-[var(--mu)] transition-all"
+                      >
+                        {t.clearFilters}
+                      </button>
+                      <button 
+                        onClick={() => window.location.reload()}
+                        className="px-8 py-3 bg-[var(--lime)] text-black rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--lime2)] transition-all shadow-lg shadow-[var(--lime)]/20"
+                      >
+                        Refresh Page
+                      </button>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>

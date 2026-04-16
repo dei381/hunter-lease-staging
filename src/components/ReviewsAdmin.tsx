@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Save, X, Star, Video, Image as ImageIcon } from 'lucide-react';
+import { getAuthToken } from '../utils/auth';
 
 interface Review {
   id: string;
@@ -29,9 +30,10 @@ export function ReviewsAdmin() {
 
   const fetchReviews = async (pageNum: number) => {
     try {
+      const token = await getAuthToken();
       const res = await fetch(`/api/admin/reviews?page=${pageNum}&limit=50`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       if (res.ok) {
@@ -55,11 +57,12 @@ export function ReviewsAdmin() {
     const url = id ? `/api/admin/reviews/${id}` : '/api/admin/reviews';
     
     try {
+      const token = await getAuthToken();
       const res = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(editForm)
       });
@@ -77,10 +80,11 @@ export function ReviewsAdmin() {
 
   const handleDelete = async (id: string) => {
     try {
+      const token = await getAuthToken();
       const res = await fetch(`/api/admin/reviews/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       

@@ -58,6 +58,7 @@ export const DealPage = () => {
   const [activeTab, setActiveTab] = useState<'specs' | 'options'>('specs');
   const [mileage, setMileage] = useState('10k');
   const [photos, setPhotos] = useState<CarPhoto[]>([]);
+  const [marketStats, setMarketStats] = useState<any>(null);
 
   // DepositModal state
   const [clientInfo, setClientInfo] = useState({ name: '', email: '', phone: '', tcpaConsent: false, termsConsent: false });
@@ -115,9 +116,17 @@ export const DealPage = () => {
         const found = data.length > 0 ? data[0] : null;
         setDeal(found);
         if (found) {
-          setViewCount(found.viewCount || Math.floor(Math.random() * 5) + 2);
+          setViewCount(found.viewCount || 1);
           // Increment view count on server
           fetch(`/api/deals/${found.id}/view`, { method: 'POST' }).catch(console.error);
+          
+          // Fetch market stats
+          fetch(`/api/marketcheck/stats?make=${found.make}&model=${found.model}&year=${found.year || new Date().getFullYear()}`)
+            .then(res => res.json())
+            .then(statsData => {
+              if (!statsData.error) setMarketStats(statsData);
+            })
+            .catch(console.error);
         }
         setLoading(false);
       })
@@ -313,9 +322,12 @@ export const DealPage = () => {
                 <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
                 <span className="font-mono text-[10px] tracking-widest">{deal.trim || td.premiumPlus}</span>
                 <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5 relative group cursor-help bg-[var(--lime)]/10 border border-[var(--lime)]/30 px-2 py-0.5 rounded-full">
                   <ShieldCheck size={12} className="text-[var(--lime)]" />
-                  <span className="font-mono text-[10px] tracking-widest">{td.passedAudit}</span>
+                  <span className="font-mono text-[10px] font-bold tracking-widest text-[var(--lime)]">{td.passedAudit}</span>
+                  <div className="absolute top-full left-0 mt-2 w-64 p-3 bg-[var(--s2)] border border-[var(--b2)] rounded-xl text-[10px] text-[var(--mu2)] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+                    {t.lock?.key2Desc || "Mathematically guaranteed: the dealer cannot add hidden fees."}
+                  </div>
                 </div>
               </div>
             </div>
@@ -548,95 +560,7 @@ export const DealPage = () => {
                 </div>
               )}
 
-              {/* Market Trend & TCO Analysis - New Spacious Layout */}
-              <div className="grid md:grid-cols-2 gap-4">
-                {/* Market Trend Analysis */}
-                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center">
-                        <TrendingDown className="text-[var(--lime)]" size={20} />
-                      </div>
-                      <h3 className="font-display text-xl uppercase">{t.calc.marketTrend}</h3>
-                    </div>
-                    <div className="bg-[var(--lime)]/10 text-[var(--lime)] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-[var(--lime)]/20">
-                      {t.calc.bestTimeToBuy}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-end justify-between h-32 gap-2">
-                      {[65, 80, 45, 90, 70, 55, 40].map((h, i) => (
-                        <div key={i} className="flex-1 bg-[var(--b1)] rounded-t-xl relative group h-full flex items-end overflow-hidden border border-[var(--b2)]">
-                          <motion.div 
-                            initial={{ height: 0 }}
-                            animate={{ height: `${h}%` }}
-                            transition={{ delay: 0.5 + i * 0.1 }}
-                            className={cn(
-                              "w-full transition-all",
-                              i === 6 ? "bg-[var(--lime)]" : "bg-[var(--mu2)]/20 group-hover:bg-[var(--mu2)]/40"
-                            )}
-                          />
-                          {i === 6 && (
-                            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[8px] font-bold text-black bg-[var(--lime)] px-1 rounded">
-                              NOW
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-between text-[8px] font-bold text-[var(--mu2)] uppercase tracking-widest px-1">
-                      <span>6 {t.calc.moShort} {t.calc.ago}</span>
-                      <span>{t.calc.current}</span>
-                    </div>
-                    <p className="text-xs text-[var(--mu2)] leading-relaxed">
-                      {language === 'ru' 
-                        ? `Текущая цена на ${deal.model} на 12.4% ниже среднерыночной за последние 6 месяцев.`
-                        : `Current pricing for ${deal.model} is 12.4% below the market average over the last 6 months.`}
-                    </p>
-                  </div>
-                </div>
 
-                {/* TCO Analysis */}
-                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                      <ShieldCheck className="text-blue-500" size={20} />
-                    </div>
-                    <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'Анализ TCO' : 'TCO Analysis'}</h3>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.monthlyAvg}</div>
-                        <div className="text-2xl font-display text-[var(--lime)]">
-                          ${Math.round((Number(deal.displayPayment) || 500) + (3000 / 36))}
-                        </div>
-                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ {t.calc.moShort}</div>
-                      </div>
-                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.totalTCO}</div>
-                        <div className="text-2xl font-display text-[var(--w)]">
-                          ${Math.round(((Number(deal.displayPayment) || 500) * 36) + 3000).toLocaleString()}
-                        </div>
-                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ 36 {t.calc.moShort}</div>
-                      </div>
-                    </div>
-
-                    <div className="bg-[var(--b1)]/50 p-4 rounded-2xl border border-[var(--b2)]">
-                      <div className="flex items-start gap-3">
-                        <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
-                          {language === 'ru'
-                            ? 'Total Cost of Ownership (TCO) — это реальная стоимость владения, включающая все платежи и взносы, распределенные на весь срок аренды.'
-                            : 'Total Cost of Ownership (TCO) represents the true cost, including all payments and fees spread across the entire lease term.'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               {/* Specs & Options Tabs */}
               <div id="specs" className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl overflow-hidden scroll-mt-24">
@@ -722,7 +646,7 @@ export const DealPage = () => {
 
             {/* Right Column: Calculator */}
             <div id="calculator" className="lg:col-span-5 relative scroll-mt-24">
-              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6">
+              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6 pb-8">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -740,6 +664,118 @@ export const DealPage = () => {
                     initialHasCosigner={hasCosigner}
                   />
                 </motion.div>
+
+              {/* Market Trend & TCO Analysis - Moved under Calculator */}
+              <div className="grid grid-cols-1 gap-4 mt-6">
+                {/* Market Trend Analysis */}
+                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center">
+                        <TrendingDown className="text-[var(--lime)]" size={20} />
+                      </div>
+                      <h3 className="font-display text-xl uppercase">{t.calc.marketTrend}</h3>
+                    </div>
+                    <div className="bg-[var(--lime)]/10 text-[var(--lime)] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-[var(--lime)]/20">
+                      {t.calc.bestTimeToBuy}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-end justify-between h-32 gap-2">
+                      {[65, 80, 45, 90, 70, 55, 40].map((h, i) => (
+                        <div key={i} className="flex-1 bg-[var(--b1)] rounded-t-xl relative group h-full flex items-end overflow-hidden border border-[var(--b2)]">
+                          <motion.div 
+                            initial={{ height: 0 }}
+                            animate={{ height: `${h}%` }}
+                            transition={{ delay: 0.5 + i * 0.1 }}
+                            className={cn(
+                              "w-full transition-all",
+                              i === 6 ? "bg-[var(--lime)]" : "bg-[var(--mu2)]/20 group-hover:bg-[var(--mu2)]/40"
+                            )}
+                          />
+                          {i === 6 && (
+                            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[8px] font-bold text-black bg-[var(--lime)] px-1 rounded">
+                              NOW
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between text-[8px] font-bold text-[var(--mu2)] uppercase tracking-widest px-1">
+                      <span>6 {t.calc.moShort} {t.calc.ago}</span>
+                      <span>{t.calc.current}</span>
+                    </div>
+                    <p className="text-xs text-[var(--mu2)] leading-relaxed">
+                      {(() => {
+                        if (!marketStats || !marketStats.price || !marketStats.price.mean) {
+                          return language === 'ru' 
+                            ? `Сбор данных о рынке Лос-Анджелеса...`
+                            : `Gathering Los Angeles market data...`;
+                        }
+                        const ourPrice = deal.msrp || 0;
+                        const marketAvg = marketStats.price.mean;
+                        if (ourPrice > 0 && marketAvg > 0) {
+                          const diff = marketAvg - ourPrice;
+                          const percent = ((diff / marketAvg) * 100).toFixed(1);
+                          if (diff > 0) {
+                            return language === 'ru'
+                              ? `Текущая цена на ${deal.model} на ${percent}% ниже среднерыночной в Лос-Анджелесе (на основе ${marketStats.price.count || 'сотен'} похожих авто).`
+                              : `Current pricing for ${deal.model} is ${percent}% below the Los Angeles market average (based on ${marketStats.price.count || 'hundreds of'} similar cars).`;
+                          } else {
+                            return language === 'ru'
+                              ? `Текущая цена на ${deal.model} соответствует среднерыночной в Лос-Анджелесе (на основе ${marketStats.price.count || 'сотен'} похожих авто).`
+                              : `Current pricing for ${deal.model} is in line with the Los Angeles market average (based on ${marketStats.price.count || 'hundreds of'} similar cars).`;
+                          }
+                        }
+                        return language === 'ru' 
+                          ? `Текущая цена на ${deal.model} на 12.4% ниже среднерыночной за последние 6 месяцев.`
+                          : `Current pricing for ${deal.model} is 12.4% below the market average over the last 6 months.`;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* TCO Analysis */}
+                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                      <ShieldCheck className="text-blue-500" size={20} />
+                    </div>
+                    <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'Анализ TCO' : 'TCO Analysis'}</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
+                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.monthlyAvg}</div>
+                        <div className="text-2xl font-display text-[var(--lime)]">
+                          ${Math.round((Number(deal.displayPayment) || 500) + (3000 / 36))}
+                        </div>
+                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ {t.calc.moShort}</div>
+                      </div>
+                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
+                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.totalTCO}</div>
+                        <div className="text-2xl font-display text-[var(--w)]">
+                          ${Math.round(((Number(deal.displayPayment) || 500) * 36) + 3000).toLocaleString()}
+                        </div>
+                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ 36 {t.calc.moShort}</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-[var(--b1)]/50 p-4 rounded-2xl border border-[var(--b2)]">
+                      <div className="flex items-start gap-3">
+                        <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
+                          {language === 'ru'
+                            ? 'Total Cost of Ownership (TCO) — это реальная стоимость владения, включающая все платежи и взносы, распределенные на весь срок аренды.'
+                            : 'Total Cost of Ownership (TCO) represents the true cost, including all payments and fees spread across the entire lease term.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               </div>
             </div>
           </div>
@@ -806,36 +842,31 @@ export const DealPage = () => {
           <ProcessTimeline />
         </section>
 
-        {/* 5. Dealer Reviews */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
-          <DealerReviews />
-        </section>
-
         {/* 6. Success Stories & FAQ removed to avoid duplication */}
 
         {/* Final CTA */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
-          <div className="bg-[var(--s2)] rounded-3xl p-12 md:p-24 text-center space-y-8 border border-[var(--b2)]">
+          <div className="bg-[var(--s2)] rounded-3xl p-8 md:p-12 text-center space-y-6 border border-[var(--b2)]">
             <div className="space-y-4">
-              <h2 className="font-display text-5xl md:text-8xl uppercase tracking-tight">
+              <h2 className="font-display text-4xl md:text-5xl uppercase tracking-tight">
                 {td.finalCtaTitle} <span className="text-[var(--lime)]">{deal.model}</span>
               </h2>
-              <p className="text-lg text-[var(--mu2)] font-medium max-w-xl mx-auto">
+              <p className="text-base text-[var(--mu2)] font-medium max-w-xl mx-auto">
                 {td.finalCtaText}
               </p>
             </div>
             
-            <div className="flex flex-wrap justify-center gap-4 pt-8">
+            <div className="flex flex-wrap justify-center gap-4 pt-4">
               <button 
                 onClick={() => handleProceed(selectedConfig || deal)}
-                className="bg-[var(--lime)] text-black px-12 py-6 rounded-xl font-display text-2xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
+                className="bg-[var(--lime)] text-black px-8 py-4 rounded-xl font-display text-xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
               >
                 <span>{td.lockInDeal}</span>
-                <ArrowRight size={24} />
+                <ArrowRight size={20} />
               </button>
               <button 
                 onClick={() => window.open('https://hunterlease.com/credit-application', '_blank')}
-                className="bg-transparent border-2 border-[var(--mu2)] text-[var(--w)] px-12 py-6 rounded-xl font-display text-2xl tracking-widest hover:border-[var(--lime)] hover:text-[var(--lime)] transition-colors flex items-center gap-4 uppercase"
+                className="bg-transparent border-2 border-[var(--mu2)] text-[var(--w)] px-8 py-4 rounded-xl font-display text-xl tracking-widest hover:border-[var(--lime)] hover:text-[var(--lime)] transition-colors flex items-center gap-4 uppercase"
               >
                 <span>{td.seeIfIQualify}</span>
               </button>

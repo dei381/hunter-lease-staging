@@ -38,6 +38,7 @@ export const DepositModal = ({
   const t = translations[language].deposit;
 
   const [step, setStep] = useState(1);
+  const [subStep, setSubStep] = useState(1);
   const [waitingStatus, setWaitingStatus] = useState(0);
   const [showQrCode, setShowQrCode] = useState(false);
   const [creditAppData, setCreditAppData] = useState({
@@ -81,6 +82,7 @@ export const DepositModal = ({
         setStep(2);
       } else {
         setStep(1);
+        setSubStep(1);
       }
       setCreditAppStep(0);
       setPolicyAccepted(false);
@@ -133,10 +135,10 @@ export const DepositModal = ({
   const handleSubmit = async () => {
     const success = await onConfirm();
     if (success) {
-      if (payMethod === 's') {
-        setStep(1.5); // Stripe payment step
+      if (payMethod === 'card') {
+        setStep(1.5);
       } else {
-        setStep(2); // Credit app step
+        setStep(3); // Show success popup directly
       }
     }
   };
@@ -240,6 +242,12 @@ export const DepositModal = ({
     translations[language].lock.key10, translations[language].lock.key11
   ];
 
+  const paymentMethods = [
+    { id: 'card', name: language === 'ru' ? 'Банковская карта' : 'Credit Card', icon: <CreditCard size={20} />, desc: 'Stripe Secure' },
+    { id: 'zelle', name: 'Zelle', icon: <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center text-[10px] text-white font-bold">Z</div>, desc: '279-208-5707' },
+    { id: 'cashapp', name: 'Cash App', icon: <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center text-[10px] text-white font-bold">$</div>, desc: '$cargwin' },
+  ];
+
   return createPortal(
     <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
       <div className="flex min-h-full items-center justify-center p-4 md:p-6">
@@ -269,196 +277,269 @@ export const DepositModal = ({
             <div className="mb-10 relative z-10">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                  {t.step} {step} {t.of} 2
+                  {t.step} {subStep} {t.of} 3
                 </div>
                 <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">
-                  {step === 1 ? t.contactAndTradeIn : t.paymentConfirm}
+                  {subStep === 1 ? t.contactAndTradeIn : subStep === 2 ? t.tradeInTitle : t.paymentConfirm}
                 </div>
               </div>
               <div className="flex gap-2">
-                <div className={`h-1 flex-1 rounded-full transition-colors duration-500 ${step >= 1 ? 'bg-[var(--lime)]' : 'bg-[var(--s1)]'}`} />
-                <div className={`h-1 flex-1 rounded-full transition-colors duration-500 ${step >= 2 ? 'bg-[var(--lime)]' : 'bg-[var(--s1)]'}`} />
+                <div className={`h-1 flex-1 rounded-full transition-colors duration-500 ${subStep >= 1 ? 'bg-[var(--lime)]' : 'bg-[var(--s1)]'}`} />
+                <div className={`h-1 flex-1 rounded-full transition-colors duration-500 ${subStep >= 2 ? 'bg-[var(--lime)]' : 'bg-[var(--s1)]'}`} />
+                <div className={`h-1 flex-1 rounded-full transition-colors duration-500 ${subStep >= 3 ? 'bg-[var(--lime)]' : 'bg-[var(--s1)]'}`} />
               </div>
             </div>
           )}
 
           <AnimatePresence mode="wait">
-            {step === 1 && (
+            {step === 1 && subStep === 1 && (
               <motion.div 
-                key="step1"
+                key="step1.1"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
-                className="flex-1 relative z-10 overflow-y-auto max-h-[70vh] pr-4 custom-scrollbar"
+                className="flex-1 relative z-10"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display text-4xl">{t.contactAndTradeIn}</h2>
-                  <div className="bg-[var(--lime)] text-white px-4 py-2 rounded-xl font-display text-2xl tracking-widest shadow-lg shadow-[var(--lime)]/20">
-                    $95
-                  </div>
+                  <h2 className="font-display text-4xl">{t.getStarted || "Let's Get Started"}</h2>
                 </div>
                 <p className="text-[var(--mu2)] text-base mb-8">
-                  {carName ? t.depositDescCatalog : t.depositDescCalc}
+                  {t.getStartedDesc || "Fill in your basic details so we can contact you and prepare the documents."}
                 </p>
                 
-                <div className="grid md:grid-cols-2 gap-6 mb-8">
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.fullName}</label>
-                      <input 
-                        type="text" 
-                        value={clientInfo.name}
-                        onChange={(e) => setClientInfo({ ...clientInfo, name: e.target.value })}
-                        className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
-                        placeholder="John Doe" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.phone}</label>
-                      <input 
-                        type="tel" 
-                        value={clientInfo.phone}
-                        onChange={(e) => setClientInfo({ ...clientInfo, phone: e.target.value })}
-                        className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
-                        placeholder="+1 (555) 000-0000" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.email}</label>
-                      <input 
-                        type="email" 
-                        value={clientInfo.email}
-                        onChange={(e) => setClientInfo({ ...clientInfo, email: e.target.value })}
-                        className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
-                        placeholder="john@example.com" 
-                      />
-                    </div>
-
-                    <div className="space-y-4">
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${clientInfo.tcpaConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-[var(--s1)] group-hover:border-[var(--lime)]'}`}>
-                          {clientInfo.tcpaConsent && <CheckCircle2 size={14} className="text-black" />}
-                        </div>
-                        <span className="text-[10px] text-[var(--mu2)] leading-relaxed">
-                          {t.tcpaConsent}
-                        </span>
-                        <input type="checkbox" className="hidden" checked={clientInfo.tcpaConsent || false} onChange={(e) => setClientInfo({...clientInfo, tcpaConsent: e.target.checked})} />
-                      </label>
-                      
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${clientInfo.termsConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--lime)] bg-[var(--s1)] group-hover:border-[var(--lime)]'}`}>
-                          {clientInfo.termsConsent && <CheckCircle2 size={14} className="text-black" />}
-                        </div>
-                        <span className="text-[10px] text-[var(--mu2)] leading-relaxed">
-                          {t.termsConsent}
-                        </span>
-                        <input type="checkbox" className="hidden" checked={clientInfo.termsConsent || false} onChange={(e) => setClientInfo({...clientInfo, termsConsent: e.target.checked})} />
-                      </label>
-                    </div>
-
-                    {/* Conditional Trade-In */}
-                    {!tradeIn.make && (
-                      <div className="pt-4 border-t border-[var(--b2)]">
-                        <label className="flex items-center gap-3 cursor-pointer group mb-4">
-                          <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${tradeIn.hasTradeIn ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-[var(--s1)] group-hover:border-[var(--lime)]'}`}>
-                            {tradeIn.hasTradeIn && <CheckCircle2 size={14} className="text-black" />}
-                          </div>
-                          <span className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.hasTradeIn}</span>
-                          <input type="checkbox" className="hidden" checked={tradeIn.hasTradeIn} onChange={(e) => setTradeIn({...tradeIn, hasTradeIn: e.target.checked})} />
-                        </label>
-
-                        {tradeIn.hasTradeIn && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.make}</label>
-                                <input type="text" value={tradeIn.make} onChange={e => setTradeIn({...tradeIn, make: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.model}</label>
-                                <input type="text" value={tradeIn.model} onChange={e => setTradeIn({...tradeIn, model: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.year}</label>
-                                <input type="text" value={tradeIn.year} onChange={e => setTradeIn({...tradeIn, year: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.mileage}</label>
-                                <input type="text" value={tradeIn.mileage} onChange={e => setTradeIn({...tradeIn, mileage: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-3 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </div>
-                    )}
+                <div className="space-y-6 mb-8 max-w-md">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.fullName}</label>
+                    <input 
+                      type="text" 
+                      value={clientInfo.name}
+                      onChange={(e) => setClientInfo({ ...clientInfo, name: e.target.value })}
+                      className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
+                      placeholder="John Doe" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.phone}</label>
+                    <input 
+                      type="tel" 
+                      value={clientInfo.phone}
+                      onChange={(e) => setClientInfo({ ...clientInfo, phone: e.target.value })}
+                      className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
+                      placeholder="+1 (555) 000-0000" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.email}</label>
+                    <input 
+                      type="email" 
+                      value={clientInfo.email}
+                      onChange={(e) => setClientInfo({ ...clientInfo, email: e.target.value })}
+                      className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
+                      placeholder="john@example.com" 
+                    />
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="space-y-4">
-                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.paymentMethod}</label>
-                      {(['s', 'z', 'c'] as const).map(m => (
-                        <button 
-                          key={m}
-                          onClick={() => setPayMethod(m)}
-                          className={`flex items-center justify-between p-4 rounded-xl border transition-all w-full ${payMethod === m ? 'border-[var(--lime)] bg-[var(--lime)]/5' : 'border-[var(--b2)] bg-white hover:border-[var(--b3)]'}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl">{m === 's' ? '💳' : m === 'z' ? '💚' : '💵'}</span>
-                            <div className="text-left">
-                              <div className="text-xs font-bold">{m === 's' ? 'Credit Card (Stripe)' : m === 'z' ? 'Zelle' : 'Cash App'}</div>
-                              <div className="text-[9px] text-[var(--mu)] font-mono mt-0.5">
-                                {m === 's' ? 'Secure Payment' : m === 'z' ? '279-208-5707' : '$cargwin'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${payMethod === m ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b2)]'}`}>
-                            {payMethod === m && <CheckCircle2 size={12} className="text-black" />}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-
-                    {payMethod !== 's' && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.senderName}</label>
-                        <input 
-                          type="text" 
-                          value={paymentName} 
-                          onChange={e => setPaymentName(e.target.value)} 
-                          className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
-                          placeholder="e.g., John Smith" 
-                        />
+                  <div className="p-4 bg-[var(--s1)]/50 rounded-xl border border-[var(--b2)]">
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${clientInfo.tcpaConsent && clientInfo.termsConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
+                        {clientInfo.tcpaConsent && clientInfo.termsConsent && <CheckCircle2 size={14} className="text-black" />}
                       </div>
-                    )}
-
-                    <div className="flex gap-3 items-start cursor-pointer bg-[var(--s1)]/50 p-4 rounded-xl border border-[var(--b2)] hover:border-[var(--lime)]/50 transition-colors" onClick={() => setIsConfirmed(!isConfirmed)}>
-                      <div className={`w-5 h-5 rounded border shrink-0 mt-0.5 flex items-center justify-center transition-colors ${isConfirmed ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
-                        {isConfirmed && <CheckCircle2 size={14} className="text-black" />}
-                      </div>
-                      <p className="text-[10px] text-[var(--mu2)] leading-relaxed" dangerouslySetInnerHTML={{ __html: t.confirmTerms }} />
-                    </div>
-
-                    <div className="mt-4 p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
-                      <div className="flex gap-3">
-                        <ShieldCheck size={16} className="text-[var(--lime)] shrink-0 mt-0.5" />
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)] mb-1">{t.refundGuaranteeTitle}</div>
-                          <p className="text-[9px] text-[var(--mu2)] leading-relaxed">{t.refundGuaranteeDesc}</p>
-                        </div>
-                      </div>
-                    </div>
+                      <span className="text-[10px] text-[var(--mu2)] leading-relaxed">
+                        {language === 'ru' 
+                          ? 'Я согласен с Условиями обслуживания, Политикой конфиденциальности и даю согласие на получение сообщений.' 
+                          : 'I agree to the Terms of Service, Privacy Policy, and consent to receive text messages and calls.'}
+                      </span>
+                      <input 
+                        type="checkbox" 
+                        className="hidden" 
+                        checked={clientInfo.tcpaConsent && clientInfo.termsConsent} 
+                        onChange={(e) => setClientInfo({...clientInfo, tcpaConsent: e.target.checked, termsConsent: e.target.checked})} 
+                      />
+                    </label>
                   </div>
                 </div>
 
                 <button 
-                  disabled={!clientInfo.name || !clientInfo.phone || !clientInfo.email || !clientInfo.tcpaConsent || !clientInfo.termsConsent || !isConfirmed || isSubmitting || (payMethod !== 's' && !paymentName)}
-                  onClick={handleSubmit}
-                  className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                  disabled={!clientInfo.name || !clientInfo.phone || !clientInfo.email || !clientInfo.tcpaConsent}
+                  onClick={() => setSubStep(2)}
+                  className="w-full max-w-md bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                 >
-                  {isSubmitting ? t.processing : pt.payNow}
+                  {t.nextStep} <ChevronRight size={16} />
                 </button>
+              </motion.div>
+            )}
+
+            {step === 1 && subStep === 2 && (
+              <motion.div 
+                key="step1.2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="flex-1 relative z-10"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-4xl">{t.tradeInTitle || "Trade-In Appraisal"}</h2>
+                </div>
+                <p className="text-[var(--mu2)] text-base mb-8">
+                  {t.tradeInDesc || "Want to exchange your old car? We will value it higher than CarMax."}
+                </p>
+
+                <div className="space-y-6 mb-8 max-w-md">
+                  <label className="flex items-center gap-4 p-6 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl cursor-pointer group hover:border-[var(--lime)] transition-all">
+                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${tradeIn.hasTradeIn ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
+                      {tradeIn.hasTradeIn && <CheckCircle2 size={16} className="text-black" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold uppercase tracking-widest mb-1">{t.hasTradeIn}</div>
+                      <div className="text-[10px] text-[var(--mu2)]">{t.kbbNote}</div>
+                    </div>
+                    <input type="checkbox" className="hidden" checked={tradeIn.hasTradeIn} onChange={(e) => setTradeIn({...tradeIn, hasTradeIn: e.target.checked})} />
+                  </label>
+
+                  <AnimatePresence>
+                    {tradeIn.hasTradeIn && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }} 
+                        animate={{ opacity: 1, height: 'auto' }} 
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-4 overflow-hidden"
+                      >
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.make}</label>
+                            <input type="text" value={tradeIn.make} onChange={e => setTradeIn({...tradeIn, make: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.model}</label>
+                            <input type="text" value={tradeIn.model} onChange={e => setTradeIn({...tradeIn, model: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.year}</label>
+                            <input type="text" value={tradeIn.year} onChange={e => setTradeIn({...tradeIn, year: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.mileage}</label>
+                            <input type="text" value={tradeIn.mileage} onChange={e => setTradeIn({...tradeIn, mileage: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex gap-4 max-w-md">
+                  <button 
+                    onClick={() => setSubStep(1)}
+                    className="flex-1 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all"
+                  >
+                    {translations[language].calc.back}
+                  </button>
+                  <button 
+                    onClick={() => setSubStep(3)}
+                    className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                  >
+                    {t.nextStep} <ChevronRight size={16} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {step === 1 && subStep === 3 && (
+              <motion.div 
+                key="step1.3"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="flex-1 relative z-10"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-4xl">{t.paymentConfirm || "Payment & Deposit"}</h2>
+                </div>
+                <p className="text-[var(--mu2)] text-base mb-8">
+                  {carName ? t.depositDescCatalog : t.depositDescCalc}
+                </p>
+
+                <div className="space-y-6 mb-8 max-w-md">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-4">{t.paymentMethod}</label>
+                    <div className="grid grid-cols-1 gap-3">
+                      {paymentMethods.map((method) => (
+                        <button
+                          key={method.id}
+                          onClick={() => setPayMethod(method.id)}
+                          className={`flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${payMethod === method.id ? 'bg-[var(--lime)]/10 border-[var(--lime)] shadow-sm' : 'bg-[var(--s1)] border-[var(--b2)] hover:border-[var(--mu)]'}`}
+                        >
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${payMethod === method.id ? 'bg-[var(--lime)] text-black' : 'bg-white border border-[var(--b2)]'}`}>
+                            {method.icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-xs font-bold uppercase tracking-widest">{method.name}</div>
+                            <div className="text-[10px] text-[var(--mu2)]">{method.desc}</div>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${payMethod === method.id ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
+                            {payMethod === method.id && <CheckCircle2 size={12} className="text-black" />}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {payMethod !== 'card' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                      <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{t.senderName}</label>
+                      <input 
+                        type="text" 
+                        value={paymentName}
+                        onChange={(e) => setPaymentName(e.target.value)}
+                        className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" 
+                        placeholder="e.g., John Smith" 
+                      />
+                      <p className="mt-2 text-[9px] text-[var(--mu2)] italic">{t.senderNameDesc}</p>
+                    </motion.div>
+                  )}
+
+                  <div className="p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isConfirmed ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
+                        {isConfirmed && <CheckCircle2 size={14} className="text-black" />}
+                      </div>
+                      <span className="text-[10px] text-[var(--mu2)] leading-relaxed font-medium">
+                        {t.confirmTerms}
+                      </span>
+                      <input type="checkbox" className="hidden" checked={isConfirmed} onChange={(e) => setIsConfirmed(e.target.checked)} />
+                    </label>
+                  </div>
+
+                  <div className="text-center">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest">
+                      <ShieldCheck className="w-3 h-3 text-[var(--grn)]" />
+                      {translations[language].zeroSpam || "🛡️ Zero Spam Guarantee"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 max-w-md">
+                  <button 
+                    onClick={() => setSubStep(2)}
+                    className="flex-1 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all"
+                  >
+                    {translations[language].calc.back}
+                  </button>
+                  <button 
+                    disabled={!isConfirmed || isSubmitting || (payMethod !== 'card' && !paymentName)}
+                    onClick={handleSubmit}
+                    className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                  >
+                    {isSubmitting ? t.processing : (language === 'ru' ? 'Оплатить депозит ($95)' : 'Pay Deposit ($95)')}
+                  </button>
+                </div>
+                <div className="mt-3 text-center max-w-md">
+                  <span className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-bold">
+                    {language === 'ru' ? 'Депозит полностью возвращается, если сделка не состоится' : 'Deposit is fully refundable if the deal falls through'}
+                  </span>
+                </div>
               </motion.div>
             )}
 
@@ -483,7 +564,7 @@ export const DepositModal = ({
                 <StripePaymentForm 
                   leadId={leadId || localStorage.getItem('leadId') || ''} 
                   amount={95}
-                  onSuccess={() => setStep(2)}
+                  onSuccess={() => setStep(3)}
                   onError={(err) => toast.error(`Payment failed: ${err}`)}
                 />
               </motion.div>
@@ -617,44 +698,53 @@ export const DepositModal = ({
                       </AnimatePresence>
                     </div>
 
+                    {/* Credit App Progress */}
+                    <div className="flex gap-1 mb-8">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <div 
+                          key={s} 
+                          className={`h-1 flex-1 rounded-full transition-all ${creditAppStep >= s ? 'bg-[var(--lime)]' : 'bg-[var(--b2)]'}`} 
+                        />
+                      ))}
+                    </div>
+
                     {/* Personal Info */}
                     {creditAppStep === 1 && (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-6 max-w-md">
+                        <div className="space-y-4">
                           <div>
                             <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.firstName}</label>
-                            <input type="text" value={creditAppData.firstName} onChange={e => setCreditAppData({...creditAppData, firstName: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                            <input type="text" value={creditAppData.firstName} onChange={e => setCreditAppData({...creditAppData, firstName: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="First Name" />
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.lastName}</label>
-                            <input type="text" value={creditAppData.lastName} onChange={e => setCreditAppData({...creditAppData, lastName: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                            <input type="text" value={creditAppData.lastName} onChange={e => setCreditAppData({...creditAppData, lastName: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Last Name" />
                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.email}</label>
-                            <input type="email" value={creditAppData.email} onChange={e => setCreditAppData({...creditAppData, email: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                            <input type="email" value={creditAppData.email} onChange={e => setCreditAppData({...creditAppData, email: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="email@example.com" />
                           </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.dob}</label>
-                            <input type="date" value={creditAppData.dob} onChange={e => setCreditAppData({...creditAppData, dob: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.dob}</label>
+                              <input type="date" value={creditAppData.dob} onChange={e => setCreditAppData({...creditAppData, dob: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.dlNumber}</label>
+                              <input type="text" value={creditAppData.dlNumber} onChange={e => setCreditAppData({...creditAppData, dlNumber: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="DL Number" />
+                            </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.dlNumber}</label>
-                            <input type="text" value={creditAppData.dlNumber} onChange={e => setCreditAppData({...creditAppData, dlNumber: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                          </div>
-                          <div>
-                            {/* Empty div to keep grid layout */}
-                          </div>
+                        <div className="p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
+                          <p className="text-[9px] text-[var(--mu2)] leading-relaxed italic">
+                            {translations[language].calc.creditDisclaimer}
+                          </p>
                         </div>
 
                         <button 
                           type="submit"
-                          className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5 mt-2"
+                          className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5 mt-2"
                         >
                           {t.nextStep} <ChevronRight size={18} />
                         </button>
@@ -663,66 +753,58 @@ export const DepositModal = ({
 
                     {/* Employment Info */}
                     {creditAppStep === 2 && (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-6 max-w-md">
+                        <div className="space-y-4">
                           <div>
                             <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.employer}</label>
-                            <input type="text" value={creditAppData.employer} onChange={e => setCreditAppData({...creditAppData, employer: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                            <input type="text" value={creditAppData.employer} onChange={e => setCreditAppData({...creditAppData, employer: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Company Name" />
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.position}</label>
-                            <input type="text" value={creditAppData.position} onChange={e => setCreditAppData({...creditAppData, position: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.employerAddress}</label>
-                          <input type="text" value={creditAppData.employerAddress} onChange={e => setCreditAppData({...creditAppData, employerAddress: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.workExperience}</label>
-                            <input type="number" value={creditAppData.workExperience} onChange={e => setCreditAppData({...creditAppData, workExperience: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                            <input type="text" value={creditAppData.position} onChange={e => setCreditAppData({...creditAppData, position: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Job Title" />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.employerPhone}</label>
-                            <input type="tel" value={creditAppData.employerPhone} onChange={e => setCreditAppData({...creditAppData, employerPhone: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.employerAddress}</label>
+                            <input type="text" value={creditAppData.employerAddress} onChange={e => setCreditAppData({...creditAppData, employerAddress: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Work Address" />
                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.incomeType}</label>
-                            <select value={creditAppData.incomeType} onChange={e => setCreditAppData({...creditAppData, incomeType: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all">
-                              <option value="w2">{ct.incomeTypes.w2}</option>
-                              <option value="i1099">{ct.incomeTypes.i1099}</option>
-                              <option value="self">{ct.incomeTypes.self}</option>
-                              <option value="other">{ct.incomeTypes.other}</option>
-                            </select>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.workExperience}</label>
+                              <input type="number" value={creditAppData.workExperience} onChange={e => setCreditAppData({...creditAppData, workExperience: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Years" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.employerPhone}</label>
+                              <input type="tel" value={creditAppData.employerPhone} onChange={e => setCreditAppData({...creditAppData, employerPhone: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Work Phone" />
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.monthlyIncome}</label>
-                            <input type="number" value={creditAppData.monthlyIncome} onChange={e => setCreditAppData({...creditAppData, monthlyIncome: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.incomeType}</label>
+                              <select value={creditAppData.incomeType} onChange={e => setCreditAppData({...creditAppData, incomeType: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium appearance-none">
+                                <option value="w2">{ct.incomeTypes.w2}</option>
+                                <option value="i1099">{ct.incomeTypes.i1099}</option>
+                                <option value="self">{ct.incomeTypes.self}</option>
+                                <option value="other">{ct.incomeTypes.other}</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.monthlyIncome}</label>
+                              <input type="number" value={creditAppData.monthlyIncome} onChange={e => setCreditAppData({...creditAppData, monthlyIncome: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Gross Monthly" />
+                            </div>
                           </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.additionalIncome}</label>
-                          <input type="number" value={creditAppData.additionalIncome} onChange={e => setCreditAppData({...creditAppData, additionalIncome: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
                         </div>
 
                         <div className="flex gap-4 mt-2">
                           <button 
                             type="button"
                             onClick={() => setCreditAppStep(1)}
-                            className="w-1/3 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all shadow-sm"
+                            className="flex-1 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all shadow-sm"
                           >
                             {translations[language].calc.back}
                           </button>
                           <button 
                             type="submit"
-                            className="w-2/3 bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                            className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                           >
                             {t.nextStep} <ChevronRight size={18} />
                           </button>
@@ -732,35 +814,34 @@ export const DepositModal = ({
 
                     {/* Financial & Residency */}
                     {creditAppStep === 3 && (
-                      <div className="space-y-6">
-                        <div>
-                          <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.residencyStatus}</label>
-                          <input type="text" value={creditAppData.residencyStatus} onChange={e => setCreditAppData({...creditAppData, residencyStatus: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" placeholder="e.g., Citizen, Green Card, H1B" />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.address}</label>
-                          <input type="text" value={creditAppData.address} onChange={e => setCreditAppData({...creditAppData, address: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.prevAddress}</label>
-                          <input type="text" value={creditAppData.prevAddress} onChange={e => setCreditAppData({...creditAppData, prevAddress: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-8">
-                          <div className="flex items-center justify-between p-4 bg-[var(--s1)] rounded-xl border border-[var(--b2)]">
-                            <span className="text-[10px] font-bold uppercase tracking-widest">{ct.hasCosigner}</span>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => setCreditAppData({...creditAppData, hasCosigner: true})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${creditAppData.hasCosigner ? 'bg-[var(--lime)] text-white' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.yes}</button>
-                              <button type="button" onClick={() => setCreditAppData({...creditAppData, hasCosigner: false})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${!creditAppData.hasCosigner ? 'bg-[var(--lime)] text-white' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.no}</button>
-                            </div>
+                      <div className="space-y-6 max-w-md">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.residencyStatus}</label>
+                            <input type="text" value={creditAppData.residencyStatus} onChange={e => setCreditAppData({...creditAppData, residencyStatus: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="e.g., Citizen, Green Card, H1B" />
                           </div>
-                          <div className="flex items-center justify-between p-4 bg-[var(--s1)] rounded-xl border border-[var(--b2)]">
-                            <span className="text-[10px] font-bold uppercase tracking-widest">{ct.prevAuto}</span>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => setCreditAppData({...creditAppData, prevAuto: true})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${creditAppData.prevAuto ? 'bg-[var(--lime)] text-white' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.yes}</button>
-                              <button type="button" onClick={() => setCreditAppData({...creditAppData, prevAuto: false})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${!creditAppData.prevAuto ? 'bg-[var(--lime)] text-white' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.no}</button>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.address}</label>
+                            <input type="text" value={creditAppData.address} onChange={e => setCreditAppData({...creditAppData, address: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Current Address" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.prevAddress}</label>
+                            <input type="text" value={creditAppData.prevAddress} onChange={e => setCreditAppData({...creditAppData, prevAddress: e.target.value})} className="w-full bg-[var(--s1)] border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Previous Address (if < 2 years)" />
+                          </div>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between p-4 bg-[var(--s1)] rounded-xl border border-[var(--b2)]">
+                              <span className="text-[10px] font-bold uppercase tracking-widest">{ct.hasCosigner}</span>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setCreditAppData({...creditAppData, hasCosigner: true})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${creditAppData.hasCosigner ? 'bg-[var(--lime)] text-black' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.yes}</button>
+                                <button type="button" onClick={() => setCreditAppData({...creditAppData, hasCosigner: false})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${!creditAppData.hasCosigner ? 'bg-[var(--lime)] text-black' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.no}</button>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between p-4 bg-[var(--s1)] rounded-xl border border-[var(--b2)]">
+                              <span className="text-[10px] font-bold uppercase tracking-widest">{ct.prevAuto}</span>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setCreditAppData({...creditAppData, prevAuto: true})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${creditAppData.prevAuto ? 'bg-[var(--lime)] text-black' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.yes}</button>
+                                <button type="button" onClick={() => setCreditAppData({...creditAppData, prevAuto: false})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${!creditAppData.prevAuto ? 'bg-[var(--lime)] text-black' : 'bg-white border border-[var(--b2)] text-[var(--mu)]'}`}>{ct.no}</button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -769,13 +850,13 @@ export const DepositModal = ({
                           <button 
                             type="button"
                             onClick={() => setCreditAppStep(2)}
-                            className="w-1/3 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all shadow-sm"
+                            className="flex-1 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all shadow-sm"
                           >
                             {translations[language].calc.back}
                           </button>
                           <button 
                             type="submit"
-                            className="w-2/3 bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                            className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                           >
                             {t.nextStep} <ChevronRight size={18} />
                           </button>
@@ -785,7 +866,7 @@ export const DepositModal = ({
 
                     {/* Policy 1 */}
                     {creditAppStep === 4 && (
-                      <div className="space-y-6">
+                      <div className="space-y-6 max-w-md">
                         <div className="p-6 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl space-y-6">
                           <div className="space-y-4">
                             <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
@@ -795,14 +876,13 @@ export const DepositModal = ({
                           </div>
 
                           <div className="flex items-start gap-3">
-                            <input 
-                              type="checkbox" 
-                              id="policyAccepted1"
-                              checked={policyAccepted}
-                              onChange={(e) => setPolicyAccepted(e.target.checked)}
-                              className="mt-1 w-4 h-4 text-[var(--lime)] border-[var(--b2)] rounded focus:ring-[var(--lime)]"
-                            />
-                            <label htmlFor="policyAccepted1" className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer">
+                            <div 
+                              onClick={() => setPolicyAccepted(!policyAccepted)}
+                              className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${policyAccepted ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}
+                            >
+                              {policyAccepted && <CheckCircle2 size={14} className="text-black" />}
+                            </div>
+                            <label className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer" onClick={() => setPolicyAccepted(!policyAccepted)}>
                               {translations[language].calc.policyAgreement}
                             </label>
                           </div>
@@ -812,14 +892,14 @@ export const DepositModal = ({
                           <button 
                             type="button"
                             onClick={() => setCreditAppStep(3)}
-                            className="w-1/3 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all shadow-sm"
+                            className="flex-1 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all shadow-sm"
                           >
                             {translations[language].calc.back}
                           </button>
                           <button 
                             type="submit"
                             disabled={!policyAccepted}
-                            className="w-2/3 bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                            className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                           >
                             {t.nextStep} <ChevronRight size={18} />
                           </button>
@@ -829,7 +909,7 @@ export const DepositModal = ({
 
                     {/* Policy 2 & Submit */}
                     {creditAppStep === 5 && (
-                      <div className="space-y-6">
+                      <div className="space-y-6 max-w-md">
                         <div className="p-6 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl space-y-6">
                           <div className="p-4 bg-white border border-[var(--b2)] rounded-xl mb-4">
                             <div className="flex gap-3">
@@ -843,42 +923,43 @@ export const DepositModal = ({
 
                           <p className="text-[9px] text-[var(--mu2)] leading-relaxed italic">{ct.consentText}</p>
 
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.signature}</label>
-                            <input type="text" value={creditAppData.signature} onChange={e => setCreditAppData({...creditAppData, signature: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" placeholder="John Doe" />
-                          </div>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.signature}</label>
+                              <input type="text" value={creditAppData.signature} onChange={e => setCreditAppData({...creditAppData, signature: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="Type full name" />
+                            </div>
 
-                          <div>
-                            <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.ssn}</label>
-                            <input type="password" value={creditAppData.ssn} onChange={e => setCreditAppData({...creditAppData, ssn: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all" placeholder="XXX-XX-XXXX" />
+                            <div>
+                              <label className="block text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest mb-2">{ct.ssn}</label>
+                              <input type="password" value={creditAppData.ssn} onChange={e => setCreditAppData({...creditAppData, ssn: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-xl p-4 text-sm outline-none focus:border-[var(--lime)] transition-all font-medium" placeholder="XXX-XX-XXXX" />
+                            </div>
                           </div>
 
                           <div className="flex items-start gap-3">
-                            <input 
-                              type="checkbox" 
-                              id="consentAccepted"
-                              checked={consentAccepted}
-                              onChange={(e) => setConsentAccepted(e.target.checked)}
-                              className="mt-1 w-4 h-4 text-[var(--lime)] border-[var(--b2)] rounded focus:ring-[var(--lime)]"
-                            />
-                            <label htmlFor="consentAccepted" className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer">
+                            <div 
+                              onClick={() => setConsentAccepted(!consentAccepted)}
+                              className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${consentAccepted ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}
+                            >
+                              {consentAccepted && <CheckCircle2 size={14} className="text-black" />}
+                            </div>
+                            <label className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer" onClick={() => setConsentAccepted(!consentAccepted)}>
                               {translations[language].calc.policyAgreement}
                             </label>
                           </div>
                         </div>
- 
+
                         <div className="flex gap-4 mt-2">
                           <button 
                             type="button"
                             onClick={() => setCreditAppStep(4)}
-                            className="w-1/3 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all shadow-sm"
+                            className="flex-1 bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-white transition-all shadow-sm"
                           >
                             {translations[language].calc.back}
                           </button>
                           <button 
                             type="submit"
                             disabled={isCreditAppSubmitting || !consentAccepted}
-                            className="w-2/3 bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-black/5"
+                            className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                           >
                             {isCreditAppSubmitting ? t.processing : ct.submit} <ChevronRight size={18} />
                           </button>
@@ -975,6 +1056,37 @@ export const DepositModal = ({
                     )}
                   </motion.div>
                 )}
+              </motion.div>
+            )}
+            {step === 3 && (
+              <motion.div 
+                key="step3"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex-1 relative z-10 flex flex-col items-center justify-center text-center py-12"
+              >
+                <div className="w-24 h-24 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mb-8">
+                  <CheckCircle2 size={48} className="text-[var(--lime)]" />
+                </div>
+                <h2 className="font-display text-4xl mb-6">{language === 'ru' ? 'Заявка отправлена!' : 'Request Submitted!'}</h2>
+                <p className="text-[var(--mu2)] text-lg leading-relaxed max-w-md mx-auto mb-10">
+                  {translations[language].successPopup || "Your application has been sent to a closed network of 217+ dealers. Average response time is 2 hours. We will send you an SMS when a dealer accepts your terms. No obligations or deposits at this stage."}
+                </p>
+                <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
+                  <button 
+                    onClick={() => setStep(2)}
+                    className="bg-[var(--lime)] text-black font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all shadow-sm"
+                  >
+                    {language === 'ru' ? 'ЗАПОЛНИТЬ КРЕДИТНУЮ АНКЕТУ' : 'START CREDIT APPLICATION'}
+                  </button>
+                  <button 
+                    onClick={onClose}
+                    className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all"
+                  >
+                    {t.close || "Close"}
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

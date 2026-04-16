@@ -25,6 +25,13 @@ export const ComparePage = () => {
 
   if (compareDeals.length === 0) return null;
 
+  const winner = [...compareDeals].sort((a, b) => {
+    const scoreA = Number(a.valueScore) || 0;
+    const scoreB = Number(b.valueScore) || 0;
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    return (Number(a.payment) || 0) - (Number(b.payment) || 0);
+  })[0];
+
   const features = [
     { key: 'msrp', label: 'MSRP', format: fmt },
     { key: 'payment', label: 'Est. Lease', format: fmt },
@@ -61,6 +68,34 @@ export const ComparePage = () => {
             Clear All
           </button>
         </div>
+
+        {winner && compareDeals.length > 1 && (
+          <div className="mb-12 bg-[var(--lime)]/10 border border-[var(--lime)]/30 rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--lime)]/10 rounded-full blur-3xl" />
+            <div className="relative z-10 flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-[var(--lime)] animate-pulse" />
+                <span className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">
+                  {language === 'ru' ? 'Вердикт Hunter' : 'Hunter\'s Verdict'}
+                </span>
+              </div>
+              <h2 className="text-2xl md:text-3xl font-display mb-2">
+                {winner.make} {winner.model} — {language === 'ru' ? 'лучший выбор' : 'is the best choice'}
+              </h2>
+              <p className="text-[var(--mu2)]">
+                {language === 'ru' 
+                  ? 'У него самый высокий Value Score и наименьшая потеря стоимости (Depreciation).' 
+                  : 'It has the highest Value Score and the lowest depreciation.'}
+              </p>
+            </div>
+            <button 
+              onClick={() => navigate(`/deal/${winner.id}`)}
+              className="relative z-10 shrink-0 bg-[var(--lime)] text-black font-bold uppercase tracking-widest px-8 py-4 rounded-xl hover:bg-[var(--lime2)] transition-all shadow-[0_0_30px_rgba(204,255,0,0.2)] hover:shadow-[0_0_50px_rgba(204,255,0,0.4)]"
+            >
+              {language === 'ru' ? 'Забрать победителя' : 'Claim Winner'}
+            </button>
+          </div>
+        )}
 
         <div className="overflow-x-auto custom-scrollbar pb-8">
           <div className="min-w-[800px]">

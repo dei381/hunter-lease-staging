@@ -28,6 +28,11 @@ export const QuoteContextSchema = z.object({
     rv: z.number().optional(),
     dealerDiscountCents: z.number().optional(),
   }).optional(),
+  marketcheckData: z.object({
+    priceCents: z.number().optional(),
+    msrpCents: z.number().optional(),
+    cashBackCents: z.number().optional(),
+  }).optional(),
   audit: z.boolean().default(false)
 });
 

@@ -248,14 +248,15 @@ model QuoteSnapshot {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  password  String?  @default("temporary-password")
-  role      String   @default("user")
-  status    String   @default("active")
-  createdAt DateTime @default(now())
-  leads     Lead[]   @relation("AssignedLeads")
+  id               String   @id @default(uuid())
+  email            String   @unique
+  name             String?
+  password         String?  @default("temporary-password")
+  role             String   @default("user")
+  status           String   @default("active")
+  dealerPartnerId  String?
+  createdAt        DateTime @default(now())
+  leads            Lead[]   @relation("AssignedLeads")
 
   @@index([role])
 }
@@ -314,8 +315,10 @@ model Lead {
   complaints       Complaint[]
   assignedTo       User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
   deal             DealRecord? @relation(fields: [dealId], references: [id])
-  offers           LeadOffer[]
-  payments         Payment[]
+  offers              LeadOffer[]
+  payments            Payment[]
+  creditChecks        CreditCheck[]
+  dealerAssignments   DealerAssignment[]
 
   @@index([userId])
   @@index([status])
@@ -507,10 +510,12 @@ model DealerPartner {
   phone       String?
   address     String?
   notes       String?
+  slaHours    Int?               @default(24)
   isActive    Boolean            @default(true)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   adjustments DealerAdjustment[]
+  assignments DealerAssignment[]
 }
 
 model DealerAdjustment {
@@ -540,6 +545,21 @@ model ProgramOverride {
   isActive        Boolean        @default(true)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+}
+
+model PromoAIPost {
+  id              String   @id @default(uuid())
+  dealId          String
+  make            String
+  model           String
+  trim            String
+  discountPercent Float
+  telegramText    String
+  facebookText    String
+  imageUrl        String?
+  status          String   @default("pending") // pending, published, rejected
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
 }
 
 model PromoCode {
@@ -596,6 +616,75 @@ model Quote {
   createdAt        DateTime      @default(now())
   lender           Lender?       @relation(fields: [lenderId], references: [id])
   batch            ProgramBatch? @relation(fields: [programBatchId], references: [id])
+}
+
+model CreditCheck {
+  id                  String    @id @default(uuid())
+  leadId              String?
+  lead                Lead?     @relation(fields: [leadId], references: [id])
+  userId              String?
+  consentGiven        Boolean   @default(false)
+  consentTimestamp     DateTime?
+  status              String    @default("pending")
+  scoreRange          String?
+  creditBand          String?
+  rawResponse         String?
+  normalizedProfile   String?
+  errorMessage        String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([leadId])
+  @@index([status])
+}
+
+model DealerAssignment {
+  id               String         @id @default(uuid())
+  leadId           String
+  lead             Lead           @relation(fields: [leadId], references: [id])
+  dealerPartnerId  String
+  dealerPartner    DealerPartner  @relation(fields: [dealerPartnerId], references: [id])
+  staffId          String?
+  status           String         @default("pending")
+  slaDeadline      DateTime?
+  comment          String?
+  counterOffer     String?
+  acceptedAt       DateTime?
+  rejectedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([leadId])
+  @@index([dealerPartnerId])
+  @@index([status])
+}
+
+model NotificationLog {
+  id           String    @id @default(uuid())
+  userId       String?
+  channel      String
+  templateKey  String?
+  recipient    String
+  subject      String?
+  body         String?
+  status       String    @default("pending")
+  error        String?
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model NotificationTemplate {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  channel   String
+  subject   String?
+  body      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model VehicleMake {

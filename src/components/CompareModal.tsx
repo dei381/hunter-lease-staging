@@ -79,6 +79,9 @@ export const CompareModal = ({ isOpen, onClose, deals }: CompareModalProps) => {
                   <div className="h-8 flex items-center">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.features}</span>
                   </div>
+                  <div className="h-auto min-h-[80px] flex items-start pt-8">
+                    <span className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">{translations[language].compareVerdict || "Hunter's Verdict"}</span>
+                  </div>
                 </div>
 
                 {/* Deal Columns */}
@@ -115,6 +118,15 @@ export const CompareModal = ({ isOpen, onClose, deals }: CompareModalProps) => {
                           {f}
                         </div>
                       ))}
+                    </div>
+
+                    {/* Hunter's Verdict */}
+                    <div className="pt-8 min-h-[80px]">
+                      <div className="bg-[var(--lime)]/10 border border-[var(--lime)]/20 rounded-xl p-4 h-full">
+                        <p className="text-[10px] font-bold text-black leading-relaxed">
+                          {idx === 0 ? (language === 'ru' ? "Лучшее соотношение цены и качества. Самый низкий ежемесячный платеж." : "Best overall value. Lowest monthly payment with strong features.") : (language === 'ru' ? "Отличная альтернатива, если вы предпочитаете этот бренд, но немного дороже." : "Great alternative if you prefer this brand, but slightly higher cost.")}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="pt-8">

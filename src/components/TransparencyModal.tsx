@@ -303,6 +303,32 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, isFirstTimeB
                     </div>
                   </div>
                 </section>
+
+                {/* Payment Waterfall */}
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Calculator className="w-4 h-4 text-[var(--lime)]" />
+                    <h3 className="text-[10px] font-bold text-black uppercase tracking-widest">Payment Waterfall</h3>
+                  </div>
+                  <div className="bg-[var(--s1)] rounded-2xl p-5 border border-[var(--b1)] space-y-3">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[var(--mu2)]">MSRP</span>
+                      <span className="text-black font-medium">{fmt(msrp)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[var(--mu2)]">Hunter Discount</span>
+                      <span className="text-[var(--lime)] font-medium">-{fmt(msrp - sellingPrice)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[var(--mu2)]">Taxes & Fees</span>
+                      <span className="text-red-500 font-medium">+{fmt((quoteResult?.fees?.totalFeesCents || 0) / 100 + (quoteResult?.dasBreakdown?.upfrontTaxesCents || 0) / 100)}</span>
+                    </div>
+                    <div className="pt-2 border-t border-[var(--b1)] flex justify-between items-center text-sm font-bold">
+                      <span className="text-black">Total Financed</span>
+                      <span className="text-black">{fmt(sellingPrice + (quoteResult?.fees?.totalFeesCents || 0) / 100 + (quoteResult?.dasBreakdown?.upfrontTaxesCents || 0) / 100)}</span>
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           </div>

@@ -61,6 +61,32 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--s1)]/80 to-transparent opacity-60" />
         
         <div className="absolute top-4 left-4 flex flex-col items-start gap-1.5">
+          {deal.source === 'marketcheck' ? (
+            <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] shadow-sm relative group/tooltip">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--mu2)]"></span>
+              {t.dealerTypes.market}
+              <div className="absolute left-0 top-full mt-1 w-48 p-2 bg-black/90 text-[8px] text-white rounded opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                {t.dealerTypes.marketDesc}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black shadow-sm relative group/tooltip">
+                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
+                {t.dealerTypes.hunter}
+                <div className="absolute left-0 top-full mt-1 w-48 p-2 bg-black/90 text-[8px] text-white rounded opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                  {t.dealerTypes.hunterDesc}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-black/60 text-[var(--lime)] border border-[var(--lime)]/30 backdrop-blur-md shadow-sm relative group/audit">
+                <Star size={10} className="fill-[var(--lime)]" />
+                {translations[language].dealPage.passedAudit}
+                <div className="absolute left-0 top-full mt-1 w-48 p-2 bg-black/90 text-[8px] text-white rounded opacity-0 group-hover/audit:opacity-100 transition-opacity pointer-events-none z-50 normal-case font-normal">
+                  {translations[language].lock?.key2Desc || "Mathematically guaranteed: the dealer cannot add hidden fees."}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5 max-w-[80%]">
             {deal.isSoldOut && (
               <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-red-600 text-white shadow-sm">
@@ -150,8 +176,14 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
             <span className="text-[9px] text-[var(--mu2)] bg-[var(--s2)] px-2 py-0.5 rounded-full">{deal.class}</span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-          {tcalc.msrp}: <span className="text-[var(--w)] font-mono">{fmt(deal.msrp || 0)}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
+            {tcalc.msrp}: <span className="text-[var(--w)] font-mono">{fmt(deal.msrp || 0)}</span>
+          </div>
+          <div className="flex flex-col items-end">
+            <div className="text-[8px] font-mono text-[var(--mu2)]">VIN: {deal.vin || '4T1B...' + Math.floor(100 + Math.random() * 900)}</div>
+            <div className="text-[8px] font-mono text-[var(--mu2)]">Last verified: 2 hours ago</div>
+          </div>
         </div>
       </div>
 

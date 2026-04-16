@@ -2,6 +2,16 @@ import { QuoteContext } from './types';
 import prisma from '../../lib/db';
 import { IncentiveResolver } from '../IncentiveResolver';
 import { getCarDb } from '../../utils/carDb';
+import admin from 'firebase-admin';
+
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp();
+  } catch (e) {
+    console.error('Firebase Admin initialization failed in DataResolver:', e);
+  }
+}
 
 let carDbCache: any = null;
 let carDbCacheTime = 0;
@@ -9,9 +19,11 @@ const CAR_DB_CACHE_TTL = 60000; // 1 minute
 
 export class DataResolver {
   static async resolveVehicle(context: QuoteContext) {
-    let vehicle = null;
+    let vehicle: any = null;
     let carDbTrim = null;
+    let isMarketcheck = false;
 
+    // 1. Try to resolve from local DB
     if (context.vehicleId) {
       vehicle = await prisma.vehicleCache.findUnique({ where: { id: context.vehicleId } });
       if (!vehicle) {
@@ -31,6 +43,28 @@ export class DataResolver {
           }
         }
       }
+
+      // 2. If still not found, try Firestore (Marketcheck)
+      if (!vehicle) {
+        try {
+          const db = admin.firestore();
+          const mcDoc = await db.collection('mc_inventory').doc(context.vehicleId).get();
+          if (mcDoc.exists) {
+            const mcData = mcDoc.data()!;
+            vehicle = {
+              make: mcData.make,
+              model: mcData.model,
+              trim: mcData.trim || mcData.heading,
+              year: Number(mcData.year),
+              msrpCents: mcData.msrp ? Math.round(Number(mcData.msrp) * 100) : 0,
+              zip: mcData.dealer?.zip?.split('-')[0]
+            };
+            isMarketcheck = true;
+          }
+        } catch (e) {
+          console.error("Failed to fetch vehicle from Firestore", e);
+        }
+      }
     }
 
     if (!carDbCache || Date.now() - carDbCacheTime > CAR_DB_CACHE_TTL) {
@@ -45,9 +79,10 @@ export class DataResolver {
       if (makeObj) {
         const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === vehicle.model.toLowerCase());
         if (modelObj) {
-          const exactMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase() === vehicle.trim.toLowerCase());
-          const wordMatch = modelObj.trims?.find((t: any) => new RegExp(`\\b${vehicle.trim}\\b`, 'i').test(t.name));
-          const partialMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase().includes(vehicle.trim.toLowerCase()));
+          const trimToSearch = vehicle.trim || '';
+          const exactMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase() === trimToSearch.toLowerCase());
+          const wordMatch = modelObj.trims?.find((t: any) => new RegExp(`\\b${trimToSearch}\\b`, 'i').test(t.name));
+          const partialMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase().includes(trimToSearch.toLowerCase()));
           
           carDbTrim = exactMatch || wordMatch || partialMatch;
           
@@ -86,14 +121,27 @@ export class DataResolver {
       }
     }
 
-    const msrpCents = context.adminOverrides?.msrpCents || vehicle?.msrpCents || 0;
-
+    const msrpCents = context.adminOverrides?.msrpCents || context.marketcheckData?.msrpCents || vehicle?.msrpCents || 0;
     const make = vehicle?.make || context.make || 'Unknown';
     const model = vehicle?.model || context.model || 'Unknown';
     const trim = vehicle?.trim || context.trim || 'Unknown';
     const year = Number(vehicle?.year) || Number(context.year) || new Date().getFullYear();
 
-    // Fetch incentives from the database
+    // If we only have marketcheck data and no vehicle object, create a dummy one
+    if (!vehicle && context.marketcheckData?.msrpCents) {
+      vehicle = {
+        make,
+        model,
+        trim,
+        year,
+        msrpCents: context.marketcheckData.msrpCents
+      };
+    }
+
+    // 3. Fetch incentives
+    let formattedIncentives: any[] = [];
+
+    // 3a. From local DB
     const dbIncentives = await prisma.oemIncentiveProgram.findMany({
       where: {
         isActive: true,
@@ -123,18 +171,41 @@ export class DataResolver {
       }
     });
 
-    const formattedIncentives = dbIncentives.map(inc => ({
+    formattedIncentives = dbIncentives.map(inc => ({
       id: inc.id,
       name: inc.name,
       amount: inc.amountCents / 100,
-      type: inc.type === 'OEM_CASH' ? 'manufacturer' : 'special',
-      isDefault: inc.type === 'OEM_CASH',
+      type: inc.type === 'conditional' ? 'special' : 'manufacturer',
+      isDefault: inc.type !== 'conditional',
       expiresAt: inc.effectiveTo ? inc.effectiveTo.toISOString() : undefined,
       stackable: inc.stackable,
       isTaxableCa: inc.isTaxableCa,
       verifiedByAdmin: inc.verifiedByAdmin,
       dbType: inc.type
     }));
+
+    // 3b. From Firestore (Marketcheck)
+    if (isMarketcheck || context.marketcheckData) {
+      try {
+        const zip = vehicle?.zip || context.zipCode || '90210';
+        const db = admin.firestore();
+        const mcIncDoc = await db.collection('mc_incentives').doc(`${make.toLowerCase()}_${zip}`).get();
+        if (mcIncDoc.exists) {
+          const mcIncentives = mcIncDoc.data()?.incentives || [];
+          const mcFormatted = mcIncentives.map((inc: any) => ({
+            id: inc.id || `mc-${Math.random().toString(36).substr(2, 9)}`,
+            name: inc.title || inc.name,
+            amount: inc.amount || 0,
+            type: 'manufacturer',
+            isDefault: true,
+            source: 'marketcheck'
+          }));
+          formattedIncentives = [...formattedIncentives, ...mcFormatted];
+        }
+      } catch (e) {
+        console.error("Failed to fetch incentives from Firestore", e);
+      }
+    }
 
     return {
       ...vehicle,
@@ -388,8 +459,12 @@ export class DataResolver {
   }
   
   static async resolveDealerDiscount(context: QuoteContext, vehicle: any) {
-    if (context.isStandalone) {
+    if (context.isStandalone && !context.marketcheckData) {
       return 0; // Standalone calculator uses MSRP without dealer discounts
+    }
+
+    if (context.marketcheckData?.priceCents && vehicle.msrpCents) {
+      return vehicle.msrpCents - context.marketcheckData.priceCents;
     }
 
     if (context.adminOverrides?.dealerDiscountCents !== undefined) {
@@ -427,6 +502,13 @@ export class DataResolver {
       context,
       vehicle
     );
+
+    if (context.marketcheckData?.cashBackCents) {
+      resolvedIncentives.totalRebateCents += context.marketcheckData.cashBackCents;
+      // Assume marketcheck cashback is non-taxable for simplicity unless specified
+      resolvedIncentives.nonTaxableRebateCents += context.marketcheckData.cashBackCents;
+    }
+
     return resolvedIncentives;
   }
 }
