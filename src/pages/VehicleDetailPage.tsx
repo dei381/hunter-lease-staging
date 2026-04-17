@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { SEO } from '../components/SEO';
@@ -295,7 +295,7 @@ export const VehicleDetailPage = () => {
                 className="px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
               >
                 <Bell size={12} className="text-[var(--lime)]" />
-                {language === 'ru' ? 'РЎР»РµРґРёС‚СЊ Р·Р° С†РµРЅРѕР№' : 'Price Alert'}
+                {language === 'ru' ? 'Следить за ценой' : 'Price Alert'}
               </button>
               <button
                 onClick={() => {
@@ -317,10 +317,10 @@ export const VehicleDetailPage = () => {
           <div className="sticky top-[var(--nh)] z-40 bg-[var(--bg)]/90 backdrop-blur-md border-b border-[var(--b2)] py-1.5 -mx-4 px-4 sm:mx-0 sm:px-0">
             <nav className="flex items-center gap-4 overflow-x-auto no-scrollbar">
               {[
-                { id: 'gallery', label: language === 'ru' ? 'Р“Р°Р»РµСЂРµСЏ' : 'Gallery' },
-                { id: 'specs', label: language === 'ru' ? 'РҐР°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё' : 'Specs' },
-                { id: 'calculator', label: language === 'ru' ? 'РљР°Р»СЊРєСѓР»СЏС‚РѕСЂ' : 'Calculator' },
-                { id: 'process', label: language === 'ru' ? 'РџСЂРѕС†РµСЃСЃ' : 'Process' }
+{ id: 'gallery', label: language === 'ru' ? 'Галерея' : 'Gallery' },
+                { id: 'specs', label: language === 'ru' ? 'Характеристики' : 'Specs' },
+                { id: 'calculator', label: language === 'ru' ? 'Калькулятор' : 'Calculator' },
+                { id: 'process', label: language === 'ru' ? 'Процесс' : 'Process' }
               ].map(item => (
                 <a
                   key={item.id}
@@ -480,7 +480,7 @@ export const VehicleDetailPage = () => {
                       <ul className="space-y-2">
                         {ownerVerdict.pros.map((pro: string, i: number) => (
                           <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
-                            <span className="text-[var(--lime)]">вЂў</span>
+                            <span className="text-[var(--lime)]">•</span>
                             {pro}
                           </li>
                         ))}
@@ -494,7 +494,7 @@ export const VehicleDetailPage = () => {
                       <ul className="space-y-2">
                         {ownerVerdict.cons.map((con: string, i: number) => (
                           <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
-                            <span className="text-red-500">вЂў</span>
+                            <span className="text-red-500">•</span>
                             {con}
                           </li>
                         ))}
@@ -657,7 +657,7 @@ export const VehicleDetailPage = () => {
                       </div>
                       <p className="text-xs text-[var(--mu2)] leading-relaxed">
                         {language === 'ru'
-                          ? `РўРµРєСѓС‰Р°СЏ С†РµРЅР° РЅР° ${vehicle.model} РЅР° 12.4% РЅРёР¶Рµ СЃСЂРµРґРЅРµСЂС‹РЅРѕС‡РЅРѕР№ Р·Р° РїРѕСЃР»РµРґРЅРёРµ 6 РјРµСЃСЏС†РµРІ.`
+                          ? `Текущая цена на ${vehicle.model} на 12.4% ниже среднерыночной за последние 6 месяцев.`
                           : `Current pricing for ${vehicle.model} is 12.4% below the market average over the last 6 months.`}
                       </p>
                     </div>
@@ -669,7 +669,7 @@ export const VehicleDetailPage = () => {
                       <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
                         <ShieldCheck className="text-blue-500" size={20} />
                       </div>
-                      <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'РђРЅР°Р»РёР· TCO' : 'TCO Analysis'}</h3>
+                      <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'Анализ TCO' : 'TCO Analysis'}</h3>
                     </div>
 
                     <div className="space-y-4">
@@ -695,7 +695,7 @@ export const VehicleDetailPage = () => {
                           <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
                           <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
                             {language === 'ru'
-                              ? 'Total Cost of Ownership (TCO) вЂ” СЌС‚Рѕ СЂРµР°Р»СЊРЅР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ РІР»Р°РґРµРЅРёСЏ, РІРєР»СЋС‡Р°СЋС‰Р°СЏ РІСЃРµ РїР»Р°С‚РµР¶Рё Рё РІР·РЅРѕСЃС‹, СЂР°СЃРїСЂРµРґРµР»РµРЅРЅС‹Рµ РЅР° РІРµСЃСЊ СЃСЂРѕРє Р°СЂРµРЅРґС‹.'
+                              ? 'Total Cost of Ownership (TCO) — это реальная стоимость владения, включающая все платежи и взносы, распределённые на весь срок аренды.'
                               : 'Total Cost of Ownership (TCO) represents the true cost, including all payments and fees spread across the entire lease term.'}
                           </p>
                         </div>
@@ -764,7 +764,7 @@ export const VehicleDetailPage = () => {
           <div className="flex items-center gap-4 mb-24">
             <h2 className="font-display text-5xl uppercase tracking-tighter">{td.protocolTitle} <span className="text-[var(--lime)] italic">{td.protocolSubtitle}</span></h2>
             <div className="flex-1 h-px bg-[var(--b2)]" />
-            <div className="font-mono text-xs text-[var(--mu2)]/50">01 вЂ” 03</div>
+            <div className="font-mono text-xs text-[var(--mu2)]/50">01 — 03</div>
           </div>
           <ProcessTimeline />
         </section>
