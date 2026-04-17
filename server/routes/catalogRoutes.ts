@@ -6,6 +6,15 @@ import { PureMathEngine } from '../services/engine/PureMathEngine';
 const router = express.Router();
 const catalogCache = new NodeCache({ stdTTL: 300 }); // 5 min cache
 
+// Target brands — only these appear in the catalog
+const TARGET_BRANDS = [
+  'Acura', 'Chevrolet', 'Ford', 'Genesis', 'Hyundai',
+  'Kia', 'Lexus', 'Ram', 'Toyota', 'Volvo'
+];
+
+// Minimum MSRP threshold (cents) — filter out bad MarketCheck data (used cars, wrong prices)
+const MIN_MSRP_CENTS = 1800000; // $18,000
+
 interface CatalogEntry {
   id: string;
   make: string;
@@ -64,12 +73,12 @@ router.get('/', async (req, res) => {
       return res.json(filtered);
     }
 
-    // 1. Fetch all active trims with their model and make
+    // 1. Fetch all active trims with their model and make (filtered to target brands + min MSRP)
     const trims = await prisma.vehicleTrim.findMany({
       where: {
         isActive: true,
-        msrpCents: { gt: 0 },
-        model: { isActive: true, make: { isActive: true } }
+        msrpCents: { gte: MIN_MSRP_CENTS },
+        model: { isActive: true, make: { isActive: true, name: { in: TARGET_BRANDS } } }
       },
       include: {
         model: { include: { make: true } }
