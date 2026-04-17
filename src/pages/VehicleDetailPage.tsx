@@ -349,6 +349,7 @@ export const VehicleDetailPage = () => {
                   images={vehicle.photos || []}
                   viewCount={viewCount.toString()}
                   dealId={trimId}
+                  vehicleName={`${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}`}
                 />
               </motion.div>
 

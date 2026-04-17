@@ -1,18 +1,9 @@
 import React, { useState } from 'react';
-import { Maximize2, Eye, Info } from 'lucide-react';
+import { Maximize2, Eye, Info, Camera } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
-
-const CAR_IMAGES = [
-  'https://images.unsplash.com/photo-1707156172012-32049950669b?q=80&w=1000&auto=format&fit=crop', // Main Elantra-like
-  'https://images.unsplash.com/photo-1617469767053-d3b523a0b982?q=80&w=1000&auto=format&fit=crop', // Rear
-  'https://images.unsplash.com/photo-1590362891991-f776e933a690?q=80&w=1000&auto=format&fit=crop', // Side
-  'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?q=80&w=1000&auto=format&fit=crop', // Interior 1
-  'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?q=80&w=1000&auto=format&fit=crop', // Interior 2
-  'https://images.unsplash.com/photo-1603584173870-7f339f084ec1?q=80&w=1000&auto=format&fit=crop', // Wheel
-];
 
 interface ImageGalleryProps {
   mainImage?: string;
@@ -20,15 +11,43 @@ interface ImageGalleryProps {
   viewCount?: string;
   dealId?: string;
   isMarketcheck?: boolean;
+  vehicleName?: string;
 }
 
-export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId, isMarketcheck }) => {
+export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId, isMarketcheck, vehicleName }) => {
   const { language } = useLanguageStore();
   const t = translations[language];
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const images = propImages && propImages.length > 0 ? propImages : (mainImage ? [mainImage] : CAR_IMAGES);
+  const hasRealImages = (propImages && propImages.length > 0) || !!mainImage;
+  const images = propImages && propImages.length > 0 ? propImages : (mainImage ? [mainImage] : []);
   const hasMultipleImages = images.length > 1;
+
+  // No real photos — show placeholder
+  if (!hasRealImages) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="relative aspect-[16/10] bg-gradient-to-br from-white/[0.03] to-white/[0.08] rounded-xl overflow-hidden border border-white/10 flex flex-col items-center justify-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+            <Camera size={32} className="text-white/20" />
+          </div>
+          {vehicleName && (
+            <p className="text-lg font-bold text-white/40 tracking-wider uppercase">{vehicleName}</p>
+          )}
+          <p className="text-xs text-white/20 uppercase tracking-widest">
+            {language === 'ru' ? 'Фото будут доступны в ближайшее время' : 'Photos coming soon'}
+          </p>
+        </div>
+        <div className="flex justify-between items-center px-1">
+          <p className="text-[10px] text-white/20 uppercase font-bold tracking-widest flex items-center gap-2">
+            <Info size={10} />
+            {t.gallery.referenceOnly}
+          </p>
+          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">REF: {dealId || '286877'}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
