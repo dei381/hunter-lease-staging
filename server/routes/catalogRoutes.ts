@@ -140,7 +140,9 @@ router.get('/', async (req, res) => {
 
     for (const trim of trims) {
       const makeName = trim.model.make.name;
-      const modelName = trim.model.name;
+      // Strip brand prefix from model name (e.g. "Ram 1500 Pickup" → "1500 Pickup" for make "Ram")
+      const rawModelName = trim.model.name;
+      const modelName = rawModelName.startsWith(makeName + ' ') ? rawModelName.slice(makeName.length + 1) : rawModelName;
       const trimName = trim.name;
       const msrpCents = trim.msrpCents;
       const year = (trim.model as any).years?.[0] || new Date().getFullYear();
@@ -346,13 +348,14 @@ router.get('/:trimId', async (req, res) => {
 
     // Return basic data — frontend will call /api/v2/quote for detailed calculation
     const makeName = trim.model.make.name;
-    const modelName = trim.model.name;
+    const rawModelName = trim.model.name;
+    const modelName = rawModelName.startsWith(makeName + ' ') ? rawModelName.slice(makeName.length + 1) : rawModelName;
 
-    // Find matching photo — priority: trim photoLinks > SiteSettings > model imageUrl
+    // Find matching photo — priority: trim photoLinks > sibling trim photos > SiteSettings > model imageUrl
     const photosRec = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
     const photos: any[] = photosRec?.data ? JSON.parse(photosRec.data) : [];
     const mk = makeName.toLowerCase().replace(/\s+/g, '-');
-    const md = modelName.toLowerCase().replace(/\s+/g, '-');
+    const md = rawModelName.toLowerCase().replace(/\s+/g, '-');
     const detailPhoto = photos.find((p: any) => p.makeId === mk && p.modelId === md && p.isDefault)
       || photos.find((p: any) => p.makeId === mk && p.modelId === md);
 
@@ -360,6 +363,20 @@ router.get('/:trimId', async (req, res) => {
     try {
       if (trim.photoLinks) trimPhotos = JSON.parse(trim.photoLinks);
     } catch {}
+
+    // Fallback: find photos from sibling trims of the same model
+    if (trimPhotos.length === 0) {
+      const siblingTrims = await prisma.vehicleTrim.findMany({
+        where: { modelId: trim.modelId, isActive: true, photoLinks: { not: null } },
+        select: { photoLinks: true },
+        take: 1
+      });
+      for (const sib of siblingTrims) {
+        try {
+          if (sib.photoLinks) { trimPhotos = JSON.parse(sib.photoLinks); break; }
+        } catch {}
+      }
+    }
 
     const primaryImage = trimPhotos[0] || detailPhoto?.imageUrl || trim.model.imageUrl || null;
 

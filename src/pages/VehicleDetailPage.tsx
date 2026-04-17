@@ -18,10 +18,10 @@ import {
 import { cn } from '../utils/cn';
 import { auth } from '../firebase';
 import { toast } from 'react-hot-toast';
+import { getBodyStyle, getFuelType } from '../data/deals';
 import {
-  getDetailedSpecs, getCategorizedFeatures, getOwnerVerdict,
-  getBodyStyle, getFuelType, getFuelEconomy
-} from '../data/deals';
+  lookupSpecs, lookupFeatures, lookupVerdict, lookupFuelEconomy
+} from '../data/vehicleDatabase';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
@@ -125,16 +125,16 @@ export const VehicleDetailPage = () => {
     })),
   } : null;
 
-  // Derived data from helper functions
-  const categorizedFeaturesData = vehicle ? getCategorizedFeatures(vehicle.make, vehicle.model) : null;
+  // Derived data from vehicle database (model-specific)
+  const categorizedFeaturesData = vehicle ? lookupFeatures(vehicle.make, vehicle.model) : null;
   const categorizedFeatures = categorizedFeaturesData ? (language === 'ru' ? categorizedFeaturesData.ru : categorizedFeaturesData.en) : null;
-  const ownerVerdictData = vehicle ? getOwnerVerdict(vehicle.make, vehicle.model) : null;
+  const ownerVerdictData = vehicle ? lookupVerdict(vehicle.make, vehicle.model) : null;
   const ownerVerdict = ownerVerdictData ? (language === 'ru' ? ownerVerdictData.ru : ownerVerdictData.en) : null;
-  const detailedSpecsData = vehicle ? getDetailedSpecs(vehicle.make, vehicle.model) : null;
+  const detailedSpecsData = vehicle ? lookupSpecs(vehicle.make, vehicle.model) : null;
   const detailedSpecs = detailedSpecsData ? (language === 'ru' ? detailedSpecsData.ru : detailedSpecsData.en) : null;
   const bodyStyle = vehicle ? getBodyStyle(vehicle.make, vehicle.model) : null;
   const fuelType = vehicle ? getFuelType(vehicle.make, vehicle.model) : null;
-  const fuelEconomy = vehicle ? getFuelEconomy(vehicle.make, vehicle.model) : null;
+  const fuelEconomy = vehicle ? lookupFuelEconomy(vehicle.make, vehicle.model) : null;
 
   const fuelStats = useMemo(() => {
     if (!vehicle || !fuelEconomy) return null;
