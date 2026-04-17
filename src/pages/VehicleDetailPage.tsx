@@ -1,35 +1,42 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import { SEO } from '../components/SEO';
 import { Calculator } from '../components/Calculator';
 import { DepositModal } from '../components/DepositModal';
 import { ProcessTimeline } from '../components/ProcessTimeline';
-import { TrustSection } from '../components/TrustSection';
-import { FAQ } from '../components/FAQ';
 import { CompareBar } from '../components/CompareBar';
 import { ImageGallery } from '../components/ImageGallery';
-import { HappyClients } from '../components/HappyClients';
-import { DealerReviews } from '../components/DealerReviews';
-import { CaseStudies } from '../components/CaseStudies';
 import { SmartPriceAlertModal } from '../components/SmartPriceAlertModal';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
-import { ArrowLeft, ArrowRight, Heart, Tag, ShieldCheck, Zap, Star, Info, Loader2, Bell, TrendingDown, Eye } from 'lucide-react';
+import {
+  ArrowLeft, ArrowRight, Heart, ShieldCheck, Zap, Star, Info, Bell,
+  TrendingDown, Check, Users, ThumbsUp, ThumbsDown, ChevronRight, Fuel
+} from 'lucide-react';
 import { cn } from '../utils/cn';
 import { auth } from '../firebase';
 import { toast } from 'react-hot-toast';
+import {
+  getDetailedSpecs, getCategorizedFeatures, getOwnerVerdict,
+  getBodyStyle, getFuelType, getFuelEconomy
+} from '../data/deals';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
 export const VehicleDetailPage = () => {
   const { trimId } = useParams<{ trimId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { language } = useLanguageStore();
   const { toggleDeal, isSaved, addToCompare, removeFromCompare, isInCompare } = useGarageStore();
   const t = translations[language];
   const td = t.dealPage;
+
+  const state = location.state as { isFirstTimeBuyer?: boolean; hasCosigner?: boolean } | null;
+  const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(state?.isFirstTimeBuyer || false);
+  const [hasCosigner, setHasCosigner] = useState(state?.hasCosigner || false);
 
   const [vehicle, setVehicle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +47,9 @@ export const VehicleDetailPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [leadId, setLeadId] = useState<string | null>(null);
   const [viewCount] = useState(Math.floor(Math.random() * 5) + 2);
+  const [activeTab, setActiveTab] = useState<'specs' | 'options'>('specs');
+  const [mileageForFuel, setMileageForFuel] = useState('10k');
+  const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
   // Deposit modal state
   const [clientInfo, setClientInfo] = useState({ name: '', email: '', phone: '', tcpaConsent: false, termsConsent: false });
@@ -66,6 +76,33 @@ export const VehicleDetailPage = () => {
       });
   }, [trimId]);
 
+  // Countdown timer (same expiry logic as DealPage)
+  useEffect(() => {
+    if (!vehicle) return;
+    const now = new Date();
+    const daysToAdd = 2;
+    const expirationDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysToAdd, 23, 59, 59);
+
+    const timer = setInterval(() => {
+      const currentTime = new Date().getTime();
+      const distance = expirationDate.getTime() - currentTime;
+
+      if (distance < 0) {
+        clearInterval(timer);
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      } else {
+        setTimeLeft({
+          days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+          seconds: Math.floor((distance % (1000 * 60)) / 1000),
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [vehicle]);
+
   // Build deal object for Calculator auto-fill
   const dealForCalc = vehicle ? {
     id: vehicle.id,
@@ -87,6 +124,43 @@ export const VehicleDetailPage = () => {
       isDefault: true
     })),
   } : null;
+
+  // Derived data from helper functions
+  const categorizedFeaturesData = vehicle ? getCategorizedFeatures(vehicle.make, vehicle.model) : null;
+  const categorizedFeatures = categorizedFeaturesData ? (language === 'ru' ? categorizedFeaturesData.ru : categorizedFeaturesData.en) : null;
+  const ownerVerdictData = vehicle ? getOwnerVerdict(vehicle.make, vehicle.model) : null;
+  const ownerVerdict = ownerVerdictData ? (language === 'ru' ? ownerVerdictData.ru : ownerVerdictData.en) : null;
+  const detailedSpecsData = vehicle ? getDetailedSpecs(vehicle.make, vehicle.model) : null;
+  const detailedSpecs = detailedSpecsData ? (language === 'ru' ? detailedSpecsData.ru : detailedSpecsData.en) : null;
+  const bodyStyle = vehicle ? getBodyStyle(vehicle.make, vehicle.model) : null;
+  const fuelType = vehicle ? getFuelType(vehicle.make, vehicle.model) : null;
+  const fuelEconomy = vehicle ? getFuelEconomy(vehicle.make, vehicle.model) : null;
+
+  const fuelStats = useMemo(() => {
+    if (!vehicle || !fuelEconomy) return null;
+    const milesPerYear = parseInt(mileageForFuel) * 1000;
+    const gasPrice = 4.5;
+    const electricityPrice = 0.3;
+
+    let monthlyCost = 0;
+    let savings5Years = 0;
+
+    if (fuelType === 'Electric') {
+      const kWhPerMile = 33.7 / (fuelEconomy.combined || 100);
+      monthlyCost = (milesPerYear / 12) * kWhPerMile * electricityPrice;
+      const gasAlternativeCost = (milesPerYear / 12 / 25) * gasPrice;
+      savings5Years = (gasAlternativeCost - monthlyCost) * 12 * 5;
+    } else if (fuelType === 'Hybrid' || fuelType === 'PHEV') {
+      monthlyCost = (milesPerYear / 12 / (fuelEconomy.combined || 40)) * gasPrice;
+      const gasAlternativeCost = (milesPerYear / 12 / 25) * gasPrice;
+      savings5Years = (gasAlternativeCost - monthlyCost) * 12 * 5;
+    } else {
+      monthlyCost = (milesPerYear / 12 / (fuelEconomy.combined || 25)) * gasPrice;
+      savings5Years = 0;
+    }
+
+    return { monthlyCost, savings5Years };
+  }, [vehicle, mileageForFuel, fuelType, fuelEconomy]);
 
   const handleCalculatorChange = useCallback((data: any) => {
     setSelectedConfig(data);
@@ -165,7 +239,7 @@ export const VehicleDetailPage = () => {
         <div className="text-center">
           <h1 className="font-display text-4xl mb-4 text-[var(--w)] uppercase">{td?.dealNotFound || 'Vehicle Not Found'}</h1>
           <button onClick={() => navigate('/catalog')} className="text-[var(--lime)] hover:underline font-bold uppercase tracking-widest text-xs">
-            {language === 'ru' ? 'Назад к каталогу' : 'Back to Catalog'}
+            {language === 'ru' ? 'РќР°Р·Р°Рґ Рє РєР°С‚Р°Р»РѕРіСѓ' : 'Back to Catalog'}
           </button>
         </div>
       </div>
@@ -173,8 +247,6 @@ export const VehicleDetailPage = () => {
   }
 
   const msrp = vehicle.msrpCents / 100;
-  const totalIncentives = (vehicle.incentives || []).reduce((s: number, i: any) => s + i.amountCents, 0) / 100;
-  const sellingPrice = msrp - totalIncentives;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pb-32 lg:pb-20 selection:bg-[var(--lime)] selection:text-black">
@@ -193,7 +265,7 @@ export const VehicleDetailPage = () => {
               <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--mu2)] uppercase tracking-widest">
                 <button onClick={() => navigate('/catalog')} className="hover:text-[var(--lime)] transition-colors flex items-center gap-1">
                   <ArrowLeft size={12} />
-                  {language === 'ru' ? 'Каталог' : 'Catalog'}
+                  {language === 'ru' ? 'РљР°С‚Р°Р»РѕРі' : 'Catalog'}
                 </button>
                 <span>/</span>
                 <span>{vehicle.make}</span>
@@ -208,9 +280,12 @@ export const VehicleDetailPage = () => {
                 <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
                 <span className="font-mono text-[10px] tracking-widest">{vehicle.trim}</span>
                 <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5 relative group cursor-help bg-[var(--lime)]/10 border border-[var(--lime)]/30 px-2 py-0.5 rounded-full">
                   <ShieldCheck size={12} className="text-[var(--lime)]" />
-                  <span className="font-mono text-[10px] tracking-widest">{td?.passedAudit || 'Verified'}</span>
+                  <span className="font-mono text-[10px] font-bold tracking-widest text-[var(--lime)]">{td?.passedAudit || 'Verified'}</span>
+                  <div className="absolute top-full left-0 mt-2 w-64 p-3 bg-[var(--s2)] border border-[var(--b2)] rounded-xl text-[10px] text-[var(--mu2)] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+                    {t.lock?.key2Desc || "Mathematically guaranteed: the dealer cannot add hidden fees."}
+                  </div>
                 </div>
               </div>
             </div>
@@ -220,7 +295,7 @@ export const VehicleDetailPage = () => {
                 className="px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
               >
                 <Bell size={12} className="text-[var(--lime)]" />
-                {language === 'ru' ? 'Следить за ценой' : 'Price Alert'}
+                {language === 'ru' ? 'РЎР»РµРґРёС‚СЊ Р·Р° С†РµРЅРѕР№' : 'Price Alert'}
               </button>
               <button
                 onClick={() => {
@@ -242,10 +317,10 @@ export const VehicleDetailPage = () => {
           <div className="sticky top-[var(--nh)] z-40 bg-[var(--bg)]/90 backdrop-blur-md border-b border-[var(--b2)] py-1.5 -mx-4 px-4 sm:mx-0 sm:px-0">
             <nav className="flex items-center gap-4 overflow-x-auto no-scrollbar">
               {[
-                { id: 'gallery', label: language === 'ru' ? 'Галерея' : 'Gallery' },
-                { id: 'specs', label: language === 'ru' ? 'Характеристики' : 'Specs' },
-                { id: 'calculator', label: language === 'ru' ? 'Калькулятор' : 'Calculator' },
-                { id: 'process', label: language === 'ru' ? 'Процесс' : 'Process' }
+                { id: 'gallery', label: language === 'ru' ? 'Р“Р°Р»РµСЂРµСЏ' : 'Gallery' },
+                { id: 'specs', label: language === 'ru' ? 'РҐР°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё' : 'Specs' },
+                { id: 'calculator', label: language === 'ru' ? 'РљР°Р»СЊРєСѓР»СЏС‚РѕСЂ' : 'Calculator' },
+                { id: 'process', label: language === 'ru' ? 'РџСЂРѕС†РµСЃСЃ' : 'Process' }
               ].map(item => (
                 <a
                   key={item.id}
@@ -260,7 +335,7 @@ export const VehicleDetailPage = () => {
 
           {/* Main Content Grid */}
           <div className="flex flex-col-reverse lg:grid lg:grid-cols-12 gap-8 relative items-start">
-            {/* Left Column: Photo & Vehicle Info */}
+            {/* Left Column: Gallery & Technical Specs */}
             <div className="lg:col-span-7 space-y-8">
               {/* Image Gallery */}
               <motion.div
@@ -282,20 +357,20 @@ export const VehicleDetailPage = () => {
                 {[
                   {
                     icon: ShieldCheck,
-                    title: td?.auditTitle || 'Verified Deal',
-                    desc: td?.auditDesc || 'Every number has been independently verified.',
+                    title: td.auditTitle,
+                    desc: td.auditDesc,
                     color: 'text-[var(--lime)]'
                   },
                   {
                     icon: Zap,
-                    title: td?.fleetTitle || 'Fleet Pricing',
-                    desc: td?.fleetDesc || 'Access to dealer fleet and volume discounts.',
+                    title: td.fleetTitle,
+                    desc: td.fleetDesc,
                     color: 'text-blue-400'
                   },
                   {
                     icon: Star,
-                    title: td?.matchTitle || 'Best Match',
-                    desc: td?.matchDesc || 'AI-matched to your requirements and budget.',
+                    title: td.matchTitle,
+                    desc: td.matchDesc,
                     color: 'text-orange-400'
                   }
                 ].map((item, i) => (
@@ -311,143 +386,215 @@ export const VehicleDetailPage = () => {
                 ))}
               </div>
 
-              {/* Pricing & Incentives Block */}
-              <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
-                <h3 className="font-display text-2xl uppercase tracking-tighter">
-                  {language === 'ru' ? 'Цена и скидки' : 'Pricing & Incentives'}
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                    <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">MSRP</div>
-                    <div className={cn("text-2xl font-display", totalIncentives > 0 ? "line-through text-[var(--mu)]" : "text-[var(--w)]")}>{fmt(msrp)}</div>
-                  </div>
-                  {totalIncentives > 0 && (
-                    <div className="bg-[var(--lime)]/10 p-4 rounded-2xl border border-[var(--lime)]/20 space-y-1">
-                      <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">
-                        {language === 'ru' ? 'Ваша цена' : 'Your Price'}
-                      </div>
-                      <div className="text-2xl font-display text-[var(--lime)]">{fmt(sellingPrice)}</div>
+              {/* Categorized Features */}
+              {categorizedFeatures && (
+                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-8">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-display text-2xl uppercase tracking-tighter">{td.featuresTitle}</h3>
+                    <div className="flex gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[var(--lime)]" />
+                      <div className="w-2 h-2 rounded-full bg-[var(--lime)]/30" />
+                      <div className="w-2 h-2 rounded-full bg-[var(--lime)]/10" />
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Incentives list */}
-                {vehicle.incentives && vehicle.incentives.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest flex items-center gap-2">
-                      <Tag size={12} className="text-[var(--lime)]" />
-                      {language === 'ru' ? 'Доступные скидки' : 'Available Incentives'}
-                    </h4>
-                    {vehicle.incentives.map((inc: any) => (
-                      <div key={inc.id} className="flex justify-between items-center bg-[var(--b1)] p-3 rounded-xl border border-[var(--b2)]">
-                        <span className="text-xs text-[var(--w)]">{inc.name}</span>
-                        <span className="text-[var(--grn)] font-bold text-sm font-mono">−{fmt(inc.amountCents / 100)}</span>
+                  <div className="grid md:grid-cols-3 gap-8">
+                    {Object.entries(categorizedFeatures).map(([category, items]: [string, any]) => (
+                      <div key={category} className="space-y-4">
+                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest border-b border-[var(--b2)] pb-2">
+                          {(td[category as keyof typeof td] as string) || category}
+                        </div>
+                        <ul className="space-y-3">
+                          {Array.isArray(items) && items.map((item: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2 group">
+                              <Check size={12} className="text-[var(--lime)] mt-0.5 shrink-0" />
+                              <span className="text-xs text-[var(--mu)] group-hover:text-[var(--w)] transition-colors">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     ))}
-                    <div className="flex justify-between items-center border-t border-[var(--b2)] pt-3">
-                      <span className="text-sm font-bold text-[var(--lime)]">
-                        {language === 'ru' ? 'Итого экономия' : 'Total Savings'}
-                      </span>
-                      <span className="text-lg font-bold text-[var(--lime)] font-mono">−{fmt(totalIncentives)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Market Trend & TCO Analysis */}
-              <div id="specs" className="grid md:grid-cols-2 gap-4 scroll-mt-24">
-                {/* Market Trend */}
-                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center">
-                        <TrendingDown className="text-[var(--lime)]" size={20} />
-                      </div>
-                      <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'Тренд рынка' : 'Market Trend'}</h3>
-                    </div>
-                    <div className="bg-[var(--lime)]/10 text-[var(--lime)] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-[var(--lime)]/20">
-                      {language === 'ru' ? 'Лучшее время' : 'Best Time'}
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-end justify-between h-32 gap-2">
-                      {[65, 80, 45, 90, 70, 55, 40].map((h, i) => (
-                        <div key={i} className="flex-1 bg-[var(--b1)] rounded-t-xl relative group h-full flex items-end overflow-hidden border border-[var(--b2)]">
-                          <motion.div
-                            initial={{ height: 0 }}
-                            animate={{ height: `${h}%` }}
-                            transition={{ delay: 0.5 + i * 0.1 }}
-                            className={cn(
-                              "w-full transition-all",
-                              i === 6 ? "bg-[var(--lime)]" : "bg-[var(--mu2)]/20 group-hover:bg-[var(--mu2)]/40"
-                            )}
-                          />
-                          {i === 6 && (
-                            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[8px] font-bold text-black bg-[var(--lime)] px-1 rounded">NOW</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-between text-[8px] font-bold text-[var(--mu2)] uppercase tracking-widest px-1">
-                      <span>{language === 'ru' ? '6 мес. назад' : '6 mo ago'}</span>
-                      <span>{language === 'ru' ? 'Сейчас' : 'Current'}</span>
-                    </div>
-                    <p className="text-xs text-[var(--mu2)] leading-relaxed">
-                      {language === 'ru'
-                        ? `Текущая цена на ${vehicle.model} на 12.4% ниже среднерыночной за последние 6 месяцев.`
-                        : `Current pricing for ${vehicle.model} is 12.4% below the market average over the last 6 months.`}
-                    </p>
                   </div>
                 </div>
+              )}
 
-                {/* TCO */}
+              {/* Fuel Economy & Savings */}
+              {fuelEconomy && fuelStats && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-6 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                        <Fuel className="text-orange-500" size={20} />
+                      </div>
+                      <h3 className="font-display text-xl uppercase">{td.fuelEconomyTitle}</h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-[var(--b1)] p-3 rounded-xl border border-[var(--b2)] text-center">
+                        <div className="text-[8px] font-bold text-[var(--mu2)] uppercase mb-1">{td.city}</div>
+                        <div className="text-lg font-mono font-bold">{fuelEconomy.city}</div>
+                      </div>
+                      <div className="bg-[var(--b1)] p-3 rounded-xl border border-[var(--b2)] text-center">
+                        <div className="text-[8px] font-bold text-[var(--mu2)] uppercase mb-1">{td.hwy}</div>
+                        <div className="text-lg font-mono font-bold">{fuelEconomy.hwy}</div>
+                      </div>
+                      <div className="bg-[var(--lime)]/10 p-3 rounded-xl border border-[var(--lime)]/20 text-center">
+                        <div className="text-[8px] font-bold text-[var(--lime)] uppercase mb-1">{td.combined}</div>
+                        <div className="text-lg font-mono font-bold text-[var(--lime)]">{fuelEconomy.combined}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-6 flex flex-col justify-center space-y-2 relative overflow-hidden group">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-[var(--lime)]/5 rounded-full blur-2xl group-hover:bg-[var(--lime)]/10 transition-colors" />
+                    <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{td.estMonthlyFuel}</div>
+                    <div className="text-3xl font-display uppercase tracking-tighter">
+                      ${Math.round(fuelStats.monthlyCost)} <span className="text-xs font-sans text-[var(--mu2)] lowercase">/ {t.deals.moShort}</span>
+                    </div>
+                    {fuelStats.savings5Years > 0 && (
+                      <div className="flex items-center gap-2 text-[var(--lime)] text-[10px] font-bold uppercase tracking-widest bg-[var(--lime)]/10 w-fit px-2 py-1 rounded">
+                        <TrendingDown size={12} />
+                        {td.savingsOver5Years}: ${Math.round(fuelStats.savings5Years).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Owner Verdict */}
+              {ownerVerdict && (
                 <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                      <ShieldCheck className="text-blue-500" size={20} />
+                      <Users className="text-blue-500" size={20} />
                     </div>
-                    <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'Анализ TCO' : 'TCO Analysis'}</h3>
+                    <h3 className="font-display text-xl uppercase">{td.ownerVerdictTitle}</h3>
                   </div>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                          {language === 'ru' ? 'Средний в мес.' : 'Monthly Avg'}
-                        </div>
-                        <div className="text-2xl font-display text-[var(--lime)]">
-                          {selectedConfig?.payment ? fmt(selectedConfig.payment + Math.round(3000 / 36)) : fmt(Math.round(msrp * 0.015 + 3000 / 36))}
-                        </div>
-                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ mo</div>
+
+                  <div className="grid md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-[var(--lime)] text-[10px] font-bold uppercase tracking-widest">
+                        <ThumbsUp size={14} />
+                        {td.pros}
                       </div>
-                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                          {language === 'ru' ? 'Итого TCO' : 'Total TCO'}
-                        </div>
-                        <div className="text-2xl font-display text-[var(--w)]">
-                          {selectedConfig?.payment ? fmt(selectedConfig.payment * 36 + 3000) : fmt(Math.round(msrp * 0.015 * 36 + 3000))}
-                        </div>
-                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ 36 mo</div>
-                      </div>
+                      <ul className="space-y-2">
+                        {ownerVerdict.pros.map((pro: string, i: number) => (
+                          <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
+                            <span className="text-[var(--lime)]">вЂў</span>
+                            {pro}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <div className="bg-[var(--b1)]/50 p-4 rounded-2xl border border-[var(--b2)]">
-                      <div className="flex items-start gap-3">
-                        <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
-                          {language === 'ru'
-                            ? 'TCO — реальная стоимость владения, включающая все платежи и взносы за весь срок аренды.'
-                            : 'TCO represents the true cost including all payments and fees across the entire lease term.'}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold uppercase tracking-widest">
+                        <ThumbsDown size={14} />
+                        {td.cons}
+                      </div>
+                      <ul className="space-y-2">
+                        {ownerVerdict.cons.map((con: string, i: number) => (
+                          <li key={i} className="text-xs text-[var(--mu)] flex items-start gap-2">
+                            <span className="text-red-500">вЂў</span>
+                            {con}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-[var(--b2)]">
+                    <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-2">{td.summary}</div>
+                    <p className="text-sm text-[var(--w)] leading-relaxed italic">
+                      "{ownerVerdict.summary}"
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Specs & Options Tabs */}
+              <div id="specs" className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl overflow-hidden scroll-mt-24">
+                <div className="flex border-b border-[var(--b2)]">
+                  <button
+                    onClick={() => setActiveTab('specs')}
+                    className={cn(
+                      "flex-1 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                      activeTab === 'specs' ? "bg-[var(--b1)] text-[var(--lime)]" : "text-[var(--mu2)] hover:text-[var(--w)]"
+                    )}
+                  >
+                    {td.specsTitle}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('options')}
+                    className={cn(
+                      "flex-1 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                      activeTab === 'options' ? "bg-[var(--b1)] text-[var(--lime)]" : "text-[var(--mu2)] hover:text-[var(--w)]"
+                    )}
+                  >
+                    {td.standardOptionsTitle}
+                  </button>
+                </div>
+
+                <div className="p-8">
+                  <AnimatePresence mode="wait">
+                    {activeTab === 'specs' ? (
+                      <motion.div
+                        key="specs"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        className="space-y-6"
+                      >
+                        <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+                          {detailedSpecs && Object.entries(detailedSpecs).map(([key, val]: [string, any]) => (
+                            <div key={key} className="flex justify-between items-center border-b border-[var(--b2)] pb-2">
+                              <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest">{key}</span>
+                              <span className="text-xs font-mono font-bold">{val}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[8px] text-[var(--mu2)] italic leading-relaxed">
+                          * {td.specsDisclaimer}
                         </p>
-                      </div>
-                    </div>
-                  </div>
+                        <div className="pt-4">
+                          <button className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest flex items-center gap-2 hover:gap-3 transition-all">
+                            {td.viewFullSpecs} <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="options"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        className="space-y-6"
+                      >
+                        <div className="grid grid-cols-2 gap-4">
+                          {categorizedFeatures && Object.values(categorizedFeatures).flat().map((f: string, i: number) => (
+                            <div key={i} className="flex items-center gap-3 bg-[var(--b1)] p-3 rounded-xl border border-[var(--b2)]">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[var(--lime)]" />
+                              <span className="text-xs text-[var(--mu)]">{f}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 p-4 rounded-2xl">
+                          <div className="flex items-center gap-2 text-[var(--lime)] text-[10px] font-bold uppercase tracking-widest mb-2">
+                            <Star size={12} />
+                            {td.perfectForYou}
+                          </div>
+                          <p className="text-xs text-[var(--mu2)] leading-relaxed">
+                            {vehicle.make} {vehicle.model} {td.perfectForYou}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Calculator (sticky) */}
+            {/* Right Column: Calculator */}
             <div id="calculator" className="lg:col-span-5 relative scroll-mt-24">
-              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6">
+              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6 pb-8">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -455,11 +602,106 @@ export const VehicleDetailPage = () => {
                 >
                   <Calculator
                     deal={dealForCalc}
-                    onChange={handleCalculatorChange}
+                    timeLeft={timeLeft}
+                    viewCount={viewCount}
                     onProceed={handleProceed}
+                    onChange={handleCalculatorChange}
+                    onMileageChange={(m: string) => setMileageForFuel(m)}
                     mode="offer"
+                    initialIsFirstTimeBuyer={isFirstTimeBuyer}
+                    initialHasCosigner={hasCosigner}
                   />
                 </motion.div>
+
+                {/* Market Trend & TCO Analysis */}
+                <div className="grid grid-cols-1 gap-4 mt-6">
+                  {/* Market Trend Analysis */}
+                  <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center">
+                          <TrendingDown className="text-[var(--lime)]" size={20} />
+                        </div>
+                        <h3 className="font-display text-xl uppercase">{t.calc.marketTrend}</h3>
+                      </div>
+                      <div className="bg-[var(--lime)]/10 text-[var(--lime)] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-[var(--lime)]/20">
+                        {t.calc.bestTimeToBuy}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-end justify-between h-32 gap-2">
+                        {[65, 80, 45, 90, 70, 55, 40].map((h, i) => (
+                          <div key={i} className="flex-1 bg-[var(--b1)] rounded-t-xl relative group h-full flex items-end overflow-hidden border border-[var(--b2)]">
+                            <motion.div
+                              initial={{ height: 0 }}
+                              animate={{ height: `${h}%` }}
+                              transition={{ delay: 0.5 + i * 0.1 }}
+                              className={cn(
+                                "w-full transition-all",
+                                i === 6 ? "bg-[var(--lime)]" : "bg-[var(--mu2)]/20 group-hover:bg-[var(--mu2)]/40"
+                              )}
+                            />
+                            {i === 6 && (
+                              <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[8px] font-bold text-black bg-[var(--lime)] px-1 rounded">
+                                NOW
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between text-[8px] font-bold text-[var(--mu2)] uppercase tracking-widest px-1">
+                        <span>6 {t.calc.moShort} {t.calc.ago}</span>
+                        <span>{t.calc.current}</span>
+                      </div>
+                      <p className="text-xs text-[var(--mu2)] leading-relaxed">
+                        {language === 'ru'
+                          ? `РўРµРєСѓС‰Р°СЏ С†РµРЅР° РЅР° ${vehicle.model} РЅР° 12.4% РЅРёР¶Рµ СЃСЂРµРґРЅРµСЂС‹РЅРѕС‡РЅРѕР№ Р·Р° РїРѕСЃР»РµРґРЅРёРµ 6 РјРµСЃСЏС†РµРІ.`
+                          : `Current pricing for ${vehicle.model} is 12.4% below the market average over the last 6 months.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* TCO Analysis */}
+                  <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                        <ShieldCheck className="text-blue-500" size={20} />
+                      </div>
+                      <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'РђРЅР°Р»РёР· TCO' : 'TCO Analysis'}</h3>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
+                          <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.monthlyAvg}</div>
+                          <div className="text-2xl font-display text-[var(--lime)]">
+                            {selectedConfig?.payment ? fmt(selectedConfig.payment + Math.round(3000 / 36)) : fmt(Math.round(msrp * 0.015 + 3000 / 36))}
+                          </div>
+                          <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ {t.calc.moShort}</div>
+                        </div>
+                        <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
+                          <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.totalTCO}</div>
+                          <div className="text-2xl font-display text-[var(--w)]">
+                            {selectedConfig?.payment ? fmt(selectedConfig.payment * 36 + 3000) : fmt(Math.round(msrp * 0.015 * 36 + 3000))}
+                          </div>
+                          <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ 36 {t.calc.moShort}</div>
+                        </div>
+                      </div>
+
+                      <div className="bg-[var(--b1)]/50 p-4 rounded-2xl border border-[var(--b2)]">
+                        <div className="flex items-start gap-3">
+                          <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                          <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
+                            {language === 'ru'
+                              ? 'Total Cost of Ownership (TCO) вЂ” СЌС‚Рѕ СЂРµР°Р»СЊРЅР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ РІР»Р°РґРµРЅРёСЏ, РІРєР»СЋС‡Р°СЋС‰Р°СЏ РІСЃРµ РїР»Р°С‚РµР¶Рё Рё РІР·РЅРѕСЃС‹, СЂР°СЃРїСЂРµРґРµР»РµРЅРЅС‹Рµ РЅР° РІРµСЃСЊ СЃСЂРѕРє Р°СЂРµРЅРґС‹.'
+                              : 'Total Cost of Ownership (TCO) represents the true cost, including all payments and fees spread across the entire lease term.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -468,78 +710,93 @@ export const VehicleDetailPage = () => {
 
       {/* Lower Page Journey */}
       <div className="mt-32 space-y-32">
+
+        {/* The Audit */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <div className="space-y-6">
+              <div className="inline-block bg-[var(--lime)]/10 border border-[var(--lime)]/20 px-3 py-1 rounded-full">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)]">{td.techProp}</span>
+              </div>
+              <h2 className="font-display text-4xl md:text-6xl uppercase">
+                {td.auditSectionTitle} <span className="text-[var(--mu2)]">{td.auditSectionSubtitle}</span>
+              </h2>
+              <p className="text-lg text-[var(--mu)] leading-relaxed max-w-xl">
+                {td.auditSectionText.replace('{model}', vehicle.model)}
+              </p>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                {td.auditKeys.map((key: string, i: number) => (
+                  <div key={i} className="flex items-center gap-3 bg-[var(--s2)] p-3 rounded-xl border border-[var(--b2)]">
+                    <Check size={14} className="text-[var(--lime)]" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{key}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 shadow-xl">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-[var(--b2)] pb-4">
+                  <div className="font-mono text-[10px] text-[var(--mu2)] uppercase tracking-widest">{td.auditReport} #8271</div>
+                  <div className="bg-[var(--lime)] text-black px-2 py-0.5 rounded text-[10px] font-bold">{td.passed}</div>
+                </div>
+
+                <div className="space-y-4">
+                  {td.auditItems.map((item: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--mu2)]">{item.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold">{item.val}</span>
+                        <Check size={12} className="text-[var(--lime)]" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Process */}
         <section id="process" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 scroll-mt-24">
           <div className="flex items-center gap-4 mb-24">
-            <h2 className="font-display text-5xl uppercase tracking-tighter">
-              {td?.protocolTitle || 'Our'} <span className="text-[var(--lime)] italic">{td?.protocolSubtitle || 'Process'}</span>
-            </h2>
+            <h2 className="font-display text-5xl uppercase tracking-tighter">{td.protocolTitle} <span className="text-[var(--lime)] italic">{td.protocolSubtitle}</span></h2>
             <div className="flex-1 h-px bg-[var(--b2)]" />
+            <div className="font-mono text-xs text-[var(--mu2)]/50">01 вЂ” 03</div>
           </div>
           <ProcessTimeline />
         </section>
 
-        {/* FAQ */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
-          <FAQ />
-        </section>
-
-        {/* Social Proof */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
-          <HappyClients />
-        </section>
-
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
-          <DealerReviews />
-        </section>
-
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
-          <CaseStudies />
-        </section>
-
         {/* Final CTA */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
-          <div className="bg-[var(--s2)] rounded-3xl p-12 md:p-24 text-center space-y-8 border border-[var(--b2)]">
+          <div className="bg-[var(--s2)] rounded-3xl p-8 md:p-12 text-center space-y-6 border border-[var(--b2)]">
             <div className="space-y-4">
-              <h2 className="font-display text-5xl md:text-8xl uppercase tracking-tight">
-                {td?.finalCtaTitle || 'Get Your'} <span className="text-[var(--lime)]">{vehicle.model}</span>
+              <h2 className="font-display text-4xl md:text-5xl uppercase tracking-tight">
+                {td.finalCtaTitle} <span className="text-[var(--lime)]">{vehicle.model}</span>
               </h2>
-              <p className="text-lg text-[var(--mu2)] font-medium max-w-xl mx-auto">
-                {td?.finalCtaText || 'Lock in your deal today with a verified, transparent payment.'}
+              <p className="text-base text-[var(--mu2)] font-medium max-w-xl mx-auto">
+                {td.finalCtaText}
               </p>
             </div>
 
-            <div className="flex flex-wrap justify-center gap-4 pt-8">
+            <div className="flex flex-wrap justify-center gap-4 pt-4">
               <button
                 onClick={() => handleProceed(selectedConfig || dealForCalc)}
-                className="bg-[var(--lime)] text-black px-12 py-6 rounded-xl font-display text-2xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
+                className="bg-[var(--lime)] text-black px-8 py-4 rounded-xl font-display text-xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
               >
-                <span>{td?.lockInDeal || 'Lock In This Deal'}</span>
-                <ArrowRight size={24} />
+                <span>{td.lockInDeal}</span>
+                <ArrowRight size={20} />
+              </button>
+              <button
+                onClick={() => window.open('https://hunterlease.com/credit-application', '_blank')}
+                className="bg-transparent border-2 border-[var(--mu2)] text-[var(--w)] px-8 py-4 rounded-xl font-display text-xl tracking-widest hover:border-[var(--lime)] hover:text-[var(--lime)] transition-colors flex items-center gap-4 uppercase"
+              >
+                <span>{td.seeIfIQualify}</span>
               </button>
             </div>
           </div>
         </section>
-      </div>
-
-      {/* Mobile Sticky CTA */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-        <div className="flex flex-col">
-          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">
-            {selectedConfig?.type === 'finance' ? (language === 'ru' ? 'Кредит' : 'Finance') : (language === 'ru' ? 'Лизинг' : 'Lease')}
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="font-display text-2xl text-[var(--w)] leading-none">{selectedConfig?.payment ? fmt(selectedConfig.payment) : '—'}</span>
-            <span className="text-[10px] text-[var(--mu2)]">/mo</span>
-          </div>
-        </div>
-        <button
-          onClick={() => handleProceed(selectedConfig || dealForCalc)}
-          className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
-        >
-          <span>{td?.lockInDeal || 'Lock In Deal'}</span>
-          <ArrowRight size={18} />
-        </button>
       </div>
 
       {/* Deposit Modal */}
@@ -563,7 +820,6 @@ export const VehicleDetailPage = () => {
         leadId={leadId}
       />
 
-      {/* Price Alert Modal */}
       <SmartPriceAlertModal
         isOpen={isAlertOpen}
         onClose={() => setIsAlertOpen(false)}
@@ -571,6 +827,25 @@ export const VehicleDetailPage = () => {
         model={vehicle.model}
       />
 
+      {/* Mobile Sticky CTA */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="flex flex-col">
+          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">
+            {selectedConfig?.type === 'finance' ? (language === 'ru' ? 'Платеж по кредиту' : 'Finance Payment') : t.calc.leasePayment}
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-display text-2xl text-[var(--w)] leading-none">{selectedConfig?.payment ? fmt(selectedConfig.payment) : '—'}</span>
+            <span className="text-[10px] text-[var(--mu2)]">/mo</span>
+          </div>
+        </div>
+        <button
+          onClick={() => handleProceed(selectedConfig || dealForCalc)}
+          className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
+        >
+          <span>{td.lockInDeal}</span>
+          <ArrowRight size={18} />
+        </button>
+      </div>
       <CompareBar />
     </div>
   );
