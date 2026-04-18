@@ -146,7 +146,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
             tradeInEquityCents: tradeInEquity * 100,
             tier,
             zipCode,
-            selectedIncentives,
+            selectedIncentives: showIncentives ? selectedIncentives : ['__NONE__'],
             isFirstTimeBuyer,
             hasCosigner,
             isStandalone: isCustomCar,
@@ -185,7 +185,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
     const timer = setTimeout(fetchLenderOptions, 500);
     return () => clearTimeout(timer);
-  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, JSON.stringify(selectedIncentives), isFirstTimeBuyer, hasCosigner]);
+  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, JSON.stringify(selectedIncentives), isFirstTimeBuyer, hasCosigner, showIncentives]);
 
   
 

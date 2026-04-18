@@ -117,11 +117,15 @@ export class IncentiveResolver {
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
       
       // When selectedIds are provided, respect user's selection even for default incentives
-      const hasUserSelection = selectedIds && selectedIds.length > 0;
+      // __NONE__ sentinel means user explicitly chose zero incentives
+      const hasExplicitSelection = selectedIds && selectedIds.length > 0;
+      const isNoneSelected = selectedIds?.includes('__NONE__');
       
       if (inc.isDefault) {
         // Default incentives: apply if no explicit selection, or if explicitly selected
-        if (!hasUserSelection || isSelected) {
+        if (isNoneSelected) {
+          evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: 'All incentives disabled by user' });
+        } else if (!hasExplicitSelection || isSelected) {
           eligibleIncentives.push(baseIncentive);
         } else {
           evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: 'Deselected by user' });
