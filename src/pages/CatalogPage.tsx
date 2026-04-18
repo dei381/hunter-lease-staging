@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { SEO } from '../components/SEO';
 import { CompareBar } from '../components/CompareBar';
-import { Search, SlidersHorizontal, ChevronRight, X, Loader2, Settings2, Filter, Heart, Tag } from 'lucide-react';
+import { Search, SlidersHorizontal, ChevronRight, X, Loader2, Settings2, Filter, Heart, Tag, Camera } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
@@ -440,8 +440,9 @@ export const CatalogPage = () => {
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="text-[var(--mu2)] text-xs uppercase font-bold tracking-widest">No Image</span>
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.03] to-white/[0.08]">
+                            <Camera size={24} className="text-white/15" />
+                            <span className="text-white/20 text-[9px] uppercase font-bold tracking-widest">Photos soon</span>
                           </div>
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />

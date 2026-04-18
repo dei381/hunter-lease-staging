@@ -121,7 +121,8 @@ export const VehicleDetailPage = () => {
       name: inc.name,
       amount: inc.amountCents / 100,
       type: inc.type,
-      isDefault: true
+      dbType: inc.type,
+      isDefault: inc.type === 'manufacturer' || inc.type === 'OEM_CASH'
     })),
   } : null;
 
@@ -239,7 +240,7 @@ export const VehicleDetailPage = () => {
         <div className="text-center">
           <h1 className="font-display text-4xl mb-4 text-[var(--w)] uppercase">{td?.dealNotFound || 'Vehicle Not Found'}</h1>
           <button onClick={() => navigate('/catalog')} className="text-[var(--lime)] hover:underline font-bold uppercase tracking-widest text-xs">
-            {language === 'ru' ? 'РќР°Р·Р°Рґ Рє РєР°С‚Р°Р»РѕРіСѓ' : 'Back to Catalog'}
+            {language === 'ru' ? 'Назад к каталогу' : 'Back to Catalog'}
           </button>
         </div>
       </div>
@@ -265,7 +266,7 @@ export const VehicleDetailPage = () => {
               <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--mu2)] uppercase tracking-widest">
                 <button onClick={() => navigate('/catalog')} className="hover:text-[var(--lime)] transition-colors flex items-center gap-1">
                   <ArrowLeft size={12} />
-                  {language === 'ru' ? 'РљР°С‚Р°Р»РѕРі' : 'Catalog'}
+                  {language === 'ru' ? 'Каталог' : 'Catalog'}
                 </button>
                 <span>/</span>
                 <span>{vehicle.make}</span>

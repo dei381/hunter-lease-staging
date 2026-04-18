@@ -380,9 +380,9 @@ router.get('/:trimId', async (req, res) => {
 
     const primaryImage = trimPhotos[0] || detailPhoto?.imageUrl || trim.model.imageUrl || null;
 
-    // Find incentives
+    // Find incentives — deduplicate by name (keep LEASE version if both exist)
     const now = new Date();
-    const matchedIncentives = await prisma.oemIncentiveProgram.findMany({
+    const allIncentives = await prisma.oemIncentiveProgram.findMany({
       where: {
         isActive: true,
         make: makeName,
@@ -393,6 +393,21 @@ router.get('/:trimId', async (req, res) => {
         ]
       }
     });
+    // Deduplicate: prefer LEASE applicability, then ALL, then FINANCE
+    const seen = new Map<string, typeof allIncentives[0]>();
+    for (const inc of allIncentives) {
+      const existing = seen.get(inc.name);
+      if (!existing) {
+        seen.set(inc.name, inc);
+      } else {
+        // Prefer LEASE > ALL > FINANCE
+        const priority = (a: string) => a === 'LEASE' ? 3 : a === 'ALL' ? 2 : 1;
+        if (priority(inc.dealApplicability) > priority(existing.dealApplicability)) {
+          seen.set(inc.name, inc);
+        }
+      }
+    }
+    const matchedIncentives = Array.from(seen.values());
 
     res.json({
       id: trim.id,
