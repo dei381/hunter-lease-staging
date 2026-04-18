@@ -22,7 +22,7 @@ export interface InventorySyncOptions {
 const DEFAULT_INVENTORY_SYNC_OPTIONS: InventorySyncOptions = {
   zip: '90001',
   radius: 50,
-  rows: 100,
+  rows: 50,
   priceMin: 15000,
   priceMax: 500000,
   milesMin: 0,
@@ -119,7 +119,7 @@ export class MarketcheckInventoryService {
     const options: InventorySyncOptions = {
       ...DEFAULT_INVENTORY_SYNC_OPTIONS,
       ...rawOptions,
-      rows: Math.max(1, Math.min(100, Number(rawOptions.rows || DEFAULT_INVENTORY_SYNC_OPTIONS.rows))),
+      rows: Math.max(1, Math.min(50, Number(rawOptions.rows || DEFAULT_INVENTORY_SYNC_OPTIONS.rows))),
     };
 
     console.log(`Starting Marketcheck inventory sync (${options.zip}, ${options.radius}mi, ${options.vehicleStatus})...`);
@@ -184,7 +184,7 @@ export class MarketcheckInventoryService {
 
         start += listings.length;
         if (numFound > 0) {
-          onProgress?.(Math.min(99, Math.round((start / numFound) * 100)));
+          onProgress?.(Math.max(1, Math.min(99, Math.round((start / numFound) * 100))));
         }
         console.log(`Marketcheck inventory sync page ${pagesFetched}: wrote ${totalWritten}/${numFound || '?'} listings`);
 
