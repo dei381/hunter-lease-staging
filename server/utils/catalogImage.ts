@@ -53,5 +53,5 @@ export function resolveCatalogImageUrl({
   const trimPhoto = trimPhotos.find(Boolean) || null;
   const matchedPhoto = findCatalogPhotoRecord(carPhotos, makeName, rawModelName, modelName);
 
-  return trimPhoto || matchedPhoto?.imageUrl || modelImageUrl || null;
+  return trimPhoto || modelImageUrl || matchedPhoto?.imageUrl || null;
 }

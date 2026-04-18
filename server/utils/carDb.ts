@@ -4,6 +4,18 @@ import path from 'path';
 
 const prisma = new PrismaClient();
 
+function parsePhotoLinks(photoLinks: string | null): string[] {
+  if (!photoLinks) return [];
+
+  try {
+    const parsed = JSON.parse(photoLinks);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === 'string' && value.startsWith('http'));
+  } catch {
+    return [];
+  }
+}
+
 export const getCarDb = async () => {
   try {
     const makes = await prisma.vehicleMake.findMany({
@@ -49,7 +61,8 @@ export const getCarDb = async () => {
           mf: trim.baseMF,
           apr: trim.baseAPR,
           rv36: trim.rv36,
-          leaseCash: trim.leaseCashCents / 100
+          leaseCash: trim.leaseCashCents / 100,
+          photoLinks: parsePhotoLinks(trim.photoLinks)
         }))
       }))
     }));

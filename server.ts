@@ -54,6 +54,11 @@ JobQueue.registerHandler('SYNC_EXTERNAL_CARS', async (job, updateProgress) => {
   return { appliedCount };
 });
 
+JobQueue.registerHandler('SYNC_MARKETCHECK_INVENTORY', async (job, updateProgress) => {
+  const result = await MarketcheckInventoryService.syncInventory(job.data?.options || {}, updateProgress);
+  return result;
+});
+
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err);
 });
@@ -4885,8 +4890,8 @@ const mapDealsForFrontend = (
   // Marketcheck Sync Route
   app.post("/api/admin/marketcheck/sync", adminAuth, async (req, res) => {
     try {
-      const result = await MarketcheckInventoryService.syncInventory();
-      res.json(result);
+      const job = await JobQueue.addJob('SYNC_MARKETCHECK_INVENTORY', { options: req.body || {} });
+      res.json({ message: "Marketcheck inventory sync job started", jobId: job.id });
     } catch (error: any) {
       console.error("Marketcheck sync failed:", error);
       res.status(500).json({ error: "Sync failed", message: error.message });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { findCatalogPhotoRecord, resolveCatalogImageUrl } from '../utils/catalogImage';
 
 describe('catalog image resolution', () => {
-  it('prefers car_photos match over model image fallback', () => {
+  it('prefers Marketcheck model image over manual car_photos fallback', () => {
     const imageUrl = resolveCatalogImageUrl({
       carPhotos: [
         { makeId: 'toyota', modelId: 'camry', imageUrl: 'https://images.example.com/camry.jpg', isDefault: true },
@@ -11,10 +11,10 @@ describe('catalog image resolution', () => {
       rawModelName: 'Toyota Camry',
       modelName: 'Camry',
       trimPhotos: [],
-      modelImageUrl: 'https://broken.example.com/camry.jpg',
+      modelImageUrl: 'https://marketcheck.example.com/camry.jpg',
     });
 
-    expect(imageUrl).toBe('https://images.example.com/camry.jpg');
+    expect(imageUrl).toBe('https://marketcheck.example.com/camry.jpg');
   });
 
   it('matches records stored with raw model slug', () => {
@@ -28,6 +28,21 @@ describe('catalog image resolution', () => {
     );
 
     expect(photo?.imageUrl).toBe('https://images.example.com/camry-raw.jpg');
+  });
+
+  it('falls back to car_photos when Marketcheck image is missing', () => {
+    const imageUrl = resolveCatalogImageUrl({
+      carPhotos: [
+        { makeId: 'toyota', modelId: 'camry', imageUrl: 'https://images.example.com/camry.jpg', isDefault: true },
+      ],
+      makeName: 'Toyota',
+      rawModelName: 'Toyota Camry',
+      modelName: 'Camry',
+      trimPhotos: [],
+      modelImageUrl: null,
+    });
+
+    expect(imageUrl).toBe('https://images.example.com/camry.jpg');
   });
 
   it('keeps trim photo as highest priority', () => {

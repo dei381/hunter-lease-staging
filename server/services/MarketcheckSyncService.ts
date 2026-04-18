@@ -1,4 +1,30 @@
 
+function normalizePhotoLinks(photoLinks: unknown): string[] {
+  if (!Array.isArray(photoLinks)) return [];
+
+  const normalized: string[] = [];
+  for (const value of photoLinks) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed || !trimmed.startsWith('http') || normalized.includes(trimmed)) continue;
+    normalized.push(trimmed);
+    if (normalized.length >= 10) break;
+  }
+
+  return normalized;
+}
+
+function samePhotoLinks(left: unknown, right: unknown): boolean {
+  const a = normalizePhotoLinks(left);
+  const b = normalizePhotoLinks(right);
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+function getListingPhotoLinks(listing: any): string[] {
+  return normalizePhotoLinks((listing.media?.photo_links || []).slice(1, 11));
+}
+
 export class MarketcheckSyncService {
   static async fetchDiff(apiKey: string, carDb: any, targetMakes?: string[], targetModels?: string[], syncOptions?: any) {
     const diff: any[] = [];
@@ -42,7 +68,13 @@ export class MarketcheckSyncService {
           }
 
           const data: any = await res.json();
-          const discoveredModels = new Map<string, Map<string, { msrp: number, mf: number[], rv: number[] }>>();
+          const discoveredModels = new Map<string, Map<string, {
+            msrp: number;
+            mf: number[];
+            rv: number[];
+            photos: string[];
+            modelImageUrl: string | null;
+          }>>();
 
           for (const listing of data.listings || []) {
             const dealer = listing.dealer;
@@ -78,7 +110,8 @@ export class MarketcheckSyncService {
             let rv = (rvValue > 0 && msrp > 0) ? rvValue / msrp : 0;
 
             // Extract photos (skip first photo - often has dealer branding)
-            const photoLinks = (listing.media?.photo_links || []).slice(1, 11);
+            const photoLinks = getListingPhotoLinks(listing);
+            const modelImageUrl = photoLinks[0] || null;
 
             if (msrp > 0) {
               if (!discoveredModels.has(modelName)) {
@@ -86,11 +119,18 @@ export class MarketcheckSyncService {
               }
               const trimMap = discoveredModels.get(modelName)!;
               if (!trimMap.has(trimName)) {
-                trimMap.set(trimName, { msrp, mf: [mf], rv: [rv], photos: [...photoLinks] });
+                trimMap.set(trimName, {
+                  msrp,
+                  mf: [mf],
+                  rv: [rv],
+                  photos: [...photoLinks],
+                  modelImageUrl,
+                });
               } else {
                 const existing = trimMap.get(trimName)!;
                 if (mf > 0) existing.mf.push(mf);
                 if (rv > 0) existing.rv.push(rv);
+                if (!existing.modelImageUrl && modelImageUrl) existing.modelImageUrl = modelImageUrl;
                 // Collect unique photos
                 for (const url of photoLinks) {
                   if (existing.photos.length < 15 && !existing.photos.includes(url)) {
@@ -111,6 +151,7 @@ export class MarketcheckSyncService {
                 trim: trimName,
                 isNew: true,
                 photos: apiData.photos || [],
+                modelImageUrl: apiData.modelImageUrl || apiData.photos?.[0] || null,
                 changes: {
                   msrp: { old: 0, new: apiData.msrp },
                   ...(finalMf > 0 ? { mf: { old: 0, new: finalMf } } : {}),
@@ -149,6 +190,7 @@ export class MarketcheckSyncService {
           const data: any = await res.json();
           
           const trimData = new Map<string, any>();
+          let modelImageUrl: string | null = null;
           
           for (const listing of data.listings || []) {
             // Extract Dealer
@@ -237,7 +279,10 @@ export class MarketcheckSyncService {
             }
 
             // Extract photos from existing model listings too
-            const listingPhotos = (listing.media?.photo_links || []).slice(1, 11);
+            const listingPhotos = getListingPhotoLinks(listing);
+            if (!modelImageUrl && listingPhotos.length > 0) {
+              modelImageUrl = listingPhotos[0];
+            }
 
             if (msrp > 0) {
               if (!trimData.has(trimName)) {
@@ -272,6 +317,8 @@ export class MarketcheckSyncService {
               const finalMf = getMode(apiData.mf);
               const finalRv = getMode(apiData.rv);
               const finalRebates = getMode(apiData.rebates);
+              const currentPhotoLinks = normalizePhotoLinks(dbTrim.photoLinks);
+              const nextPhotoLinks = normalizePhotoLinks(apiData.photos);
 
               if (syncOptions?.msrp !== false && apiData.msrp > 0 && apiData.msrp !== dbTrim.msrp) {
                 changes.msrp = { old: dbTrim.msrp || 0, new: apiData.msrp };
@@ -284,6 +331,12 @@ export class MarketcheckSyncService {
               }
               if (syncOptions?.rebates !== false && finalRebates > 0 && finalRebates !== dbTrim.leaseCash) {
                 changes.leaseCash = { old: dbTrim.leaseCash || 0, new: finalRebates };
+              }
+              if (nextPhotoLinks.length > 0 && !samePhotoLinks(currentPhotoLinks, nextPhotoLinks)) {
+                changes.photoLinks = { old: currentPhotoLinks, new: nextPhotoLinks };
+              }
+              if (modelImageUrl && modelObj.imageUrl !== modelImageUrl) {
+                changes.modelImageUrl = { old: modelObj.imageUrl || null, new: modelImageUrl };
               }
 
               if (Object.keys(changes).length > 0) {
@@ -335,6 +388,7 @@ export class MarketcheckSyncService {
               class: 'Unknown',
               msrpRange: '',
               years: [new Date().getFullYear()],
+              imageUrl: item.modelImageUrl || item.photos?.[0] || null,
               mf: 0.00150,
               rv36: 0.60,
               baseAPR: 4.9,
@@ -343,6 +397,9 @@ export class MarketcheckSyncService {
             };
             makeObj.models = makeObj.models || [];
             makeObj.models.push(modelObj);
+          }
+          if (item.modelImageUrl || item.photos?.[0]) {
+            modelObj.imageUrl = item.modelImageUrl || item.photos?.[0] || null;
           }
           const existingTrim = modelObj.trims?.find((t: any) => t.name === item.trim);
           if (!existingTrim) {
@@ -363,6 +420,9 @@ export class MarketcheckSyncService {
 
         const modelObj = makeObj.models?.find((m: any) => m.name === item.model);
         if (!modelObj) continue;
+        if (item.changes.modelImageUrl?.new) {
+          modelObj.imageUrl = item.changes.modelImageUrl.new;
+        }
         const trimObj = modelObj.trims?.find((t: any) => t.name === item.trim);
         if (!trimObj) continue;
 
@@ -370,6 +430,7 @@ export class MarketcheckSyncService {
         if (item.changes.mf?.new) trimObj.mf = item.changes.mf.new;
         if (item.changes.rv?.new) trimObj.rv36 = item.changes.rv.new;
         if (item.changes.leaseCash?.new) trimObj.leaseCash = item.changes.leaseCash.new;
+        if (item.changes.photoLinks?.new) trimObj.photoLinks = normalizePhotoLinks(item.changes.photoLinks.new);
         appliedCount++;
       }
     }
