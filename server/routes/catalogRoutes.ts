@@ -418,7 +418,7 @@ router.get('/:trimId', async (req, res) => {
       msrpCents: trim.msrpCents,
       bodyStyle: (trim as any).bodyStyle || null,
       imageUrl: primaryImage,
-      photos: trimPhotos.length > 0 ? trimPhotos : (detailPhoto ? [detailPhoto.imageUrl] : []),
+      photos: trimPhotos.length > 0 ? trimPhotos : (detailPhoto ? [detailPhoto.imageUrl] : (primaryImage ? [primaryImage] : [])),
       baseMF: trim.baseMF,
       baseAPR: trim.baseAPR,
       rv36: trim.rv36,

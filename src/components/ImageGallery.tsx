@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Maximize2, Eye, Info, Camera } from 'lucide-react';
+import { Maximize2, Eye, Info, Camera, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
@@ -61,9 +61,9 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
           {thumbOffset > 0 && (
             <button
               onClick={() => setThumbOffset(o => Math.max(0, o - 1))}
-              className="w-full py-1 flex items-center justify-center rounded-lg bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--w)] hover:border-[var(--lime)] transition-colors text-xs font-bold"
+              className="w-full py-2 flex items-center justify-center rounded-xl bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
             >
-              ▲
+              <ChevronUp size={18} />
             </button>
           )}
           <div className="flex flex-col gap-3 w-full">
@@ -92,9 +92,9 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
           {thumbOffset < maxOffset && (
             <button
               onClick={() => setThumbOffset(o => Math.min(maxOffset, o + 1))}
-              className="w-full py-1 flex items-center justify-center rounded-lg bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--w)] hover:border-[var(--lime)] transition-colors text-xs font-bold"
+              className="w-full py-2 flex items-center justify-center rounded-xl bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
             >
-              ▼
+              <ChevronDown size={18} />
             </button>
           )}
         </div>
@@ -142,15 +142,15 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
             <>
               <button
                 onClick={() => setActiveIndex(i => i > 0 ? i - 1 : images.length - 1)}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-md border border-white/10 rounded-full text-white hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all opacity-0 group-hover:opacity-100"
               >
-                ‹
+                <ChevronLeft size={20} />
               </button>
               <button
                 onClick={() => setActiveIndex(i => i < images.length - 1 ? i + 1 : 0)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-md border border-white/10 rounded-full text-white hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all opacity-0 group-hover:opacity-100"
               >
-                ›
+                <ChevronRight size={20} />
               </button>
             </>
           )}
