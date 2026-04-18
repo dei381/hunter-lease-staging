@@ -19,6 +19,15 @@ export interface InventorySyncOptions {
   vehicleStatus: string;
 }
 
+type InventoryFacetField = 'make' | 'model' | 'trim' | 'year';
+
+export type InventoryPartitionFilters = Partial<Record<InventoryFacetField, string>>;
+
+export interface InventoryPartition {
+  filters: InventoryPartitionFilters;
+  estimatedCount: number;
+}
+
 const DEFAULT_INVENTORY_SYNC_OPTIONS: InventorySyncOptions = {
   zip: '90001',
   radius: 50,
@@ -35,6 +44,10 @@ const DEFAULT_INVENTORY_SYNC_OPTIONS: InventorySyncOptions = {
   yearMax: 2030,
   vehicleStatus: 'Available',
 };
+
+const MARKETCHECK_PACKAGE_PAGINATION_LIMIT = 1500;
+const MARKETCHECK_FACET_LIMIT = 1000;
+const INVENTORY_PARTITION_FIELDS: InventoryFacetField[] = ['make', 'model', 'trim', 'year'];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -93,13 +106,30 @@ function matchesInventoryFilters(listing: any, options: InventorySyncOptions): b
   return true;
 }
 
-function buildInventorySearchUrl(apiKey: string, options: InventorySyncOptions, start: number): string {
+function normalizePartitionValue(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const normalized = String(value).trim();
+  return normalized ? normalized : undefined;
+}
+
+function describeInventoryPartition(filters: InventoryPartitionFilters): string {
+  const parts = [filters.make, filters.model, filters.trim, filters.year].filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : 'base search';
+}
+
+function buildInventorySearchUrl(
+  apiKey: string,
+  options: InventorySyncOptions,
+  start: number,
+  filters: InventoryPartitionFilters = {},
+  overrides: { rows?: number; facets?: string } = {},
+): string {
   const url = new URL('https://mc-api.marketcheck.com/v2/search/car/active');
   url.searchParams.set('api_key', apiKey);
   url.searchParams.set('car_type', 'new');
   url.searchParams.set('zip', options.zip);
   url.searchParams.set('radius', String(options.radius));
-  url.searchParams.set('rows', String(options.rows));
+  url.searchParams.set('rows', String(overrides.rows ?? options.rows));
   url.searchParams.set('start', String(start));
   url.searchParams.set('price_range', `${options.priceMin}-${options.priceMax}`);
   url.searchParams.set('miles_range', `${options.milesMin}-${options.milesMax}`);
@@ -107,7 +137,130 @@ function buildInventorySearchUrl(apiKey: string, options: InventorySyncOptions, 
   url.searchParams.set('dom_range', `${options.domMin}-${options.domMax}`);
   url.searchParams.set('dos_active_range', `${options.dosMin}-${options.dosMax}`);
   url.searchParams.set('vehicle_status', options.vehicleStatus);
+
+  if (overrides.facets) {
+    url.searchParams.set('facets', overrides.facets);
+  }
+
+  const make = normalizePartitionValue(filters.make);
+  const model = normalizePartitionValue(filters.model);
+  const trim = normalizePartitionValue(filters.trim);
+  const year = normalizePartitionValue(filters.year);
+
+  if (make) url.searchParams.set('make', make);
+  if (model) url.searchParams.set('model', model);
+  if (trim) url.searchParams.set('trim', trim);
+  if (year) url.searchParams.set('year', year);
+
   return url.toString();
+}
+
+async function fetchInventoryPayload(
+  apiKey: string,
+  options: InventorySyncOptions,
+  start: number,
+  filters: InventoryPartitionFilters = {},
+  overrides: { rows?: number; facets?: string } = {},
+) {
+  const res = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides));
+
+  if (!res.ok) {
+    throw new Error(`Marketcheck API error: ${res.status} ${await res.text()}`);
+  }
+
+  return res.json() as Promise<any>;
+}
+
+async function fetchInventoryCount(
+  apiKey: string,
+  options: InventorySyncOptions,
+  filters: InventoryPartitionFilters = {},
+): Promise<number> {
+  const data = await fetchInventoryPayload(apiKey, options, 0, filters, { rows: 0 });
+  return typeof data.num_found === 'number' ? data.num_found : 0;
+}
+
+async function fetchFacetBuckets(
+  apiKey: string,
+  options: InventorySyncOptions,
+  filters: InventoryPartitionFilters,
+  field: InventoryFacetField,
+): Promise<Array<{ value: string; count: number }>> {
+  const data = await fetchInventoryPayload(apiKey, options, 0, filters, {
+    rows: 0,
+    facets: `${field}|0|${MARKETCHECK_FACET_LIMIT}|1`,
+  });
+  const rawBuckets = Array.isArray(data.facets?.[field]) ? data.facets[field] : [];
+
+  return rawBuckets
+    .map((bucket: any) => ({
+      value: normalizePartitionValue(bucket?.item),
+      count: toNumber(bucket?.count),
+    }))
+    .filter((bucket: { value?: string; count: number }): bucket is { value: string; count: number } => {
+      return Boolean(bucket.value) && bucket.count > 0;
+    });
+}
+
+async function resolveInventoryPartitions(
+  apiKey: string,
+  options: InventorySyncOptions,
+  filters: InventoryPartitionFilters = {},
+  knownCount?: number,
+): Promise<InventoryPartition[]> {
+  const estimatedCount = knownCount ?? await fetchInventoryCount(apiKey, options, filters);
+
+  if (estimatedCount === 0) {
+    return [];
+  }
+
+  if (estimatedCount <= MARKETCHECK_PACKAGE_PAGINATION_LIMIT) {
+    return [{ filters, estimatedCount }];
+  }
+
+  const remainingFields = INVENTORY_PARTITION_FIELDS.filter((field) => !normalizePartitionValue(filters[field]));
+
+  for (const field of remainingFields) {
+    const buckets = await fetchFacetBuckets(apiKey, options, filters, field);
+    const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+
+    if (bucketTotal !== estimatedCount || buckets.length === 0) {
+      continue;
+    }
+
+    const partitions: InventoryPartition[] = [];
+    let failed = false;
+
+    for (const bucket of buckets) {
+      try {
+        partitions.push(...await resolveInventoryPartitions(apiKey, options, {
+          ...filters,
+          [field]: bucket.value,
+        }, bucket.count));
+      } catch {
+        failed = true;
+        break;
+      }
+    }
+
+    if (!failed) {
+      const partitionTotal = partitions.reduce((sum, partition) => sum + partition.estimatedCount, 0);
+      if (partitionTotal === estimatedCount) {
+        return partitions;
+      }
+    }
+  }
+
+  throw new Error(
+    `Unable to partition Marketcheck search under subscribed package pagination limit of ${MARKETCHECK_PACKAGE_PAGINATION_LIMIT} results for ${describeInventoryPartition(filters)}`
+  );
+}
+
+export async function buildInventoryPartitions(
+  apiKey: string,
+  options: InventorySyncOptions,
+): Promise<InventoryPartition[]> {
+  return resolveInventoryPartitions(apiKey, options);
 }
 
 export class MarketcheckInventoryService {
@@ -127,77 +280,96 @@ export class MarketcheckInventoryService {
       ensureFirebaseAdmin();
       const db = admin.firestore();
 
-      let start = 0;
-      let numFound = 0;
+      const partitions = await buildInventoryPartitions(apiKey, options);
+      const totalAvailable = partitions.reduce((sum, partition) => sum + partition.estimatedCount, 0);
       let totalWritten = 0;
       let skipped = 0;
       let pagesFetched = 0;
+      let processedAvailable = 0;
 
       onProgress?.(1);
 
-      while (true) {
-        const res = await fetch(buildInventorySearchUrl(apiKey, options, start));
+      for (const partition of partitions) {
+        let start = 0;
 
-        if (!res.ok) {
-          throw new Error(`Marketcheck API error: ${res.status} ${await res.text()}`);
-        }
+        while (true) {
+          const data = await fetchInventoryPayload(apiKey, options, start, partition.filters);
+          const listings = Array.isArray(data.listings) ? data.listings : [];
+          const partitionCount = typeof data.num_found === 'number' ? data.num_found : partition.estimatedCount;
 
-        const data: any = await res.json();
-        const listings = Array.isArray(data.listings) ? data.listings : [];
-        numFound = typeof data.num_found === 'number' ? data.num_found : numFound;
-
-        if (listings.length === 0) {
-          break;
-        }
-
-        pagesFetched += 1;
-        let currentBatch = db.batch();
-        let batchOps = 0;
-
-        for (const listing of listings) {
-          if (!matchesInventoryFilters(listing, options)) {
-            skipped += 1;
-            continue;
+          if (partitionCount > MARKETCHECK_PACKAGE_PAGINATION_LIMIT) {
+            throw new Error(
+              `Marketcheck partition ${describeInventoryPartition(partition.filters)} still exceeds package pagination limit of ${MARKETCHECK_PACKAGE_PAGINATION_LIMIT}`
+            );
           }
 
-          const processed = await this.processListing(listing, apiKey);
-          const ref = db.collection('mc_inventory').doc(String(listing.id));
-          currentBatch.set(ref, {
-            ...processed,
-            source: 'marketcheck',
-            syncFilters: options,
-            updated_at: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-          batchOps += 1;
-          totalWritten += 1;
+          if (listings.length === 0) {
+            break;
+          }
 
-          if (batchOps === 500) {
+          pagesFetched += 1;
+          let currentBatch = db.batch();
+          let batchOps = 0;
+
+          for (const listing of listings) {
+            if (!matchesInventoryFilters(listing, options)) {
+              skipped += 1;
+              continue;
+            }
+
+            const processed = await this.processListing(listing, apiKey);
+            const ref = db.collection('mc_inventory').doc(String(listing.id));
+            currentBatch.set(ref, {
+              ...processed,
+              source: 'marketcheck',
+              syncFilters: options,
+              syncPartition: partition.filters,
+              updated_at: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            batchOps += 1;
+            totalWritten += 1;
+
+            if (batchOps === 500) {
+              await currentBatch.commit();
+              currentBatch = db.batch();
+              batchOps = 0;
+            }
+          }
+
+          if (batchOps > 0) {
             await currentBatch.commit();
-            currentBatch = db.batch();
-            batchOps = 0;
           }
+
+          start += listings.length;
+          processedAvailable += listings.length;
+
+          if (totalAvailable > 0) {
+            onProgress?.(Math.max(1, Math.min(99, Math.round((processedAvailable / totalAvailable) * 100))));
+          }
+
+          console.log(
+            `Marketcheck inventory sync page ${pagesFetched} (${describeInventoryPartition(partition.filters)}): wrote ${totalWritten}/${totalAvailable || '?'} listings`
+          );
+
+          if (start >= partitionCount) {
+            break;
+          }
+
+          await sleep(100);
         }
-
-        if (batchOps > 0) {
-          await currentBatch.commit();
-      }
-
-        start += listings.length;
-        if (numFound > 0) {
-          onProgress?.(Math.max(1, Math.min(99, Math.round((start / numFound) * 100))));
-        }
-        console.log(`Marketcheck inventory sync page ${pagesFetched}: wrote ${totalWritten}/${numFound || '?'} listings`);
-
-        if (start >= numFound) {
-          break;
-        }
-
-        await sleep(100);
       }
 
       onProgress?.(100);
       console.log('Marketcheck inventory sync completed successfully');
-      return { success: true, count: totalWritten, numFound, pagesFetched, skipped, options };
+      return {
+        success: true,
+        count: totalWritten,
+        numFound: totalAvailable,
+        pagesFetched,
+        skipped,
+        partitionCount: partitions.length,
+        options,
+      };
     } catch (error) {
       console.error('Error in Marketcheck inventory sync:', error);
       throw error;
