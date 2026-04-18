@@ -53,7 +53,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
     <div className="flex flex-col md:flex-row gap-6">
       {/* Thumbnails - Vertical on Desktop */}
       {hasMultipleImages && (
-        <div className="hidden md:flex flex-col gap-3 w-24 shrink-0">
+        <div className="hidden md:flex flex-col gap-3 w-24 shrink-0 max-h-[480px] overflow-y-auto scrollbar-hide">
           {images.map((img, idx) => (
             <button
               key={idx}
@@ -104,6 +104,31 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
           <button className="absolute bottom-4 right-4 p-2 bg-black/40 backdrop-blur-md border border-white/10 rounded-lg text-white hover:text-[var(--lime)] transition-colors">
             <Maximize2 size={18} />
           </button>
+
+          {/* Photo Counter */}
+          {hasMultipleImages && (
+            <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-[10px] font-bold text-white/80 tracking-wider">
+              {activeIndex + 1} / {images.length}
+            </div>
+          )}
+
+          {/* Prev/Next Arrows */}
+          {hasMultipleImages && (
+            <>
+              <button
+                onClick={() => setActiveIndex(i => i > 0 ? i - 1 : images.length - 1)}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+              >
+                ‹
+              </button>
+              <button
+                onClick={() => setActiveIndex(i => i < images.length - 1 ? i + 1 : 0)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+              >
+                ›
+              </button>
+            </>
+          )}
         </div>
 
         {/* Thumbnails - Horizontal on Mobile */}
