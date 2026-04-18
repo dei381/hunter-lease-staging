@@ -116,8 +116,16 @@ export class IncentiveResolver {
       // Check if it's a first-time buyer incentive and the user is a first-time buyer
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
       
+      // When selectedIds are provided, respect user's selection even for default incentives
+      const hasUserSelection = selectedIds && selectedIds.length > 0;
+      
       if (inc.isDefault) {
-        eligibleIncentives.push(baseIncentive);
+        // Default incentives: apply if no explicit selection, or if explicitly selected
+        if (!hasUserSelection || isSelected) {
+          eligibleIncentives.push(baseIncentive);
+        } else {
+          evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: 'Deselected by user' });
+        }
       } else if (isFtbIncentive) {
         if (isFirstTimeBuyer) {
           eligibleIncentives.push(baseIncentive);

@@ -71,6 +71,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [zipCode, setZipCode] = useState('90210');
   const [showIncentives, setShowIncentives] = useState(!isStandalone);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);
+  const [savedIncentives, setSavedIncentives] = useState<string[]>([]);
   const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(initialIsFirstTimeBuyer);
   const [hasCosigner, setHasCosigner] = useState(initialHasCosigner);
   const [isIncentivesModalOpen, setIsIncentivesModalOpen] = useState(false);
@@ -764,7 +765,11 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <div className="space-y-4">
               <div className="flex p-1 bg-[var(--s2)] rounded-xl border border-[var(--b2)]">
                 <button
-                  onClick={() => setShowIncentives(false)}
+                  onClick={() => {
+                    setSavedIncentives(selectedIncentives);
+                    setSelectedIncentives([]);
+                    setShowIncentives(false);
+                  }}
                   className={cn(
                     "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
                     !showIncentives ? "bg-[var(--lime)] text-white" : "text-[var(--mu2)] hover:text-[var(--w)]"
@@ -773,7 +778,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   {t.withoutIncentives}
                 </button>
                 <button
-                  onClick={() => setShowIncentives(true)}
+                  onClick={() => {
+                    setSelectedIncentives(savedIncentives.length > 0 ? savedIncentives : effectiveIncentives.filter((inc: any) => inc.isDefault).map((inc: any) => inc.id));
+                    setShowIncentives(true);
+                  }}
                   className={cn(
                     "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
                     showIncentives ? "bg-[var(--lime)] text-white" : "text-[var(--mu2)] hover:text-[var(--w)]"
