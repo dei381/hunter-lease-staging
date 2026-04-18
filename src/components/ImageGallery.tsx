@@ -49,29 +49,54 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
     );
   }
 
+  const VISIBLE_THUMBS = 5;
+  const [thumbOffset, setThumbOffset] = useState(0);
+  const maxOffset = Math.max(0, images.length - VISIBLE_THUMBS);
+
   return (
     <div className="flex flex-col md:flex-row gap-6">
-      {/* Thumbnails - Vertical on Desktop */}
+      {/* Thumbnails - Vertical on Desktop with up/down pagination */}
       {hasMultipleImages && (
-        <div className="hidden md:flex flex-col gap-3 w-24 shrink-0 max-h-[480px] overflow-y-auto scrollbar-hide">
-          {images.map((img, idx) => (
+        <div className="hidden md:flex flex-col items-center gap-2 w-24 shrink-0">
+          {thumbOffset > 0 && (
             <button
-              key={idx}
-              onClick={() => setActiveIndex(idx)}
-              className={cn(
-                "aspect-square rounded-xl overflow-hidden border-2 transition-all relative group",
-                activeIndex === idx 
-                  ? "border-[var(--lime)] shadow-[0_0_15px_rgba(163,230,53,0.3)]" 
-                  : "border-white/5 opacity-40 hover:opacity-100 hover:border-white/20"
-              )}
+              onClick={() => setThumbOffset(o => Math.max(0, o - 1))}
+              className="w-full py-1 flex items-center justify-center rounded-lg bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--w)] hover:border-[var(--lime)] transition-colors text-xs font-bold"
             >
-              <img src={img} alt={`Thumbnail ${idx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              <div className={cn(
-                "absolute inset-0 bg-[var(--lime)]/10 transition-opacity",
-                activeIndex === idx ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              )} />
+              ▲
             </button>
-          ))}
+          )}
+          <div className="flex flex-col gap-3 w-full">
+            {images.slice(thumbOffset, thumbOffset + VISIBLE_THUMBS).map((img, idx) => {
+              const realIdx = thumbOffset + idx;
+              return (
+                <button
+                  key={realIdx}
+                  onClick={() => setActiveIndex(realIdx)}
+                  className={cn(
+                    "aspect-square rounded-xl overflow-hidden border-2 transition-all relative group",
+                    activeIndex === realIdx 
+                      ? "border-[var(--lime)] shadow-[0_0_15px_rgba(163,230,53,0.3)]" 
+                      : "border-white/5 opacity-40 hover:opacity-100 hover:border-white/20"
+                  )}
+                >
+                  <img src={img} alt={`Thumbnail ${realIdx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <div className={cn(
+                    "absolute inset-0 bg-[var(--lime)]/10 transition-opacity",
+                    activeIndex === realIdx ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  )} />
+                </button>
+              );
+            })}
+          </div>
+          {thumbOffset < maxOffset && (
+            <button
+              onClick={() => setThumbOffset(o => Math.min(maxOffset, o + 1))}
+              className="w-full py-1 flex items-center justify-center rounded-lg bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--w)] hover:border-[var(--lime)] transition-colors text-xs font-bold"
+            >
+              ▼
+            </button>
+          )}
         </div>
       )}
 
