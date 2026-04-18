@@ -27,23 +27,23 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
   if (!hasRealImages) {
     return (
       <div className="flex flex-col gap-6">
-        <div className="relative aspect-[16/10] bg-gradient-to-br from-white/[0.03] to-white/[0.08] rounded-xl overflow-hidden border border-white/10 flex flex-col items-center justify-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
-            <Camera size={32} className="text-white/20" />
+        <div className="relative aspect-[16/10] bg-gradient-to-br from-[var(--s2)] to-[var(--b1)] rounded-xl overflow-hidden border border-[var(--b2)] flex flex-col items-center justify-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-[var(--b1)] border border-[var(--b2)] flex items-center justify-center">
+            <Camera size={32} className="text-[var(--mu2)] opacity-40" />
           </div>
           {vehicleName && (
-            <p className="text-lg font-bold text-white/40 tracking-wider uppercase">{vehicleName}</p>
+            <p className="text-lg font-bold text-[var(--mu2)] opacity-60 tracking-wider uppercase">{vehicleName}</p>
           )}
-          <p className="text-xs text-white/20 uppercase tracking-widest">
+          <p className="text-xs text-[var(--mu2)] opacity-40 uppercase tracking-widest">
             {language === 'ru' ? 'Фото будут доступны в ближайшее время' : 'Photos coming soon'}
           </p>
         </div>
         <div className="flex justify-between items-center px-1">
-          <p className="text-[10px] text-white/20 uppercase font-bold tracking-widest flex items-center gap-2">
+          <p className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest flex items-center gap-2">
             <Info size={10} />
             {t.gallery.referenceOnly}
           </p>
-          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">REF: {dealId || '286877'}</p>
+          <p className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">REF: {dealId || '286877'}</p>
         </div>
       </div>
     );

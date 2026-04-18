@@ -440,9 +440,9 @@ export const CatalogPage = () => {
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.03] to-white/[0.08]">
-                            <Camera size={24} className="text-white/15" />
-                            <span className="text-white/20 text-[9px] uppercase font-bold tracking-widest">Photos soon</span>
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[var(--s2)] to-[var(--b1)]">
+                            <Camera size={24} className="text-[var(--mu2)] opacity-40" />
+                            <span className="text-[var(--mu2)] text-[9px] uppercase font-bold tracking-widest opacity-60">Photos soon</span>
                           </div>
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
