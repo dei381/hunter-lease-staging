@@ -56,31 +56,57 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
   return (
     <div className="flex flex-col md:flex-row gap-6">
       {/* Thumbnails - Vertical on Desktop with up/down pagination */}
-      {hasMultipleImages && (
-        <div className="hidden md:flex flex-col items-center gap-2 w-24 shrink-0">
-          {thumbOffset > 0 && (
-            <button
-              onClick={() => setThumbOffset(o => Math.max(0, o - 1))}
-              className="w-full py-2 flex items-center justify-center rounded-xl bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
-            >
-              <ChevronUp size={18} />
-            </button>
-          )}
-          <div className="flex flex-col gap-3 w-full">
-            {images.slice(thumbOffset, thumbOffset + VISIBLE_THUMBS).map((img, idx) => {
-              const realIdx = thumbOffset + idx;
+      {hasMultipleImages && (() => {
+        const canScrollUp = thumbOffset > 0;
+        const canScrollDown = thumbOffset < maxOffset;
+        const items: ({ type: 'up' } | { type: 'down' } | { type: 'thumb'; index: number })[] = [];
+        for (let i = 0; i < VISIBLE_THUMBS && thumbOffset + i < images.length; i++) {
+          if (i === 0 && canScrollUp) {
+            items.push({ type: 'up' });
+          } else if (i === VISIBLE_THUMBS - 1 && canScrollDown) {
+            items.push({ type: 'down' });
+          } else {
+            items.push({ type: 'thumb', index: thumbOffset + i });
+          }
+        }
+        return (
+          <div className="hidden md:flex flex-col gap-3 w-24 shrink-0">
+            {items.map((item) => {
+              if (item.type === 'up') {
+                return (
+                  <button
+                    key="nav-up"
+                    onClick={() => setThumbOffset(o => Math.max(0, o - 1))}
+                    className="aspect-square rounded-xl border-2 border-[var(--b2)] bg-[var(--s2)] flex items-center justify-center text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
+                  >
+                    <ChevronUp size={22} />
+                  </button>
+                );
+              }
+              if (item.type === 'down') {
+                return (
+                  <button
+                    key="nav-down"
+                    onClick={() => setThumbOffset(o => Math.min(maxOffset, o + 1))}
+                    className="aspect-square rounded-xl border-2 border-[var(--b2)] bg-[var(--s2)] flex items-center justify-center text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
+                  >
+                    <ChevronDown size={22} />
+                  </button>
+                );
+              }
+              const realIdx = item.index;
               return (
                 <button
                   key={realIdx}
                   onClick={() => setActiveIndex(realIdx)}
                   className={cn(
                     "aspect-square rounded-xl overflow-hidden border-2 transition-all relative group",
-                    activeIndex === realIdx 
-                      ? "border-[var(--lime)] shadow-[0_0_15px_rgba(163,230,53,0.3)]" 
+                    activeIndex === realIdx
+                      ? "border-[var(--lime)] shadow-[0_0_15px_rgba(163,230,53,0.3)]"
                       : "border-white/5 opacity-40 hover:opacity-100 hover:border-white/20"
                   )}
                 >
-                  <img src={img} alt={`Thumbnail ${realIdx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={images[realIdx]} alt={`Thumbnail ${realIdx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   <div className={cn(
                     "absolute inset-0 bg-[var(--lime)]/10 transition-opacity",
                     activeIndex === realIdx ? "opacity-100" : "opacity-0 group-hover:opacity-100"
@@ -89,16 +115,8 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
               );
             })}
           </div>
-          {thumbOffset < maxOffset && (
-            <button
-              onClick={() => setThumbOffset(o => Math.min(maxOffset, o + 1))}
-              className="w-full py-2 flex items-center justify-center rounded-xl bg-[var(--s2)] border border-[var(--b2)] text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
-            >
-              <ChevronDown size={18} />
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       <div className="flex-1 flex flex-col gap-6">
         {/* Main Image Container */}

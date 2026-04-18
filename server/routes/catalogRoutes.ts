@@ -440,7 +440,7 @@ router.get('/:trimId', async (req, res) => {
 function applyFilters(entries: CatalogEntry[], filters: {
   make?: string; minPrice?: string; maxPrice?: string; bodyStyle?: string; sort?: string; limit?: string;
 }): CatalogEntry[] {
-  let result = entries.filter(e => e.status === 'ready' && e.imageUrl);
+  let result = entries.filter(e => e.status === 'ready' && e.imageUrl && e.imageUrl.startsWith('http'));
 
   if (filters.make && filters.make !== 'All') {
     result = result.filter(e => e.make === filters.make);
