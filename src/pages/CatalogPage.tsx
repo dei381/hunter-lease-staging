@@ -23,6 +23,7 @@ export const CatalogPage = () => {
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [brokenImageIds, setBrokenImageIds] = useState<string[]>([]);
 
   // Deal assumptions (sidebar section A)
   const [displayMode, setDisplayMode] = useState<'lease' | 'finance'>(
@@ -67,6 +68,7 @@ export const CatalogPage = () => {
       })
       .then(data => {
         setItems(data);
+        setBrokenImageIds([]);
         setIsLoading(false);
       })
       .catch(err => {
@@ -104,13 +106,17 @@ export const CatalogPage = () => {
       result = result.filter(i => i.bodyStyle === selectedBodyStyle);
     }
 
+    if (brokenImageIds.length > 0) {
+      result = result.filter(i => !brokenImageIds.includes(i.id));
+    }
+
     result = result.filter(i => {
       const pay = displayMode === 'lease' ? i.leasePayment : i.financePayment;
       return pay !== null && pay <= maxPayment;
     });
 
     return result;
-  }, [items, searchQuery, selectedBodyStyle, displayMode, maxPayment]);
+  }, [items, searchQuery, selectedBodyStyle, brokenImageIds, displayMode, maxPayment]);
 
   const handleCardClick = (item: any) => {
     navigate(`/catalog/${item.id}`);
@@ -438,6 +444,8 @@ export const CatalogPage = () => {
                             alt={`${item.year} ${item.make} ${item.model} ${item.trim}`}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                             loading="lazy"
+                            referrerPolicy="no-referrer"
+                            onError={() => setBrokenImageIds(ids => ids.includes(item.id) ? ids : [...ids, item.id])}
                           />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[var(--s2)] to-[var(--b1)]">
