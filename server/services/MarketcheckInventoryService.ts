@@ -222,9 +222,14 @@ async function resolveInventoryPartitions(
 
   for (const field of remainingFields) {
     const buckets = await fetchFacetBuckets(apiKey, options, filters, field);
-    const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+    if (buckets.length === 0) {
+      continue;
+    }
 
-    if (bucketTotal !== estimatedCount || buckets.length === 0) {
+    // Allow small discrepancy between facet totals and estimated count
+    // Marketcheck facet counts may not perfectly match num_found
+    const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+    if (Math.abs(bucketTotal - estimatedCount) > estimatedCount * 0.1 && bucketTotal < estimatedCount * 0.8) {
       continue;
     }
 
@@ -244,10 +249,8 @@ async function resolveInventoryPartitions(
     }
 
     if (!failed) {
-      const partitionTotal = partitions.reduce((sum, partition) => sum + partition.estimatedCount, 0);
-      if (partitionTotal === estimatedCount) {
-        return partitions;
-      }
+      // Accept partitions even if total doesn't exactly match (facet approximation)
+      return partitions;
     }
   }
 
