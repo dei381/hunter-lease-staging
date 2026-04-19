@@ -368,8 +368,9 @@ export class MarketcheckInventoryService {
             batchOps += 1;
             totalWritten += 1;
 
-            if (batchOps === 500) {
+            if (batchOps === 100) {
               await currentBatch.commit();
+              await sleep(2000); // avoid Firestore RESOURCE_EXHAUSTED quota
               currentBatch = db.batch();
               batchOps = 0;
             }
@@ -377,6 +378,7 @@ export class MarketcheckInventoryService {
 
           if (batchOps > 0) {
             await currentBatch.commit();
+            await sleep(2000);
           }
 
           start += listings.length;
@@ -394,7 +396,7 @@ export class MarketcheckInventoryService {
             break;
           }
 
-          await sleep(100);
+          await sleep(1200); // extra delay between pages
         }
       }
 
