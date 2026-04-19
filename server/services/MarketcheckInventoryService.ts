@@ -155,6 +155,9 @@ function buildInventorySearchUrl(
   return url.toString();
 }
 
+let lastApiCallTime = 0;
+const API_CALL_MIN_INTERVAL_MS = 1200; // ~50 calls/min to stay under rate limit
+
 async function fetchInventoryPayload(
   apiKey: string,
   options: InventorySyncOptions,
@@ -162,9 +165,28 @@ async function fetchInventoryPayload(
   filters: InventoryPartitionFilters = {},
   overrides: { rows?: number; facets?: string } = {},
 ) {
+  // Rate limiting: ensure minimum interval between API calls
+  const now = Date.now();
+  const elapsed = now - lastApiCallTime;
+  if (elapsed < API_CALL_MIN_INTERVAL_MS) {
+    await sleep(API_CALL_MIN_INTERVAL_MS - elapsed);
+  }
+  lastApiCallTime = Date.now();
+
   const res = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides));
 
   if (!res.ok) {
+    if (res.status === 429) {
+      // Rate limited — wait and retry once
+      console.warn('Marketcheck 429 rate limit hit, waiting 60s before retry...');
+      await sleep(60000);
+      lastApiCallTime = Date.now();
+      const retryRes = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides));
+      if (!retryRes.ok) {
+        throw new Error(`Marketcheck API error: ${retryRes.status} ${await retryRes.text()}`);
+      }
+      return retryRes.json() as Promise<any>;
+    }
     throw new Error(`Marketcheck API error: ${res.status} ${await res.text()}`);
   }
 
