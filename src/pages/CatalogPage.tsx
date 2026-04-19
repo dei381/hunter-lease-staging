@@ -107,7 +107,8 @@ export const CatalogPage = () => {
     }
 
     if (brokenImageIds.length > 0) {
-      result = result.filter(i => !brokenImageIds.includes(i.id));
+      // Don't filter out broken images — show placeholder instead
+      // result = result.filter(i => !brokenImageIds.includes(i.id));
     }
 
     result = result.filter(i => {
@@ -438,7 +439,7 @@ export const CatalogPage = () => {
                     >
                       {/* Image Section */}
                       <div className="relative w-full aspect-[16/10] bg-[var(--s2)] overflow-hidden shrink-0">
-                        {item.imageUrl ? (
+                        {item.imageUrl && !brokenImageIds.includes(item.id) ? (
                           <img
                             src={item.imageUrl}
                             alt={`${item.year} ${item.make} ${item.model} ${item.trim}`}
