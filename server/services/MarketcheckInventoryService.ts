@@ -173,7 +173,14 @@ async function fetchInventoryPayload(
   }
   lastApiCallTime = Date.now();
 
-  const res = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let res: Response;
+  try {
+    res = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides), { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     if (res.status === 429) {
@@ -181,7 +188,14 @@ async function fetchInventoryPayload(
       console.warn('Marketcheck 429 rate limit hit, waiting 60s before retry...');
       await sleep(60000);
       lastApiCallTime = Date.now();
-      const retryRes = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides));
+      const retryController = new AbortController();
+      const retryTimeout = setTimeout(() => retryController.abort(), 30000);
+      let retryRes: Response;
+      try {
+        retryRes = await fetch(buildInventorySearchUrl(apiKey, options, start, filters, overrides), { signal: retryController.signal });
+      } finally {
+        clearTimeout(retryTimeout);
+      }
       if (!retryRes.ok) {
         throw new Error(`Marketcheck API error: ${retryRes.status} ${await retryRes.text()}`);
       }
@@ -409,9 +423,17 @@ export class MarketcheckInventoryService {
       try {
         // Small delay to avoid aggressive rate limiting
         await new Promise(resolve => setTimeout(resolve, 100));
-        const detailRes = await fetch(
-          `https://mc-api.marketcheck.com/v2/listing/car/${listing.id}?api_key=${apiKey}`
-        );
+        const detailController = new AbortController();
+        const detailTimeout = setTimeout(() => detailController.abort(), 15000);
+        let detailRes: Response;
+        try {
+          detailRes = await fetch(
+            `https://mc-api.marketcheck.com/v2/listing/car/${listing.id}?api_key=${apiKey}`,
+            { signal: detailController.signal }
+          );
+        } finally {
+          clearTimeout(detailTimeout);
+        }
         if (detailRes.ok) {
           const data: any = await detailRes.json();
           msrp = data.msrp;
