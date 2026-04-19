@@ -292,6 +292,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [deal?.availableIncentives, quoteData?.availableIncentives, currentCar?.availableIncentives]);
 
   useEffect(() => {
+    // Don't reset incentives when user explicitly toggled them off
+    if (!showIncentives) return;
+    
     if (effectiveIncentives.length > 0) {
       const defaultIds = effectiveIncentives
         .filter((inc: any) => {
@@ -309,7 +312,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
     } else {
       setSelectedIncentives(prev => prev.length === 0 ? prev : []);
     }
-  }, [currentCar?.id, currentCar?.trim, isCustomCar, effectiveIncentives]);
+  }, [currentCar?.id, currentCar?.trim, isCustomCar, effectiveIncentives, showIncentives]);
 
   const toggleIncentive = (id: string) => {
     const incentive = effectiveIncentives.find((inc: any) => inc.id === id);
