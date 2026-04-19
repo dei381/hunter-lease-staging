@@ -34,7 +34,7 @@ export const VehicleDetailPage = () => {
   const t = translations[language];
   const td = t.dealPage;
 
-  const state = location.state as { isFirstTimeBuyer?: boolean; hasCosigner?: boolean } | null;
+  const state = location.state as { isFirstTimeBuyer?: boolean; hasCosigner?: boolean; displayMode?: 'lease' | 'finance' } | null;
   const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(state?.isFirstTimeBuyer || false);
   const [hasCosigner, setHasCosigner] = useState(state?.hasCosigner || false);
 
@@ -103,8 +103,8 @@ export const VehicleDetailPage = () => {
     return () => clearInterval(timer);
   }, [vehicle]);
 
-  // Build deal object for Calculator auto-fill
-  const dealForCalc = vehicle ? {
+  // Build deal object for Calculator auto-fill (memoized to prevent infinite re-render loop via onChange)
+  const dealForCalc = useMemo(() => vehicle ? {
     id: vehicle.id,
     make: vehicle.make,
     model: vehicle.model,
@@ -115,7 +115,7 @@ export const VehicleDetailPage = () => {
     baseAPR: vehicle.baseAPR || 0,
     rv36: vehicle.rv36 || 0,
     image: vehicle.imageUrl,
-    type: 'lease',
+    type: state?.displayMode || 'lease',
     availableIncentives: (vehicle.incentives || []).map((inc: any) => ({
       id: inc.id,
       name: inc.name,
@@ -124,7 +124,7 @@ export const VehicleDetailPage = () => {
       dbType: inc.type,
       isDefault: inc.type === 'manufacturer' || inc.type === 'OEM_CASH'
     })),
-  } : null;
+  } : null, [vehicle, state?.displayMode]);
 
   // Derived data from vehicle database (model-specific)
   const categorizedFeaturesData = vehicle ? lookupFeatures(vehicle.make, vehicle.model) : null;

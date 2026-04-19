@@ -119,7 +119,7 @@ export const CatalogPage = () => {
   }, [items, searchQuery, selectedBodyStyle, brokenImageIds, displayMode, maxPayment]);
 
   const handleCardClick = (item: any) => {
-    navigate(`/catalog/${item.id}`);
+    navigate(`/catalog/${item.id}`, { state: { displayMode } });
   };
 
   return (
@@ -551,7 +551,7 @@ export const CatalogPage = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/catalog/${item.id}`);
+                              navigate(`/catalog/${item.id}`, { state: { displayMode } });
                             }}
                             className="w-full py-3 bg-[var(--lime)] text-black rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors flex items-center justify-center gap-2 shadow-lg shadow-[var(--lime)]/10"
                           >

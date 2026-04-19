@@ -695,7 +695,7 @@ export const DealsPage = () => {
                 <div className="flex items-center gap-4">
                   <h2 className="text-xl font-display tracking-tight">
                     <span className="text-[var(--w)]">
-                      {mcTotalCount > 0 ? mcTotalCount.toLocaleString() : (filteredDeals.length >= 55 ? '55+' : filteredDeals.length)}
+                      {filteredDeals.length >= 55 ? '55+' : filteredDeals.length}
                     </span> <span className="text-[var(--mu2)]">{t.verifiedDeals}</span>
                   </h2>
                   <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
