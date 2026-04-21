@@ -49,6 +49,10 @@ interface CatalogEntry {
   lenderName: string | null;
 }
 
+function getReadyCatalogEntries(entries: CatalogEntry[]): CatalogEntry[] {
+  return entries.filter(entry => entry.status === 'ready' && entry.imageUrl && entry.imageUrl.startsWith('http'));
+}
+
 /**
  * GET /api/v2/catalog
  * Returns calculated catalog entries for all vehicles with valid data.
@@ -58,7 +62,7 @@ router.get('/', async (req, res) => {
   try {
     const {
       make, minPrice, maxPrice, bodyStyle, sort, term: qTerm,
-      down: qDown, mileage: qMileage, tier: qTier, limit: qLimit
+      down: qDown, mileage: qMileage, tier: qTier, limit: qLimit, mode: qMode
     } = req.query;
 
     const requestedTerm = parseInt(qTerm as string) || 36;
@@ -70,8 +74,21 @@ router.get('/', async (req, res) => {
     const cacheKey = `catalog_${make || 'all'}_${requestedTerm}_${requestedDown}_${requestedMileage}_${qTier || 't1'}`;
     const cached = catalogCache.get<CatalogEntry[]>(cacheKey);
     if (cached) {
-      const filtered = applyFilters(cached, { make: make as string, minPrice: minPrice as string, maxPrice: maxPrice as string, bodyStyle: bodyStyle as string, sort: sort as string, limit: qLimit as string });
-      return res.json(filtered);
+      const readyEntries = getReadyCatalogEntries(cached);
+      const filtered = applyFilters(cached, {
+        make: make as string,
+        minPrice: minPrice as string,
+        maxPrice: maxPrice as string,
+        bodyStyle: bodyStyle as string,
+        sort: sort as string,
+        limit: qLimit as string,
+        mode: qMode as string,
+      });
+      return res.json({
+        entries: filtered,
+        totalCount: readyEntries.length,
+        availableMakes: Array.from(new Set(readyEntries.map(entry => entry.make))).sort(),
+      });
     }
 
     // 1. Fetch all active trims with their model and make (filtered to target brands + min MSRP)
@@ -320,8 +337,21 @@ router.get('/', async (req, res) => {
     catalogCache.set(cacheKey, entries);
 
     // Apply filters and return
-    const filtered = applyFilters(entries, { make: make as string, minPrice: minPrice as string, maxPrice: maxPrice as string, bodyStyle: bodyStyle as string, sort: sort as string, limit: qLimit as string });
-    res.json(filtered);
+    const readyEntries = getReadyCatalogEntries(entries);
+    const filtered = applyFilters(entries, {
+      make: make as string,
+      minPrice: minPrice as string,
+      maxPrice: maxPrice as string,
+      bodyStyle: bodyStyle as string,
+      sort: sort as string,
+      limit: qLimit as string,
+      mode: qMode as string,
+    });
+    res.json({
+      entries: filtered,
+      totalCount: readyEntries.length,
+      availableMakes: Array.from(new Set(readyEntries.map(entry => entry.make))).sort(),
+    });
   } catch (error: any) {
     console.error('Catalog error:', error);
     res.status(500).json({ error: error?.message || 'Failed to build catalog' });
@@ -442,20 +472,23 @@ router.get('/:trimId', async (req, res) => {
 });
 
 function applyFilters(entries: CatalogEntry[], filters: {
-  make?: string; minPrice?: string; maxPrice?: string; bodyStyle?: string; sort?: string; limit?: string;
+  make?: string; minPrice?: string; maxPrice?: string; bodyStyle?: string; sort?: string; limit?: string; mode?: string;
 }): CatalogEntry[] {
-  let result = entries.filter(e => e.status === 'ready' && e.imageUrl && e.imageUrl.startsWith('http'));
+  let result = getReadyCatalogEntries(entries);
+  const paymentForMode = (entry: CatalogEntry) => filters.mode === 'finance'
+    ? (entry.financePayment || 9999)
+    : (entry.leasePayment || 9999);
 
   if (filters.make && filters.make !== 'All') {
     result = result.filter(e => e.make === filters.make);
   }
   if (filters.minPrice) {
     const min = parseFloat(filters.minPrice);
-    result = result.filter(e => (e.leasePayment || 0) >= min);
+    result = result.filter(e => paymentForMode(e) >= min);
   }
   if (filters.maxPrice) {
     const max = parseFloat(filters.maxPrice);
-    result = result.filter(e => (e.leasePayment || 0) <= max);
+    result = result.filter(e => paymentForMode(e) <= max);
   }
   if (filters.bodyStyle && filters.bodyStyle !== 'All') {
     result = result.filter(e => e.bodyStyle === filters.bodyStyle);
@@ -464,7 +497,7 @@ function applyFilters(entries: CatalogEntry[], filters: {
   // Sort
   switch (filters.sort) {
     case 'payment':
-      result.sort((a, b) => (a.leasePayment || 9999) - (b.leasePayment || 9999));
+      result.sort((a, b) => paymentForMode(a) - paymentForMode(b));
       break;
     case 'msrp':
       result.sort((a, b) => a.msrp - b.msrp);
@@ -473,7 +506,7 @@ function applyFilters(entries: CatalogEntry[], filters: {
       result.sort((a, b) => b.savings - a.savings);
       break;
     default:
-      result.sort((a, b) => (a.leasePayment || 9999) - (b.leasePayment || 9999));
+      result.sort((a, b) => paymentForMode(a) - paymentForMode(b));
   }
 
   if (filters.limit) {

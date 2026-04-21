@@ -79,6 +79,74 @@ export class StripeService {
     return { sessionId: session.id, sessionUrl: session.url, paymentId: payment.id };
   }
 
+  static async createPaymentIntent(params: {
+    leadId: string;
+    userId?: string;
+    quoteId?: string;
+    amountCents?: number;
+    currency?: string;
+  }) {
+    const stripe = await this.getStripe();
+    const amountCents = params.amountCents || 9500;
+    const currency = params.currency || 'usd';
+
+    const existingPayment = await prisma.payment.findFirst({
+      where: {
+        leadId: params.leadId,
+        status: { in: ['pending', 'failed'] },
+        stripePaymentIntentId: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingPayment?.stripePaymentIntentId) {
+      try {
+        const existingIntent = await stripe.paymentIntents.retrieve(existingPayment.stripePaymentIntentId);
+        if (existingIntent?.client_secret && !['canceled', 'succeeded'].includes(existingIntent.status)) {
+          return {
+            clientSecret: existingIntent.client_secret,
+            paymentId: existingPayment.id,
+            paymentIntentId: existingIntent.id,
+          };
+        }
+      } catch (error) {
+        // Fall through and create a new intent when the existing one cannot be reused.
+      }
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency,
+      metadata: {
+        leadId: params.leadId,
+        userId: params.userId || '',
+        quoteId: params.quoteId || '',
+      },
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        leadId: params.leadId,
+        userId: params.userId || null,
+        quoteId: params.quoteId || null,
+        stripePaymentIntentId: paymentIntent.id,
+        amountCents,
+        currency,
+        status: 'pending',
+        metadata: JSON.stringify(paymentIntent.metadata || {}),
+      },
+    });
+
+    return {
+      clientSecret: paymentIntent.client_secret,
+      paymentId: payment.id,
+      paymentIntentId: paymentIntent.id,
+    };
+  }
+
   /**
    * Handle Stripe webhook events.
    */
@@ -98,6 +166,16 @@ export class StripeService {
       case 'checkout.session.expired': {
         const session = event.data.object;
         await this.onCheckoutExpired(session);
+        break;
+      }
+      case 'payment_intent.succeeded': {
+        const paymentIntent = event.data.object;
+        await this.onPaymentIntentSucceeded(paymentIntent);
+        break;
+      }
+      case 'payment_intent.payment_failed': {
+        const paymentIntent = event.data.object;
+        await this.onPaymentIntentFailed(paymentIntent);
         break;
       }
     }
@@ -139,6 +217,60 @@ export class StripeService {
     await prisma.payment.updateMany({
       where: { stripeSessionId: session.id, status: 'pending' },
       data: { status: 'expired' },
+    });
+  }
+
+  private static async onPaymentIntentSucceeded(paymentIntent: any) {
+    const amountCents = paymentIntent.amount_received || paymentIntent.amount || 9500;
+    const existingPayment = await prisma.payment.findFirst({
+      where: { stripePaymentIntentId: paymentIntent.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingPayment && !['pending', 'failed', 'completed'].includes(existingPayment.status)) {
+      return;
+    }
+
+    const payment = existingPayment
+      ? existingPayment.status === 'completed'
+        ? existingPayment
+        : await prisma.payment.update({
+          where: { id: existingPayment.id },
+          data: {
+            status: 'completed',
+            metadata: JSON.stringify(paymentIntent.metadata || {}),
+          },
+        })
+      : await prisma.payment.create({
+          data: {
+            leadId: paymentIntent.metadata?.leadId || null,
+            userId: paymentIntent.metadata?.userId || null,
+            quoteId: paymentIntent.metadata?.quoteId || null,
+            stripePaymentIntentId: paymentIntent.id,
+            amountCents,
+            currency: paymentIntent.currency || 'usd',
+            status: 'completed',
+            metadata: JSON.stringify(paymentIntent.metadata || {}),
+          },
+        });
+
+    const leadId = payment.leadId || paymentIntent.metadata?.leadId;
+    if (leadId) {
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          depositStatus: 'paid',
+          depositAmount: amountCents,
+          depositId: payment.id,
+        },
+      });
+    }
+  }
+
+  private static async onPaymentIntentFailed(paymentIntent: any) {
+    await prisma.payment.updateMany({
+      where: { stripePaymentIntentId: paymentIntent.id, status: 'pending' },
+      data: { status: 'failed' },
     });
   }
 

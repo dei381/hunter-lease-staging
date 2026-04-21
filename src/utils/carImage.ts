@@ -16,7 +16,7 @@ export const getCarImage = (
   year?: number,
   colorId?: string
 ): string => {
-  if (!photos || photos.length === 0) return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800';
+  if (!photos || photos.length === 0) return 'https://cdn.pixabay.com/photo/2012/05/29/00/43/car-49278_1280.jpg';
 
   const normalizedMakeId = (typeof makeId === 'string' ? makeId : makeId?.name || '').toLowerCase().replace(/\s+/g, '-');
   const normalizedModelId = (typeof modelId === 'string' ? modelId : modelId?.name || '').toLowerCase().replace(/\s+/g, '-');
@@ -67,5 +67,5 @@ export const getCarImage = (
   if (anyForModel) return anyForModel.imageUrl;
 
   // 6. Fallback to placeholder
-  return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800';
+  return 'https://cdn.pixabay.com/photo/2012/05/29/00/43/car-49278_1280.jpg';
 };

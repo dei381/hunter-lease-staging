@@ -9,6 +9,7 @@ import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
 import { useDebounce } from '../hooks/useDebounce';
 import { cn } from '../utils/cn';
+import { filterCatalogItems, getCatalogModelOptions } from '../utils/catalogFilters';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
@@ -21,6 +22,8 @@ export const CatalogPage = () => {
 
   // Data
   const [items, setItems] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [availableMakes, setAvailableMakes] = useState<string[]>(['All']);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [brokenImageIds, setBrokenImageIds] = useState<string[]>([]);
@@ -37,12 +40,22 @@ export const CatalogPage = () => {
   // Filters (sidebar section B)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [selectedMake, setSelectedMake] = useState(searchParams.get('make') || 'All');
+  const [selectedModel, setSelectedModel] = useState(searchParams.get('model') || 'All');
   const [selectedBodyStyle, setSelectedBodyStyle] = useState('All');
   const [maxPayment, setMaxPayment] = useState(parseInt(searchParams.get('maxPay') || '3000'));
   const [sortBy, setSortBy] = useState(searchParams.get('sort') || 'payment');
   const [showFilters, setShowFilters] = useState(false);
 
   const debouncedDown = useDebounce(downPayment, 500);
+
+  useEffect(() => {
+    const allowedTerms = displayMode === 'lease' ? [24, 36, 48] : [48, 60, 72];
+    const fallbackTerm = displayMode === 'lease' ? 36 : 60;
+
+    if (!allowedTerms.includes(selectedTerm)) {
+      setSelectedTerm(fallbackTerm);
+    }
+  }, [displayMode, selectedTerm]);
 
   // Fetch catalog
   useEffect(() => {
@@ -55,6 +68,7 @@ export const CatalogPage = () => {
       down: debouncedDown.toString(),
       mileage: mileageNum.toString(),
       tier,
+      mode: displayMode,
       sort: sortBy
     });
 
@@ -67,57 +81,44 @@ export const CatalogPage = () => {
         return res.json();
       })
       .then(data => {
-        setItems(data);
+        const nextItems = Array.isArray(data) ? data : data.entries || [];
+        const nextTotalCount = Array.isArray(data) ? nextItems.length : data.totalCount || nextItems.length;
+        const nextMakes = Array.isArray(data)
+          ? ['All', ...Array.from(new Set(nextItems.map((item: any) => item.make))).sort()]
+          : ['All', ...(data.availableMakes || [])];
+
+        setItems(nextItems);
+        setTotalCount(nextTotalCount);
+        setAvailableMakes(nextMakes);
         setBrokenImageIds([]);
         setIsLoading(false);
       })
       .catch(err => {
         console.error('Failed to fetch catalog:', err);
         setError(err.message);
+        setTotalCount(0);
         setIsLoading(false);
       });
-  }, [selectedMake, selectedTerm, debouncedDown, sortBy, maxPayment, tier, selectedMileage]);
+  }, [selectedMake, selectedTerm, debouncedDown, sortBy, maxPayment, tier, selectedMileage, displayMode]);
 
   // Derived data
-  const makes = useMemo(() => {
-    const all = Array.from(new Set(items.map(i => i.make))).sort();
-    return ['All', ...all];
-  }, [items]);
-
   const bodyStyles = useMemo(() => {
     const all = Array.from(new Set(items.filter(i => i.bodyStyle).map(i => i.bodyStyle))).sort();
     return ['All', ...all];
   }, [items]);
 
+  const models = useMemo(() => getCatalogModelOptions(items, selectedMake), [items, selectedMake]);
+
   // Client-side filtering
   const filteredItems = useMemo(() => {
-    let result = items;
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(i =>
-        i.make.toLowerCase().includes(q) ||
-        i.model.toLowerCase().includes(q) ||
-        i.trim.toLowerCase().includes(q)
-      );
-    }
-
-    if (selectedBodyStyle !== 'All') {
-      result = result.filter(i => i.bodyStyle === selectedBodyStyle);
-    }
-
-    if (brokenImageIds.length > 0) {
-      // Don't filter out broken images — show placeholder instead
-      // result = result.filter(i => !brokenImageIds.includes(i.id));
-    }
-
-    result = result.filter(i => {
-      const pay = displayMode === 'lease' ? i.leasePayment : i.financePayment;
-      return pay !== null && pay <= maxPayment;
+    return filterCatalogItems(items, {
+      searchQuery,
+      selectedBodyStyle,
+      selectedModel,
+      displayMode,
+      maxPayment,
     });
-
-    return result;
-  }, [items, searchQuery, selectedBodyStyle, brokenImageIds, displayMode, maxPayment]);
+  }, [items, searchQuery, selectedBodyStyle, selectedModel, displayMode, maxPayment]);
 
   const handleCardClick = (item: any) => {
     navigate(`/catalog/${item.id}`, { state: { displayMode } });
@@ -271,11 +272,28 @@ export const CatalogPage = () => {
                   <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.make}</h4>
                   <select
                     value={selectedMake}
-                    onChange={(e) => setSelectedMake(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedMake(e.target.value);
+                      setSelectedModel('All');
+                    }}
                     className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
                   >
-                    {makes.map((make, idx) => (
+                    {availableMakes.map((make, idx) => (
                       <option key={`${make}-${idx}`} value={make}>{make === 'All' ? (t.allMakes || 'All Makes') : make}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{language === 'ru' ? 'Модель' : 'Model'}</h4>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer disabled:opacity-50"
+                    disabled={models.length <= 1}
+                  >
+                    {models.map((model, idx) => (
+                      <option key={`${model}-${idx}`} value={model}>{model === 'All' ? (language === 'ru' ? 'Все модели' : 'All Models') : model}</option>
                     ))}
                   </select>
                 </div>
@@ -325,6 +343,7 @@ export const CatalogPage = () => {
                 <button
                   onClick={() => {
                     setSelectedMake('All');
+                    setSelectedModel('All');
                     setSelectedBodyStyle('All');
                     setMaxPayment(3000);
                     setSearchQuery('');
@@ -348,8 +367,11 @@ export const CatalogPage = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <h2 className="text-xl font-display tracking-tight">
-                    <span className="text-[var(--w)]">{filteredItems.length}</span> <span className="text-[var(--mu2)]">{t.verifiedDeals || 'vehicles'}</span>
+                    <span className="text-[var(--w)]">{totalCount}</span> <span className="text-[var(--mu2)]">{language === 'ru' ? 'всего сделок на сайте' : 'total deals on site'}</span>
                   </h2>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
+                    {language === 'ru' ? `Показано ${filteredItems.length}` : `Showing ${filteredItems.length}`}
+                  </div>
                   <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)]">
                     <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{displayMode === 'lease' ? t.lease : t.finance}</span>
                     <span className="px-2 py-1 bg-[var(--s1)] rounded border border-[var(--b2)]">{t.tier || 'Tier'} {tier.replace('t', '')}</span>

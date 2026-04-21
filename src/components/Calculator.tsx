@@ -378,6 +378,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
     };
   }, [quoteData]);
 
+  const approximateTaxWarning = useMemo(() => {
+    const warnings = quoteData?.warnings;
+    if (!Array.isArray(warnings)) return null;
+    return warnings.find((warning: string) => warning.startsWith('APPROXIMATE_TAX_RATE:')) || null;
+  }, [quoteData]);
+
   console.log('Calculator rendering, carDbLoading:', carDbLoading, 'carDbError:', carDbError, 'makes count:', carDb?.makes?.length);
 
   return (
@@ -668,6 +674,14 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 maxLength={5}
               />
             </div>
+
+            {approximateTaxWarning && (
+              <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[10px] text-amber-200 leading-relaxed">
+                {language === 'ru'
+                  ? `Для ZIP ${zipCode} точная налоговая ставка не найдена. Калькулятор использует приблизительную ставку California.`
+                  : `No exact tax mapping was found for ZIP ${zipCode}. The calculator is using an estimated California tax rate.`}
+              </div>
+            )}
           </div>
 
           <div className={cn("text-[9px] text-[var(--mu2)] px-2", isMobile && wizardStep !== 0 && "hidden")}>

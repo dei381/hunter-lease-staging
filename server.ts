@@ -532,6 +532,18 @@ async function startServer() {
     ? { origin: allowedOrigins.length > 0 ? allowedOrigins : false } 
     : {};
   app.use(cors(corsOptions));
+
+  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    try {
+      const sig = req.headers['stripe-signature'] as string;
+      const result = await StripeService.handleWebhook(req.body, sig);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Stripe webhook error:', error.message);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -3633,18 +3645,39 @@ FACEBOOK:
   });
 
   // Stripe Payment Intent (for seamless modal)
-  app.post("/api/create-payment-intent", userAuth, async (req, res) => {
+  app.post("/api/create-payment-intent", async (req, res) => {
     try {
       const { leadId } = req.body;
-      const userId = (req as any).user?.uid;
-      
-      if (!userId) {
-        return res.status(401).json({ error: "User ID required" });
+      const authHeader = req.headers.authorization;
+      let userId: string | undefined;
+
+      if (!leadId) {
+        return res.status(400).json({ error: "Lead ID required" });
+      }
+
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.split('Bearer ')[1]?.trim();
+        if (token) {
+          try {
+            const decodedToken = await admin.auth().verifyIdToken(token);
+            userId = decodedToken.uid;
+          } catch (error) {
+            return res.status(401).json({ error: "Unauthorized access: Invalid token" });
+          }
+        }
       }
 
       const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-      if (!lead || lead.userId !== userId) {
+      if (!lead) {
         return res.status(404).json({ error: "Lead not found" });
+      }
+
+      if (lead.userId && !userId) {
+        return res.status(401).json({ error: "User authentication required" });
+      }
+
+      if (lead.userId && lead.userId !== userId) {
+        return res.status(403).json({ error: "Lead does not belong to the current user" });
       }
 
       if (!process.env.STRIPE_SECRET_KEY) {
@@ -3652,20 +3685,12 @@ FACEBOOK:
         return res.json({ clientSecret: "pi_mock_secret_12345" });
       }
 
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: 9500, // $95.00
-        currency: 'usd',
-        metadata: {
-          leadId: lead.id,
-          userId: userId
-        },
-        // Automatic payment methods enabled by default
-        automatic_payment_methods: {
-          enabled: true,
-        },
+      const paymentIntent = await StripeService.createPaymentIntent({
+        leadId: lead.id,
+        userId,
       });
 
-      res.json({ clientSecret: paymentIntent.client_secret });
+      res.json({ clientSecret: paymentIntent.clientSecret, paymentId: paymentIntent.paymentId });
     } catch (error) {
       console.error("Error creating payment intent:", error);
       res.status(500).json({ error: "Failed to create payment intent" });
@@ -5033,18 +5058,6 @@ const mapDealsForFrontend = (
   // ============================================
   // STRIPE PAYMENT ROUTES
   // ============================================
-
-  // Stripe webhook (must be before express.json() — needs raw body)
-  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    try {
-      const sig = req.headers['stripe-signature'] as string;
-      const result = await StripeService.handleWebhook(req.body, sig);
-      res.json(result);
-    } catch (error: any) {
-      console.error('Stripe webhook error:', error.message);
-      res.status(400).json({ error: error.message });
-    }
-  });
 
   // Create checkout session for $95 deposit
   app.post('/api/payments/create-session', async (req, res) => {

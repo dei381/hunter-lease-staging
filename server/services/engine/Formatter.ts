@@ -73,7 +73,7 @@ export class Formatter {
         monthlyAverageCents: Math.round(totalCostCents / term)
       },
       sourceMetadata: {
-        lenderId: resolvedData.program?.id || null,
+        lenderId: resolvedData.program?.lenderId || null,
         lenderName: resolvedData.program?.lender?.name || (resolvedData.vehicle?.make ? `${resolvedData.vehicle.make} Financial Services` : 'Unknown'),
         lenderType: resolvedData.program?.lender?.lenderType || (resolvedData.vehicle?.make ? 'CAPTIVE' : 'Unknown'),
         msrpSource: context.adminOverrides?.msrpCents ? 'ADMIN_OVERRIDE' : 'DB',
@@ -142,7 +142,7 @@ export class Formatter {
         monthlyAverageCents: Math.round(totalCostCents / term)
       },
       sourceMetadata: {
-        lenderId: resolvedData.program?.id || null,
+        lenderId: resolvedData.program?.lenderId || null,
         lenderName: resolvedData.program?.lender?.name || (resolvedData.vehicle?.make ? `${resolvedData.vehicle.make} Financial Services` : 'Unknown'),
         lenderType: resolvedData.program?.lender?.lenderType || (resolvedData.vehicle?.make ? 'CAPTIVE' : 'Unknown'),
         msrpSource: context.adminOverrides?.msrpCents ? 'ADMIN_OVERRIDE' : 'DB',

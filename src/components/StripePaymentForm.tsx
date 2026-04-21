@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useEffectEvent } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Loader2 } from 'lucide-react';
 import { getAuthToken } from '../utils/auth';
 
-// Initialize Stripe outside of component to avoid recreating the object
-// We use a placeholder key if env var is missing, but in production this should be the real publishable key
-const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+const stripePublishableKey = (import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined;
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
 interface StripePaymentFormProps {
   leadId: string;
@@ -24,27 +23,29 @@ const CheckoutForm = ({ onSuccess, onError }: { onSuccess: () => void, onError: 
     e.preventDefault();
 
     if (!stripe || !elements) {
+      onError('Payment form is still loading. Please try again in a moment.');
       return;
     }
 
     setIsProcessing(true);
 
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        // We don't want to redirect if we can avoid it, to keep the user in the modal
-        // But some payment methods require redirection.
-      },
-      redirect: 'if_required'
-    });
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {},
+        redirect: 'if_required'
+      });
 
-    if (error) {
-      onError(error.message || 'An unknown error occurred');
-      setIsProcessing(false);
-    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-      onSuccess();
-    } else {
-      onError('Payment failed or requires further action.');
+      if (error) {
+        onError(error.message || 'An unknown error occurred');
+      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+        onSuccess();
+      } else {
+        onError('Payment failed or requires further action.');
+      }
+    } catch (error: any) {
+      onError(error.message || 'Unable to complete payment. Please try again.');
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -72,18 +73,36 @@ const CheckoutForm = ({ onSuccess, onError }: { onSuccess: () => void, onError: 
 export const StripePaymentForm = ({ leadId, onSuccess, onError, amount }: StripePaymentFormProps) => {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const emitError = useEffectEvent((message: string) => onError(message));
 
   useEffect(() => {
+    if (!leadId) {
+      emitError('Unable to start payment without a saved lead.');
+      setIsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
     const fetchPaymentIntent = async () => {
       try {
         const token = await getAuthToken();
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+
         const response = await fetch('/api/create-payment-intent', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            ...headers,
           },
-          body: JSON.stringify({ leadId })
+          body: JSON.stringify({ leadId }),
+          signal: controller.signal
         });
 
         if (!response.ok) {
@@ -91,18 +110,29 @@ export const StripePaymentForm = ({ leadId, onSuccess, onError, amount }: Stripe
         }
 
         const data = await response.json();
+        if (!stripePublishableKey && !String(data.clientSecret || '').startsWith('pi_mock_secret')) {
+          throw new Error('Card payments are temporarily unavailable. Stripe is not fully configured.');
+        }
         setClientSecret(data.clientSecret);
       } catch (error: any) {
-        onError(error.message);
+        if (error.name === 'AbortError') {
+          emitError('Payment setup timed out. Please try again.');
+        } else {
+          emitError(error.message || 'Failed to initialize payment');
+        }
       } finally {
+        window.clearTimeout(timeoutId);
         setIsLoading(false);
       }
     };
 
-    if (leadId) {
-      fetchPaymentIntent();
-    }
-  }, [leadId, onError]);
+    fetchPaymentIntent();
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [leadId]);
 
   if (isLoading) {
     return (
@@ -136,8 +166,16 @@ export const StripePaymentForm = ({ leadId, onSuccess, onError, amount }: Stripe
           onClick={onSuccess}
           className="w-full bg-black text-white font-bold text-[10px] uppercase tracking-widest px-6 py-4 rounded-xl hover:bg-[var(--lime)] hover:text-black transition-all"
         >
-          Simulate Payment Success
+          Simulate Payment Success for ${amount}
         </button>
+      </div>
+    );
+  }
+
+  if (!stripePromise) {
+    return (
+      <div className="text-center py-8 text-red-500 text-sm">
+        Card payments are temporarily unavailable. Please use another deposit method or try again later.
       </div>
     );
   }

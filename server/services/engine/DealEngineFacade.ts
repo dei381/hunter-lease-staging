@@ -6,7 +6,7 @@ import { PureMathEngine } from './PureMathEngine';
 import { Formatter } from './Formatter';
 import { FinancialData, CalcMode } from '../../../src/types/engine';
 import prisma from '../../lib/db';
-import { getTaxRateByZip } from '../../utils/taxRates';
+import { getTaxRateByZip, hasTaxRateByZip } from '../../utils/taxRates';
 
 export class DealEngineFacade {
   static async calculateForConsumer(rawBody: any): Promise<PaymentBreakdown> {
@@ -152,6 +152,7 @@ export class DealEngineFacade {
     settings.dmvFeeCents = Math.round(vehicle.msrpCents * 0.0065) + 15000;
 
     // Dynamic Tax Rate by ZIP
+    const hasExplicitZipTaxRate = hasTaxRateByZip(context.zipCode || '');
     settings.taxRate = getTaxRateByZip(context.zipCode || '');
 
     if (programs.length === 0) {
@@ -356,10 +357,10 @@ export class DealEngineFacade {
     // Populate options - group by lender and pick the best one for each
     const lenderBestResults = new Map<string, typeof allResults[0]>();
     for (const r of allResults) {
-      const lenderName = r.sourceMetadata.lenderName || 'Unknown';
-      const existing = lenderBestResults.get(lenderName);
+      const lenderKey = r.sourceMetadata.lenderId || r.sourceMetadata.lenderName || 'Unknown';
+      const existing = lenderBestResults.get(lenderKey);
       if (!existing || r.monthlyPaymentCents < existing.monthlyPaymentCents) {
-        lenderBestResults.set(lenderName, r);
+        lenderBestResults.set(lenderKey, r);
       }
     }
 
@@ -372,6 +373,10 @@ export class DealEngineFacade {
 
     if (vehicle.availableIncentives) {
       bestResult.availableIncentives = vehicle.availableIncentives;
+    }
+
+    if (context.zipCode && !hasExplicitZipTaxRate) {
+      bestResult.warnings.push(`APPROXIMATE_TAX_RATE:${context.zipCode}`);
     }
 
     // Save QuoteSnapshot

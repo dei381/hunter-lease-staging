@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle2, ChevronRight, ShieldCheck, Car, FileText, CreditCard, Info, AlertCircle, Zap, Lock, Crown } from 'lucide-react';
@@ -74,10 +74,27 @@ export const DepositModal = ({
   const [creditCheckResult, setCreditCheckResult] = useState<any>(null);
   const [creditCheckError, setCreditCheckError] = useState('');
   const [isCreditCheckRunning, setIsCreditCheckRunning] = useState(false);
+  const wasOpenRef = useRef(false);
 
   // Reset step when modal opens
   useEffect(() => {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    if (wasOpenRef.current) {
+      return;
+    }
+
+    wasOpenRef.current = true;
+
     if (isOpen) {
+      const shouldResumeExistingFlow = !!leadId && (step !== 1 || subStep !== 1 || creditAppStep > 0 || isCreditAppSuccess);
+      if (shouldResumeExistingFlow) {
+        return;
+      }
+
       if (leadId) {
         setStep(2);
       } else {
@@ -119,7 +136,7 @@ export const DepositModal = ({
         signature: '',
       });
     }
-  }, [isOpen, clientInfo]);
+  }, [isOpen, clientInfo, leadId, step, subStep, creditAppStep, isCreditAppSuccess]);
 
   useEffect(() => {
     if (isCreditAppSuccess) {
@@ -255,7 +272,7 @@ export const DepositModal = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={(leadId && !isCreditAppSuccess) ? undefined : onClose}
+          onClick={onClose}
           className="fixed inset-0 bg-black/60 backdrop-blur-sm" 
         />
         
@@ -265,9 +282,7 @@ export const DepositModal = ({
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           className="bg-white border border-[var(--b2)] rounded-3xl w-full max-w-5xl relative z-10 shadow-2xl flex flex-col md:flex-row overflow-hidden"
         >
-        {!(leadId && !isCreditAppSuccess) && (
-          <button onClick={onClose} className="absolute top-6 right-6 text-[var(--mu)] hover:text-[var(--w)] z-50 bg-[var(--s1)] hover:bg-[var(--b2)] rounded-full p-2 transition-colors"><X size={20} /></button>
-        )}
+        <button onClick={onClose} className="absolute top-6 right-6 text-[var(--mu)] hover:text-[var(--w)] z-50 bg-[var(--s1)] hover:bg-[var(--b2)] rounded-full p-2 transition-colors"><X size={20} /></button>
         
         {/* Left Column: Wizard */}
         <div className="flex-1 p-4 md:p-12 flex flex-col relative overflow-hidden bg-white">
@@ -560,6 +575,17 @@ export const DepositModal = ({
                     Complete your $95 refundable deposit to lock in this deal.
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    setSubStep(3);
+                  }}
+                  className="mb-4 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--w)] transition-colors"
+                >
+                  {translations[language].calc.back}
+                </button>
 
                 <StripePaymentForm 
                   leadId={leadId || localStorage.getItem('leadId') || ''} 

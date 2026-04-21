@@ -38,6 +38,7 @@ const prisma = db as any;
 // ─── Shared mock Stripe instance ──────────────────────────────────────────────
 const mockStripe = {
   checkout: { sessions: { create: vi.fn() } },
+  paymentIntents: { create: vi.fn(), retrieve: vi.fn() },
   webhooks: { constructEvent: vi.fn() },
   refunds: { create: vi.fn() },
 };
@@ -95,6 +96,63 @@ describe('StripeService — Checkout Session', () => {
     const stripeCall = mockStripe.checkout.sessions.create.mock.calls[0][0];
     expect(stripeCall.success_url).toContain('/deposit/success');
     expect(stripeCall.cancel_url).toContain('/deposit/cancel');
+  });
+});
+
+describe('StripeService — Payment Intents', () => {
+  it('should create a payment intent and persist a pending payment record', async () => {
+    prisma.payment.findFirst.mockResolvedValue(null);
+    mockStripe.paymentIntents.create.mockResolvedValue({
+      id: 'pi_test_123',
+      client_secret: 'pi_test_123_secret_abc',
+      metadata: { leadId: 'lead_001', userId: 'user_001', quoteId: 'quote_001' },
+    });
+
+    prisma.payment.create.mockResolvedValue({
+      id: 'pay_pi_001',
+      stripePaymentIntentId: 'pi_test_123',
+      status: 'pending',
+    });
+
+    const result = await StripeService.createPaymentIntent({
+      leadId: 'lead_001',
+      userId: 'user_001',
+      quoteId: 'quote_001',
+    });
+
+    expect(result.clientSecret).toBe('pi_test_123_secret_abc');
+    expect(result.paymentIntentId).toBe('pi_test_123');
+    expect(result.paymentId).toBe('pay_pi_001');
+
+    const stripeCall = mockStripe.paymentIntents.create.mock.calls[0][0];
+    expect(stripeCall.amount).toBe(9500);
+    expect(stripeCall.metadata.leadId).toBe('lead_001');
+    expect(stripeCall.metadata.userId).toBe('user_001');
+
+    const paymentCreate = prisma.payment.create.mock.calls[0][0];
+    expect(paymentCreate.data.status).toBe('pending');
+    expect(paymentCreate.data.stripePaymentIntentId).toBe('pi_test_123');
+  });
+
+  it('should reuse the latest active payment intent for the same lead', async () => {
+    prisma.payment.findFirst.mockResolvedValue({
+      id: 'pay_existing_001',
+      leadId: 'lead_001',
+      stripePaymentIntentId: 'pi_existing_123',
+      status: 'pending',
+    });
+    mockStripe.paymentIntents.retrieve.mockResolvedValue({
+      id: 'pi_existing_123',
+      client_secret: 'pi_existing_123_secret_abc',
+      status: 'requires_payment_method',
+    });
+
+    const result = await StripeService.createPaymentIntent({ leadId: 'lead_001' });
+
+    expect(result.clientSecret).toBe('pi_existing_123_secret_abc');
+    expect(result.paymentId).toBe('pay_existing_001');
+    expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
   });
 });
 
@@ -167,6 +225,93 @@ describe('StripeService — Webhook Business Logic (post-verification)', () => {
     // Must filter by status: 'pending' to protect completed payments
     expect(call.where.status).toBe('pending');
   });
+
+  it('payment_intent.succeeded: pending payment marked completed and lead updated', async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue({
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_test_123',
+          amount_received: 9500,
+          currency: 'usd',
+          metadata: { leadId: 'lead_001', userId: 'user_001' },
+        },
+      },
+    });
+
+    prisma.payment.findFirst.mockResolvedValue({
+      id: 'pay_001',
+      leadId: 'lead_001',
+      stripePaymentIntentId: 'pi_test_123',
+      status: 'pending',
+    });
+    prisma.payment.update.mockResolvedValue({ id: 'pay_001', status: 'completed' });
+    prisma.lead.update.mockResolvedValue({ id: 'lead_001', depositStatus: 'paid' });
+
+    const result = await StripeService.handleWebhook(Buffer.from('{}'), 'sig_test');
+
+    expect(result.type).toBe('payment_intent.succeeded');
+    expect(prisma.payment.findFirst).toHaveBeenCalledWith({
+      where: { stripePaymentIntentId: 'pi_test_123' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const paymentUpdate = prisma.payment.update.mock.calls[0][0];
+    expect(paymentUpdate.data.status).toBe('completed');
+
+    const leadUpdate = prisma.lead.update.mock.calls[0][0];
+    expect(leadUpdate.data.depositStatus).toBe('paid');
+    expect(leadUpdate.data.depositAmount).toBe(9500);
+  });
+
+  it('payment_intent.succeeded: does not overwrite an already completed payment record', async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue({
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_test_123',
+          amount_received: 9500,
+          currency: 'usd',
+          metadata: { leadId: 'lead_001', userId: 'user_001' },
+        },
+      },
+    });
+
+    prisma.payment.findFirst.mockResolvedValue({
+      id: 'pay_001',
+      leadId: 'lead_001',
+      stripePaymentIntentId: 'pi_test_123',
+      status: 'completed',
+    });
+    prisma.lead.update.mockResolvedValue({ id: 'lead_001', depositStatus: 'paid' });
+
+    await StripeService.handleWebhook(Buffer.from('{}'), 'sig_test');
+
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+    expect(prisma.lead.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('payment_intent.payment_failed: only pending payment intents are marked failed', async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue({
+      type: 'payment_intent.payment_failed',
+      data: {
+        object: {
+          id: 'pi_test_failed',
+          metadata: { leadId: 'lead_002' },
+        },
+      },
+    });
+
+    prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await StripeService.handleWebhook(Buffer.from('{}'), 'sig_test');
+
+    expect(result.type).toBe('payment_intent.payment_failed');
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+      where: { stripePaymentIntentId: 'pi_test_failed', status: 'pending' },
+      data: { status: 'failed' },
+    });
+  });
 });
 
 // ─── REFUND ──────────────────────────────────────────────────────────────────
@@ -222,14 +367,14 @@ describe('StripeService — getPaymentByLead', () => {
       id: 'pay_001',
       leadId: 'lead_001',
       status: 'completed',
-      amount: 9500,
+      amountCents: 9500,
     });
 
     const payment = await StripeService.getPaymentByLead('lead_001');
 
     expect(payment).not.toBeNull();
     expect(payment!.status).toBe('completed');
-    expect(payment!.amount).toBe(9500);
+    expect(payment!.amountCents).toBe(9500);
   });
 
   it('should return null if no payment exists for lead', async () => {
