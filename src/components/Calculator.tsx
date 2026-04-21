@@ -13,6 +13,7 @@ import { getVal } from '../utils/finance';
 import { TradeInEstimator } from './TradeInEstimator';
 import { useDebounce } from '../hooks/useDebounce';
 import { useCarData } from '../hooks/useCarData';
+import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -67,7 +68,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [down, setDown] = useState(Number(deal?.down) || 3000);
   const [tradeInEquity, setTradeInEquity] = useState(0);
   const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 60 : (parseInt(deal?.term) || 36)));
-  const [mileage, setMileage] = useState(['Kia', 'Hyundai'].includes(deal?.make) ? '10k' : '7.5k');
+  const [mileage, setMileage] = useState(getDefaultLeaseMileage(deal?.make));
   const [zipCode, setZipCode] = useState('90210');
   const [showIncentives, setShowIncentives] = useState(!isStandalone);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);

@@ -11,6 +11,7 @@ import { InventoryAlertModal } from './InventoryAlertModal';
 import { DealCard } from './DealCard';
 import { getCarImage, CarPhoto } from '../utils/carImage';
 import { fetchWithCache } from '../utils/fetchWithCache';
+import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
@@ -64,7 +65,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
             ...deal,
             payment: Number(deal.payment) || 0,
             down: Number(deal.down) || 3000,
-            mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
+            mileage: getDefaultLeaseMileage(deal.make)
           };
         });
         setDeals(recalculated);

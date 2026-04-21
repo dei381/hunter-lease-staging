@@ -14,6 +14,7 @@ import { useMarketcheck } from '../hooks/useMarketcheck';
 import { CompareBar } from '../components/CompareBar';
 import { logEvent } from '../components/VisitTracker';
 import { fetchWithCache } from '../utils/fetchWithCache';
+import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
 
 const fmt = (n: any) => {
   const num = Number(n);
@@ -151,7 +152,7 @@ export const DealsPage = () => {
             payment: Number(deal.payment) || 0,
             marketAvg: Number(deal.marketAvg) || Math.round((Number(deal.payment) || 0) * 1.267),
             down: Number(deal.down) || 3000,
-            mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
+            mileage: getDefaultLeaseMileage(deal.make)
           };
         });
         setDeals(recalculated);

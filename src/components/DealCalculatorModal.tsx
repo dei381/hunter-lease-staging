@@ -14,6 +14,7 @@ import { useAuthStore } from '../store/authStore';
 import { IncentivesModal } from './IncentivesModal';
 
 import { fetchWithCache } from '../utils/fetchWithCache';
+import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -42,7 +43,7 @@ export const DealCalculatorModal = ({
   const [tier, setTier] = useState(initialTier || 't1');
   const [down, setDown] = useState(initialDown !== undefined ? initialDown : 3000);
   const [term, setTerm] = useState(initialTerm || 36);
-  const [mileage, setMileage] = useState(initialMileage || '7.5k');
+  const [mileage, setMileage] = useState(initialMileage || getDefaultLeaseMileage(deal?.make));
   const [msdCount, setMsdCount] = useState(0);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);
   const [photos, setPhotos] = useState<CarPhoto[]>([]);
@@ -69,8 +70,7 @@ export const DealCalculatorModal = ({
       setTerm(parseInt(deal.displayTerm) || (initialType === 'finance' ? 72 : (parseInt(deal.term) || 36)));
       setSelectedIncentives(deal.availableIncentives?.filter((inc: any) => inc.isDefault).map((inc: any) => inc.id) || []);
       
-      const isKiaHyundai = ['Kia', 'Hyundai'].includes(deal.make);
-      setMileage(isKiaHyundai ? '10k' : '7.5k');
+      setMileage(getDefaultLeaseMileage(deal.make));
     }
   }, [isOpen, deal]);
 
