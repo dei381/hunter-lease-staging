@@ -41,6 +41,11 @@ const SEGMENT_DEFAULTS: Record<string, { mf: number; rv: number; apr: number; le
   'Mitsubishi':   { mf: 0.0016, rv: 0.48, apr: 5.99, leaseCash: 1000 },
   'Alfa Romeo':   { mf: 0.0018, rv: 0.47, apr: 5.99, leaseCash: 1500 },
 };
+
+const MODEL_DEFAULTS: Record<string, { mf: number; rv: number; apr: number; leaseCash: number }> = {
+  'Toyota|Camry': { mf: 0.00065, rv: 0.55, apr: 4.49, leaseCash: 500 },
+};
+
 const DEFAULT = { mf: 0.0015, rv: 0.50, apr: 5.49, leaseCash: 500 };
 
 async function main() {
@@ -78,7 +83,8 @@ async function main() {
 
   for (const trim of trims) {
     const makeName = trim.model.make.name;
-    const d = SEGMENT_DEFAULTS[makeName] || DEFAULT;
+    const modelKey = `${makeName}|${trim.model.name}`;
+    const d = MODEL_DEFAULTS[modelKey] || SEGMENT_DEFAULTS[makeName] || DEFAULT;
     const year = trim.model.years?.[0] || 2025;
 
     // LEASE programs

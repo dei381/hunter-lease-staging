@@ -35,6 +35,11 @@ const SEGMENT_DEFAULTS: Record<string, { mf: number; rv: number; apr: number }> 
   'Jeep': { mf: 0.0015, rv: 0.49, apr: 5.49 },
   'Ram': { mf: 0.0014, rv: 0.50, apr: 5.29 },
 };
+
+const MODEL_DEFAULTS: Record<string, { mf: number; rv: number; apr: number }> = {
+  'Toyota|Camry': { mf: 0.00065, rv: 0.55, apr: 4.49 },
+};
+
 const DEFAULT = { mf: 0.0015, rv: 0.50, apr: 5.49 };
 
 async function main() {
@@ -54,7 +59,8 @@ async function main() {
   let updated = 0;
   for (const trim of trims) {
     const makeName = trim.model.make.name;
-    const defaults = SEGMENT_DEFAULTS[makeName] || DEFAULT;
+    const modelKey = `${makeName}|${trim.model.name}`;
+    const defaults = MODEL_DEFAULTS[modelKey] || SEGMENT_DEFAULTS[makeName] || DEFAULT;
 
     await prisma.vehicleTrim.update({
       where: { id: trim.id },
@@ -84,7 +90,8 @@ async function main() {
 
   for (const trim of partialTrims) {
     const makeName = trim.model.make.name;
-    const defaults = SEGMENT_DEFAULTS[makeName] || DEFAULT;
+    const modelKey = `${makeName}|${trim.model.name}`;
+    const defaults = MODEL_DEFAULTS[modelKey] || SEGMENT_DEFAULTS[makeName] || DEFAULT;
     const data: any = {};
     if (!trim.baseMF) data.baseMF = defaults.mf;
     if (!trim.rv36) data.rv36 = defaults.rv;
