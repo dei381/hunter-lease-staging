@@ -13,8 +13,8 @@ async function main() {
   // Seed incentives for target brands
   const incentives = [
     // Toyota
-    { make: 'Toyota', model: 'Camry', name: 'TFS Customer Cash', amount: 1500, type: 'CUSTOMER_CASH', deal: 'LEASE' },
-    { make: 'Toyota', model: 'Camry', name: 'TFS Customer Cash', amount: 1000, type: 'CUSTOMER_CASH', deal: 'FINANCE' },
+    { make: 'Toyota', model: 'Camry', name: 'TFS Customer Cash', amount: 1500, type: 'CUSTOMER_CASH', deal: 'LEASE', stackable: false },
+    { make: 'Toyota', model: 'Camry', name: 'TFS Customer Cash', amount: 1000, type: 'CUSTOMER_CASH', deal: 'FINANCE', stackable: false },
     { make: 'Toyota', model: 'Corolla', name: 'TFS Lease Cash', amount: 1000, type: 'LEASE_CASH', deal: 'LEASE' },
     { make: 'Toyota', model: 'RAV4', name: 'TFS Customer Cash', amount: 750, type: 'CUSTOMER_CASH', deal: 'LEASE' },
     { make: 'Toyota', model: 'Highlander', name: 'TFS Customer Cash', amount: 1000, type: 'CUSTOMER_CASH', deal: 'LEASE' },
@@ -99,7 +99,7 @@ async function main() {
         isTaxableCa: !isConditional,
         make: inc.make,
         model: inc.model,
-        stackable: true,
+        stackable: inc.stackable ?? true,
         isActive: true,
         status: 'PUBLISHED',
         eligibilityRules: isConditional ? JSON.stringify({
@@ -123,7 +123,7 @@ async function main() {
           isTaxableCa: !isConditional,
           make: inc.make,
           model: inc.model,
-          stackable: true,
+          stackable: inc.stackable ?? true,
           isActive: true,
           status: 'PUBLISHED',
           eligibilityRules: isConditional ? JSON.stringify({

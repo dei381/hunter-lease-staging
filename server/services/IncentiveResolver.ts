@@ -125,6 +125,8 @@ export class IncentiveResolver {
         // Default incentives: apply if no explicit selection, or if explicitly selected
         if (isNoneSelected) {
           evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: 'All incentives disabled by user' });
+        } else if (inc.stackable === false && !isSelected) {
+          evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: 'Requires explicit selection' });
         } else if (!hasExplicitSelection || isSelected) {
           eligibleIncentives.push(baseIncentive);
         } else {
