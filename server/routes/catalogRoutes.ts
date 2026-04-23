@@ -1,8 +1,9 @@
 import express from 'express';
 import prisma from '../lib/db';
 import NodeCache from 'node-cache';
-import { PureMathEngine } from '../services/engine/PureMathEngine';
+import { DealEngineFacade } from '../services/engine/DealEngineFacade';
 import { findCatalogPhotoRecord, resolveCatalogImageUrl } from '../utils/catalogImage';
+import { buildCatalogSelectedIncentiveIds, CatalogEntry, formatCatalogEntryFromQuote } from '../utils/catalogQuote';
 
 const router = express.Router();
 const catalogCache = new NodeCache({ stdTTL: 300 }); // 5 min cache
@@ -15,42 +16,73 @@ const TARGET_BRANDS = [
 
 // Minimum MSRP threshold (cents) — filter out bad MarketCheck data (used cars, wrong prices)
 const MIN_MSRP_CENTS = 1800000; // $18,000
+const DEFAULT_CATALOG_LIMIT = 20;
+const MAX_CATALOG_LIMIT = 30;
+const CATALOG_QUOTE_CONCURRENCY = 10;
 
-interface CatalogEntry {
-  id: string;
-  make: string;
-  model: string;
-  trim: string;
-  year: number;
-  msrp: number;
-  bodyStyle: string | null;
-  imageUrl: string | null;
-  // Lease calc
-  leasePayment: number | null;
-  leaseTerm: number;
-  leaseMileage: number;
-  leaseDown: number;
-  leaseMF: number;
-  leaseRV: number;
-  // Finance calc
-  financePayment: number | null;
-  financeTerm: number;
-  financeAPR: number;
-  financeDown: number;
-  // Incentives
-  totalIncentivesCents: number;
-  incentives: { name: string; amountCents: number; type: string }[];
-  // Computed
-  sellingPrice: number;
-  savings: number;
-  status: 'ready' | 'incomplete';
-  missingFields: string[];
-  // Program info
-  lenderName: string | null;
+interface CatalogCachePayload {
+  entries: CatalogEntry[];
+  totalCount: number;
+  availableMakes: string[];
 }
 
 function getReadyCatalogEntries(entries: CatalogEntry[]): CatalogEntry[] {
   return entries.filter(entry => entry.status === 'ready' && entry.imageUrl && entry.imageUrl.startsWith('http'));
+}
+
+function parseCatalogLimit(limit: unknown): number {
+  const parsed = typeof limit === 'string' ? parseInt(limit, 10) : NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_CATALOG_LIMIT;
+  return Math.min(parsed, MAX_CATALOG_LIMIT);
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
+
+async function calculateCatalogQuote(args: {
+  trim: any;
+  makeName: string;
+  modelName: string;
+  year: number;
+  type: 'lease' | 'finance';
+  term: number;
+  mileage: number;
+  downPaymentCents: number;
+  selectedIncentives: string[];
+  tier: string;
+}) {
+  const { trim, makeName, modelName, year, type, term, mileage, downPaymentCents, selectedIncentives, tier } = args;
+
+  return DealEngineFacade.calculateForConsumer({
+    vehicleId: trim.id,
+    make: makeName,
+    model: modelName,
+    trim: trim.name,
+    year,
+    type,
+    term,
+    mileage,
+    downPaymentCents,
+    tradeInEquityCents: 0,
+    tier,
+    zipCode: '90210',
+    selectedIncentives: selectedIncentives.length > 0 ? selectedIncentives : ['__NONE__'],
+    isFirstTimeBuyer: false,
+    hasCosigner: false,
+  });
 }
 
 /**
@@ -69,25 +101,29 @@ router.get('/', async (req, res) => {
     const requestedDown = parseInt(qDown as string) || 0;
     const requestedMileage = parseInt(qMileage as string) || 10000;
     const downCents = requestedDown * 100;
+    const requestedMode = qMode === 'finance' ? 'finance' : 'lease';
+    const requestedTier = typeof qTier === 'string' ? qTier : 't1';
+    const requestedLimit = parseCatalogLimit(qLimit);
+    const selectedMake = typeof make === 'string' && make !== 'All' ? make : null;
+    const makeNameFilter = selectedMake ? { equals: selectedMake } : { in: TARGET_BRANDS };
 
     // Cache key based on params
-    const cacheKey = `catalog_${make || 'all'}_${requestedTerm}_${requestedDown}_${requestedMileage}_${qTier || 't1'}`;
-    const cached = catalogCache.get<CatalogEntry[]>(cacheKey);
+    const cacheKey = `catalog_${make || 'all'}_${requestedTerm}_${requestedDown}_${requestedMileage}_${requestedTier}_${requestedMode}_${requestedLimit}`;
+    const cached = catalogCache.get<CatalogCachePayload>(cacheKey);
     if (cached) {
-      const readyEntries = getReadyCatalogEntries(cached);
-      const filtered = applyFilters(cached, {
+      const filtered = applyFilters(cached.entries, {
         make: make as string,
         minPrice: minPrice as string,
         maxPrice: maxPrice as string,
         bodyStyle: bodyStyle as string,
         sort: sort as string,
-        limit: qLimit as string,
+        limit: requestedLimit.toString(),
         mode: qMode as string,
       });
       return res.json({
         entries: filtered,
-        totalCount: readyEntries.length,
-        availableMakes: Array.from(new Set(readyEntries.map(entry => entry.make))).sort(),
+        totalCount: cached.totalCount,
+        availableMakes: cached.availableMakes,
       });
     }
 
@@ -96,43 +132,30 @@ router.get('/', async (req, res) => {
       where: {
         isActive: true,
         msrpCents: { gte: MIN_MSRP_CENTS },
-        model: { isActive: true, make: { isActive: true, name: { in: TARGET_BRANDS } } }
+        model: { isActive: true, make: { isActive: true, name: makeNameFilter } }
       },
       include: {
         model: { include: { make: true } }
-      }
+      },
+      orderBy: [
+        { msrpCents: 'asc' },
+        { name: 'asc' }
+      ],
+      take: requestedLimit
     });
-
-    // 2. Fetch active bank programs (from active batch)
-    const activeBatch = await prisma.programBatch.findFirst({
-      where: { status: 'ACTIVE' },
-      orderBy: { publishedAt: 'desc' }
-    });
-
-    let bankPrograms: any[] = [];
-    if (activeBatch) {
-      bankPrograms = await prisma.bankProgram.findMany({
-        where: { batchId: activeBatch.id },
-        include: { lender: true }
-      });
-    }
-
-    // Also fetch LeaseProgram and FinanceProgram
-    const [leasePrograms, financePrograms] = await Promise.all([
-      prisma.leaseProgram.findMany({ where: { isActive: true }, include: { lender: true } }),
-      prisma.financeProgram.findMany({ where: { isActive: true }, include: { lender: true } })
-    ]);
 
     // 2b. Fetch car photos
     const photosRecord = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
     const carPhotos: any[] = photosRecord?.data ? JSON.parse(photosRecord.data) : [];
     console.log(`[Catalog] Loaded ${carPhotos.length} car photos`);
 
-    // 3. Fetch active incentives
+    // 3. Fetch active incentives for display/default selection. The quote engine still resolves
+    // incentives itself, so catalog math and the VDP calculator share one source of truth.
     const now = new Date();
     const incentives = await prisma.oemIncentiveProgram.findMany({
       where: {
         isActive: true,
+        status: 'PUBLISHED',
         OR: [
           { effectiveFrom: null },
           { effectiveFrom: { lte: now } }
@@ -140,23 +163,8 @@ router.get('/', async (req, res) => {
       }
     });
 
-    // 4. Fetch settings for fees
-    const settingsRecord = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
-    let settings: any = { brokerFee: 595, taxRateDefault: 8.875, dmvFee: 400, docFee: 85, acquisitionFee: 650 };
-    try {
-      if (settingsRecord?.data) settings = JSON.parse(settingsRecord.data);
-    } catch {}
-
-    const taxRate = (settings.taxRateDefault || 8.875) / 100;
-    const docFeeCents = (settings.docFee || 85) * 100;
-    const dmvFeeCents = (settings.dmvFee || 400) * 100;
-    const acqFeeCents = (settings.acquisitionFee || 650) * 100;
-    const brokerFeeCents = (settings.brokerFee || 595) * 100;
-
     // 5. Build catalog entries
-    const entries: CatalogEntry[] = [];
-
-    for (const trim of trims) {
+    const entries = await mapWithConcurrency(trims, CATALOG_QUOTE_CONCURRENCY, async (trim) => {
       const makeName = trim.model.make.name;
       // Strip brand prefix from model name (e.g. "Ram 1500 Pickup" → "1500 Pickup" for make "Ram")
       const rawModelName = trim.model.name;
@@ -164,8 +172,6 @@ router.get('/', async (req, res) => {
       const trimName = trim.name;
       const msrpCents = trim.msrpCents;
       const year = (trim.model as any).years?.[0] || new Date().getFullYear();
-
-      const missingFields: string[] = [];
 
       // Find matching photo — priority: trim photoLinks > SiteSettings car_photos > model imageUrl
       let trimPhotos: string[] = [];
@@ -182,175 +188,101 @@ router.get('/', async (req, res) => {
         modelImageUrl: (trim.model as any).imageUrl || null,
       });
 
-      // Find best lease program
-      let leaseMF = trim.baseMF || 0;
-      let leaseRV = trim.rv36 || 0;
-      let lenderName: string | null = null;
-
-      // Try BankProgram first (from active batch)
-      const bankProg = bankPrograms.find(p =>
-        p.programType === 'LEASE' &&
-        p.make === makeName &&
-        (p.model === modelName || p.model === 'ALL' || p.model === '') &&
-        (p.year === year || p.year === 0) &&
-        p.term === requestedTerm
-      );
-
-      if (bankProg) {
-        if (bankProg.mf) leaseMF = bankProg.mf;
-        if (bankProg.rv) leaseRV = bankProg.rv;
-        lenderName = bankProg.lender?.name || null;
-      }
-
-      // Try LeaseProgram table
-      if (!leaseMF || !leaseRV) {
-        const leaseProg = leasePrograms.find(p =>
-          p.make === makeName &&
-          (p.model === modelName || p.model === 'ALL') &&
-          (p.year === year || p.year === 0) &&
-          p.term === requestedTerm
-        );
-        if (leaseProg) {
-          if (!leaseMF && leaseProg.buyRateMf) leaseMF = Number(leaseProg.buyRateMf);
-          if (!leaseRV && leaseProg.residualPercentage) leaseRV = Number(leaseProg.residualPercentage);
-          if (!lenderName) lenderName = leaseProg.lender?.name || null;
-        }
-      }
-
-      // Fall back to trim-level data
-      if (!leaseMF) leaseMF = trim.baseMF || 0;
-      if (!leaseRV) leaseRV = trim.rv36 || 0;
-
-      if (!leaseMF) missingFields.push('moneyFactor');
-      if (!leaseRV) missingFields.push('residualValue');
-
-      // Find matching incentives
+      // Find matching incentives for display and for selecting advertised defaults.
+      // Conditional rebates are still shown in the detail calculator, but not baked into
+      // catalog-card payments unless they are truly default/advertised incentives.
       const matchedIncentives = incentives.filter(inc =>
-        inc.make === makeName &&
-        (!inc.model || inc.model === modelName || inc.model === 'ALL') &&
-        (!inc.trim || inc.trim === trimName || inc.trim === 'ALL') &&
-        (inc.dealApplicability === 'ALL' || inc.dealApplicability === 'LEASE')
-      );
-      const totalIncentivesCents = matchedIncentives.reduce((sum, inc) => sum + inc.amountCents, 0);
-      const sellingPriceCents = msrpCents - totalIncentivesCents;
-
-      // Calculate lease payment
-      let leasePaymentCents: number | null = null;
-      if (leaseMF > 0 && leaseRV > 0) {
-        try {
-          const result = PureMathEngine.calculateLease({
-            msrpCents,
-            sellingPriceCents,
-            residualValuePercent: leaseRV,
-            moneyFactor: leaseMF,
-            term: requestedTerm,
-            downPaymentCents: downCents,
-            acqFeeCents,
-            docFeeCents,
-            dmvFeeCents,
-            brokerFeeCents,
-            taxRate
-          });
-          leasePaymentCents = result.finalPaymentCents;
-        } catch {
-          // Calculation failed
-        }
-      }
-
-      // Find finance program
-      let financeAPR = trim.baseAPR || 0;
-      const financeProg = bankPrograms.find(p =>
-        p.programType === 'FINANCE' &&
-        p.make === makeName &&
-        (p.model === modelName || p.model === 'ALL' || p.model === '') &&
-        (p.year === year || p.year === 0) &&
-        p.term === requestedTerm
-      ) || financePrograms.find(p =>
-        p.make === makeName &&
-        (p.model === modelName || p.model === 'ALL') &&
-        (p.year === year || p.year === 0) &&
-        p.term === requestedTerm
+        (inc.make === makeName || inc.make === 'ALL') &&
+        (!inc.model || inc.model === modelName || inc.model === 'ALL' || inc.model === '') &&
+        (!inc.trim || inc.trim === trimName || inc.trim === 'ALL' || inc.trim === '') &&
+        (inc.dealApplicability === 'ALL' || inc.dealApplicability === requestedMode.toUpperCase()) &&
+        (!inc.effectiveTo || inc.effectiveTo >= now)
       );
 
-      if (financeProg) {
-        financeAPR = Number((financeProg as any).apr || (financeProg as any).buyRateApr || 0);
-        if (!lenderName) lenderName = (financeProg as any).lender?.name || null;
-      }
+      const selectedIncentives = buildCatalogSelectedIncentiveIds(matchedIncentives.map(inc => ({
+        id: inc.id,
+        name: inc.name,
+        amountCents: inc.amountCents,
+        type: inc.type === 'conditional' ? 'special' : inc.type,
+        isDefault: inc.type !== 'conditional',
+      })));
 
-      if (!financeAPR) financeAPR = trim.baseAPR || 0;
+      const [leaseQuote, financeQuote] = await Promise.all([
+        requestedMode === 'lease'
+          ? calculateCatalogQuote({
+              trim,
+              makeName,
+              modelName,
+              year,
+              type: 'lease',
+              term: requestedTerm,
+              mileage: requestedMileage,
+              downPaymentCents: downCents,
+              selectedIncentives,
+              tier: requestedTier,
+            })
+          : Promise.resolve(null),
+        requestedMode === 'finance'
+          ? calculateCatalogQuote({
+              trim,
+              makeName,
+              modelName,
+              year,
+              type: 'finance',
+              term: requestedTerm,
+              mileage: requestedMileage,
+              downPaymentCents: downCents,
+              selectedIncentives,
+              tier: requestedTier,
+            })
+          : Promise.resolve(null),
+      ]);
 
-      // Calculate finance payment
-      let financePaymentCents: number | null = null;
-      if (financeAPR > 0) {
-        try {
-          const result = PureMathEngine.calculateFinance({
-            sellingPriceCents,
-            totalIncentivesCents: 0,
-            apr: financeAPR,
-            term: requestedTerm,
-            downPaymentCents: downCents,
-            docFeeCents,
-            dmvFeeCents,
-            brokerFeeCents,
-            taxRate
-          });
-          financePaymentCents = result.finalPaymentCents;
-        } catch {
-          // Calculation failed
-        }
-      }
-
-      // Status: ready only if has MSRP + at least one valid calculation
-      const hasCalculation = leasePaymentCents !== null || financePaymentCents !== null;
-      const status = hasCalculation ? 'ready' : 'incomplete';
-
-      entries.push({
-        id: trim.id,
-        make: makeName,
-        model: modelName,
-        trim: trimName,
+      return formatCatalogEntryFromQuote({
+        trim,
+        makeName,
+        modelName,
         year,
-        msrp: msrpCents / 100,
-        bodyStyle: (trim as any).bodyStyle || null,
-        imageUrl: photoUrl || trim.model.imageUrl || null,
-        leasePayment: leasePaymentCents ? leasePaymentCents / 100 : null,
-        leaseTerm: requestedTerm,
-        leaseMileage: requestedMileage,
-        leaseDown: requestedDown,
-        leaseMF: leaseMF,
-        leaseRV: leaseRV,
-        financePayment: financePaymentCents ? financePaymentCents / 100 : null,
-        financeTerm: requestedTerm,
-        financeAPR: financeAPR,
-        financeDown: requestedDown,
-        totalIncentivesCents,
-        incentives: matchedIncentives.map(i => ({ name: i.name, amountCents: i.amountCents, type: i.type })),
-        sellingPrice: sellingPriceCents / 100,
-        savings: totalIncentivesCents / 100,
-        status,
-        missingFields,
-        lenderName
+        photoUrl,
+        requestedTerm,
+        requestedDown,
+        requestedMileage,
+        mode: requestedMode,
+        leaseQuote,
+        financeQuote,
+        matchedIncentives: matchedIncentives.map(i => ({
+          id: i.id,
+          name: i.name,
+          amountCents: i.amountCents,
+          type: i.type === 'conditional' ? 'special' : i.type,
+          isDefault: i.type !== 'conditional',
+        })),
       });
-    }
+    });
 
     // Cache full result
-    catalogCache.set(cacheKey, entries);
+    const readyEntries = getReadyCatalogEntries(entries);
+    const availableMakes = Array.from(new Set(readyEntries.map(entry => entry.make))).sort();
+    catalogCache.set(cacheKey, {
+      entries,
+      totalCount: readyEntries.length,
+      availableMakes,
+    });
 
     // Apply filters and return
-    const readyEntries = getReadyCatalogEntries(entries);
     const filtered = applyFilters(entries, {
       make: make as string,
       minPrice: minPrice as string,
       maxPrice: maxPrice as string,
       bodyStyle: bodyStyle as string,
       sort: sort as string,
-      limit: qLimit as string,
+      limit: requestedLimit.toString(),
       mode: qMode as string,
     });
     res.json({
       entries: filtered,
       totalCount: readyEntries.length,
-      availableMakes: Array.from(new Set(readyEntries.map(entry => entry.make))).sort(),
+      availableMakes,
     });
   } catch (error: any) {
     console.error('Catalog error:', error);

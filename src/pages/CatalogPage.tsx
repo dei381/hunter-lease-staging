@@ -69,7 +69,8 @@ export const CatalogPage = () => {
       mileage: mileageNum.toString(),
       tier,
       mode: displayMode,
-      sort: sortBy
+      sort: sortBy,
+      limit: '20'
     });
 
     if (selectedMake !== 'All') params.set('make', selectedMake);
