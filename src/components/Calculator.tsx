@@ -14,6 +14,7 @@ import { TradeInEstimator } from './TradeInEstimator';
 import { useDebounce } from '../hooks/useDebounce';
 import { useCarData } from '../hooks/useCarData';
 import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
+import { getDisplayedSellingPrice } from '../utils/vehicleCostSummary';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -336,16 +337,23 @@ export const Calculator: React.FC<CalculatorProps> = ({
       onChange?.({
         ...currentCar,
         payment: calculatedPayment,
+        quoteStatus,
         type: calcType,
         down,
         term: `${term} mo`,
         tier,
         mileage,
         zip: zipCode,
+        sellingPrice: typeof quoteData?.sellingPriceCents === 'number' ? quoteData.sellingPriceCents / 100 : undefined,
+        totalIncentives: typeof quoteData?.totalIncentivesCents === 'number' ? quoteData.totalIncentivesCents / 100 : undefined,
+        tco: quoteData?.tco ? {
+          totalCost: quoteData.tco.totalCostCents / 100,
+          monthlyAverage: quoteData.tco.monthlyAverageCents / 100,
+        } : undefined,
         source: isCustomCar ? 'custom_calculator' : 'catalog_deal'
       });
     }
-  }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, zipCode, isCustomCar, onChange]);
+  }, [currentCar, calculatedPayment, quoteStatus, calcType, down, term, tier, mileage, zipCode, quoteData, isCustomCar, onChange]);
 
   const totalIncentives = useMemo(() => {
     if (quoteData?.totalIncentivesCents !== undefined) {
@@ -359,6 +367,14 @@ export const Calculator: React.FC<CalculatorProps> = ({
       return sum;
     }, 0) || 0;
   }, [quoteData, effectiveIncentives, selectedIncentives, isFirstTimeBuyer]);
+
+  const displayedSellingPrice = useMemo(() => getDisplayedSellingPrice({
+    quoteSellingPrice: typeof quoteData?.sellingPriceCents === 'number' ? quoteData.sellingPriceCents / 100 : undefined,
+    msrp: Number(currentCar?.msrp) || 0,
+    savings: currentCar?.savings || 0,
+    totalIncentives,
+    showIncentives,
+  }), [quoteData, currentCar, totalIncentives, showIncentives]);
 
   const marketAvgRatio = useMemo(() => {
     if (!currentCar || !currentCar.displayPayment) return 1.267;
@@ -944,7 +960,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
               <div className="pt-2 flex justify-between items-center border-t border-[var(--b2)]">
                 <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
                 <span className="text-lg font-display text-[var(--lime)]">
-                  {fmt(quoteData?.sellingPriceCents !== undefined ? quoteData.sellingPriceCents / 100 : ((Number(currentCar?.msrp) || 0) - (currentCar?.savings || 0) - (showIncentives ? totalIncentives : 0)))}
+                  {fmt(displayedSellingPrice)}
                 </span>
               </div>
             </div>

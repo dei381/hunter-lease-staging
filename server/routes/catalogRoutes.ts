@@ -1,12 +1,12 @@
 import express from 'express';
 import prisma from '../lib/db';
-import NodeCache from 'node-cache';
 import { DealEngineFacade } from '../services/engine/DealEngineFacade';
 import { findCatalogPhotoRecord, resolveCatalogImageUrl } from '../utils/catalogImage';
+import { createAsyncTtlCache } from '../utils/asyncTtlCache';
 import { buildCatalogSelectedIncentiveIds, CatalogEntry, formatCatalogEntryFromQuote, toCatalogIncentiveForSelection } from '../utils/catalogQuote';
 
 const router = express.Router();
-const catalogCache = new NodeCache({ stdTTL: 300 }); // 5 min cache
+const catalogCache = createAsyncTtlCache<CatalogCachePayload>({ ttlMs: 300_000 });
 
 // Target brands — only these appear in the catalog
 const TARGET_BRANDS = [
@@ -18,7 +18,7 @@ const TARGET_BRANDS = [
 const MIN_MSRP_CENTS = 1800000; // $18,000
 const DEFAULT_CATALOG_LIMIT = 20;
 const MAX_CATALOG_LIMIT = 30;
-const CATALOG_QUOTE_CONCURRENCY = 10;
+const CATALOG_QUOTE_CONCURRENCY = 20;
 
 interface CatalogCachePayload {
   entries: CatalogEntry[];
@@ -90,6 +90,163 @@ async function calculateCatalogQuote(args: {
   });
 }
 
+async function buildCatalogCachePayload(args: {
+  makeNameFilter: { equals: string } | { in: string[] };
+  requestedTerm: number;
+  requestedDown: number;
+  requestedMileage: number;
+  requestedMode: 'lease' | 'finance';
+  requestedTier: string;
+}): Promise<CatalogCachePayload> {
+  const {
+    makeNameFilter,
+    requestedTerm,
+    requestedDown,
+    requestedMileage,
+    requestedMode,
+    requestedTier,
+  } = args;
+
+  const downCents = requestedDown * 100;
+
+  const trims = await prisma.vehicleTrim.findMany({
+    where: {
+      isActive: true,
+      msrpCents: { gte: MIN_MSRP_CENTS },
+      model: { isActive: true, make: { isActive: true, name: makeNameFilter } }
+    },
+    include: {
+      model: { include: { make: true } }
+    },
+    orderBy: [
+      { msrpCents: 'asc' },
+      { name: 'asc' }
+    ]
+  });
+
+  const photosRecord = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
+  const carPhotos: any[] = photosRecord?.data ? JSON.parse(photosRecord.data) : [];
+
+  const now = new Date();
+  const incentives = await prisma.oemIncentiveProgram.findMany({
+    where: {
+      isActive: true,
+      status: 'PUBLISHED',
+      OR: [
+        { effectiveFrom: null },
+        { effectiveFrom: { lte: now } }
+      ]
+    }
+  });
+
+  const entries = await mapWithConcurrency(trims, CATALOG_QUOTE_CONCURRENCY, async (trim) => {
+    const makeName = trim.model.make.name;
+    const rawModelName = trim.model.name;
+    const modelName = rawModelName.startsWith(makeName + ' ') ? rawModelName.slice(makeName.length + 1) : rawModelName;
+    const trimName = trim.name;
+    const msrpCents = trim.msrpCents;
+    const year = (trim.model as any).years?.[0] || new Date().getFullYear();
+
+    let trimPhotos: string[] = [];
+    try {
+      if (trim.photoLinks) trimPhotos = JSON.parse(trim.photoLinks);
+    } catch {}
+
+    const photoUrl = resolveCatalogImageUrl({
+      carPhotos,
+      makeName,
+      rawModelName,
+      modelName,
+      trimPhotos,
+      modelImageUrl: (trim.model as any).imageUrl || null,
+    });
+
+    const matchedIncentives = incentives.filter(inc =>
+      (inc.make === makeName || inc.make === 'ALL') &&
+      (!inc.model || inc.model === modelName || inc.model === 'ALL' || inc.model === '') &&
+      (!inc.trim || inc.trim === trimName || inc.trim === 'ALL' || inc.trim === '') &&
+      (inc.dealApplicability === 'ALL' || inc.dealApplicability === requestedMode.toUpperCase()) &&
+      (!inc.effectiveTo || inc.effectiveTo >= now)
+    );
+
+    const catalogIncentives = matchedIncentives.map(inc => toCatalogIncentiveForSelection(inc, requestedMode));
+    const selectedIncentives = buildCatalogSelectedIncentiveIds(catalogIncentives);
+
+    const [leaseQuote, financeQuote] = await Promise.all([
+      requestedMode === 'lease'
+        ? calculateCatalogQuote({
+            trim,
+            makeName,
+            modelName,
+            year,
+            type: 'lease',
+            term: requestedTerm,
+            mileage: requestedMileage,
+            downPaymentCents: downCents,
+            selectedIncentives,
+            tier: requestedTier,
+          })
+        : Promise.resolve(null),
+      requestedMode === 'finance'
+        ? calculateCatalogQuote({
+            trim,
+            makeName,
+            modelName,
+            year,
+            type: 'finance',
+            term: requestedTerm,
+            mileage: requestedMileage,
+            downPaymentCents: downCents,
+            selectedIncentives,
+            tier: requestedTier,
+          })
+        : Promise.resolve(null),
+    ]);
+
+    return formatCatalogEntryFromQuote({
+      trim,
+      makeName,
+      modelName,
+      year,
+      photoUrl,
+      requestedTerm,
+      requestedDown,
+      requestedMileage,
+      mode: requestedMode,
+      leaseQuote,
+      financeQuote,
+      matchedIncentives: catalogIncentives,
+    });
+  });
+
+  const readyEntries = getReadyCatalogEntries(entries);
+  const availableMakes = Array.from(new Set(readyEntries.map(entry => entry.make))).sort();
+
+  return {
+    entries,
+    totalCount: readyEntries.length,
+    availableMakes,
+  };
+}
+
+export async function warmCatalogCache() {
+  const requestedTerm = 36;
+  const requestedDown = 3000;
+  const requestedMileage = 10000;
+  const requestedTier = 't1';
+  const requestedMode = 'lease' as const;
+  const cacheKey = `catalog_all_${requestedTerm}_${requestedDown}_${requestedMileage}_${requestedTier}_${requestedMode}`;
+
+  await catalogCache.getOrLoad(cacheKey, () => buildCatalogCachePayload({
+    makeNameFilter: { in: TARGET_BRANDS },
+    requestedTerm,
+    requestedDown,
+    requestedMileage,
+    requestedMode,
+    requestedTier,
+  }));
+}
+
 /**
  * GET /api/v2/catalog
  * Returns calculated catalog entries for all vehicles with valid data.
@@ -105,7 +262,6 @@ router.get('/', async (req, res) => {
     const requestedTerm = parseInt(qTerm as string) || 36;
     const requestedDown = parseInt(qDown as string) || 0;
     const requestedMileage = parseInt(qMileage as string) || 10000;
-    const downCents = requestedDown * 100;
     const requestedMode = qMode === 'finance' ? 'finance' : 'lease';
     const requestedTier = typeof qTier === 'string' ? qTier : 't1';
     const requestedLimit = parseCatalogLimit(qLimit);
@@ -115,157 +271,17 @@ router.get('/', async (req, res) => {
 
     // Cache key based on params
     const cacheKey = `catalog_${make || 'all'}_${requestedTerm}_${requestedDown}_${requestedMileage}_${requestedTier}_${requestedMode}`;
-    const cached = catalogCache.get<CatalogCachePayload>(cacheKey);
-    if (cached) {
-      const filtered = applyFilters(cached.entries, {
-        make: make as string,
-        minPrice: minPrice as string,
-        maxPrice: maxPrice as string,
-        bodyStyle: bodyStyle as string,
-        sort: sort as string,
-        limit: requestedLimit.toString(),
-        page: requestedPage.toString(),
-        mode: qMode as string,
-      });
-      return res.json({
-        entries: filtered,
-        totalCount: cached.totalCount,
-        availableMakes: cached.availableMakes,
-      });
-    }
-
-    // 1. Fetch all active trims with their model and make (filtered to target brands + min MSRP)
-    const trims = await prisma.vehicleTrim.findMany({
-      where: {
-        isActive: true,
-        msrpCents: { gte: MIN_MSRP_CENTS },
-        model: { isActive: true, make: { isActive: true, name: makeNameFilter } }
-      },
-      include: {
-        model: { include: { make: true } }
-      },
-      orderBy: [
-        { msrpCents: 'asc' },
-        { name: 'asc' }
-      ]
-    });
-
-    // 2b. Fetch car photos
-    const photosRecord = await prisma.siteSettings.findUnique({ where: { id: 'car_photos' } });
-    const carPhotos: any[] = photosRecord?.data ? JSON.parse(photosRecord.data) : [];
-    console.log(`[Catalog] Loaded ${carPhotos.length} car photos`);
-
-    // 3. Fetch active incentives for display/default selection. The quote engine still resolves
-    // incentives itself, so catalog math and the VDP calculator share one source of truth.
-    const now = new Date();
-    const incentives = await prisma.oemIncentiveProgram.findMany({
-      where: {
-        isActive: true,
-        status: 'PUBLISHED',
-        OR: [
-          { effectiveFrom: null },
-          { effectiveFrom: { lte: now } }
-        ]
-      }
-    });
-
-    // 5. Build catalog entries
-    const entries = await mapWithConcurrency(trims, CATALOG_QUOTE_CONCURRENCY, async (trim) => {
-      const makeName = trim.model.make.name;
-      // Strip brand prefix from model name (e.g. "Ram 1500 Pickup" → "1500 Pickup" for make "Ram")
-      const rawModelName = trim.model.name;
-      const modelName = rawModelName.startsWith(makeName + ' ') ? rawModelName.slice(makeName.length + 1) : rawModelName;
-      const trimName = trim.name;
-      const msrpCents = trim.msrpCents;
-      const year = (trim.model as any).years?.[0] || new Date().getFullYear();
-
-      // Find matching photo — priority: trim photoLinks > SiteSettings car_photos > model imageUrl
-      let trimPhotos: string[] = [];
-      try {
-        if (trim.photoLinks) trimPhotos = JSON.parse(trim.photoLinks);
-      } catch {}
-
-      const photoUrl = resolveCatalogImageUrl({
-        carPhotos,
-        makeName,
-        rawModelName,
-        modelName,
-        trimPhotos,
-        modelImageUrl: (trim.model as any).imageUrl || null,
-      });
-
-      // Find matching incentives for display and for selecting advertised defaults.
-      // Conditional rebates are still shown in the detail calculator, but not baked into
-      // catalog-card payments unless they are truly default/advertised incentives.
-      const matchedIncentives = incentives.filter(inc =>
-        (inc.make === makeName || inc.make === 'ALL') &&
-        (!inc.model || inc.model === modelName || inc.model === 'ALL' || inc.model === '') &&
-        (!inc.trim || inc.trim === trimName || inc.trim === 'ALL' || inc.trim === '') &&
-        (inc.dealApplicability === 'ALL' || inc.dealApplicability === requestedMode.toUpperCase()) &&
-        (!inc.effectiveTo || inc.effectiveTo >= now)
-      );
-
-      const catalogIncentives = matchedIncentives.map(inc => toCatalogIncentiveForSelection(inc, requestedMode));
-      const selectedIncentives = buildCatalogSelectedIncentiveIds(catalogIncentives);
-
-      const [leaseQuote, financeQuote] = await Promise.all([
-        requestedMode === 'lease'
-          ? calculateCatalogQuote({
-              trim,
-              makeName,
-              modelName,
-              year,
-              type: 'lease',
-              term: requestedTerm,
-              mileage: requestedMileage,
-              downPaymentCents: downCents,
-              selectedIncentives,
-              tier: requestedTier,
-            })
-          : Promise.resolve(null),
-        requestedMode === 'finance'
-          ? calculateCatalogQuote({
-              trim,
-              makeName,
-              modelName,
-              year,
-              type: 'finance',
-              term: requestedTerm,
-              mileage: requestedMileage,
-              downPaymentCents: downCents,
-              selectedIncentives,
-              tier: requestedTier,
-            })
-          : Promise.resolve(null),
-      ]);
-
-      return formatCatalogEntryFromQuote({
-        trim,
-        makeName,
-        modelName,
-        year,
-        photoUrl,
-        requestedTerm,
-        requestedDown,
-        requestedMileage,
-        mode: requestedMode,
-        leaseQuote,
-        financeQuote,
-        matchedIncentives: catalogIncentives,
-      });
-    });
-
-    // Cache full result
-    const readyEntries = getReadyCatalogEntries(entries);
-    const availableMakes = Array.from(new Set(readyEntries.map(entry => entry.make))).sort();
-    catalogCache.set(cacheKey, {
-      entries,
-      totalCount: readyEntries.length,
-      availableMakes,
-    });
+    const cached = await catalogCache.getOrLoad(cacheKey, () => buildCatalogCachePayload({
+      makeNameFilter,
+      requestedTerm,
+      requestedDown,
+      requestedMileage,
+      requestedMode,
+      requestedTier,
+    }));
 
     // Apply filters and return
-    const filtered = applyFilters(entries, {
+    const filtered = applyFilters(cached.entries, {
       make: make as string,
       minPrice: minPrice as string,
       maxPrice: maxPrice as string,
@@ -277,8 +293,8 @@ router.get('/', async (req, res) => {
     });
     res.json({
       entries: filtered,
-      totalCount: readyEntries.length,
-      availableMakes,
+      totalCount: cached.totalCount,
+      availableMakes: cached.availableMakes,
     });
   } catch (error: any) {
     console.error('Catalog error:', error);
@@ -457,7 +473,7 @@ router.patch('/:trimId/toggle', async (req, res) => {
     });
 
     // Clear catalog cache
-    catalogCache.flushAll();
+    catalogCache.clear();
 
     res.json({ id: updated.id, isActive: updated.isActive });
   } catch (error: any) {

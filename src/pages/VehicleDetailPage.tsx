@@ -16,6 +16,7 @@ import {
   TrendingDown, Check, Users, ThumbsUp, ThumbsDown, ChevronRight, Fuel
 } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { getVehicleCostSummary } from '../utils/vehicleCostSummary';
 import { auth } from '../firebase';
 import { toast } from 'react-hot-toast';
 import { getBodyStyle, getFuelType } from '../data/deals';
@@ -251,6 +252,10 @@ export const VehicleDetailPage = () => {
   }
 
   const msrp = vehicle.msrpCents / 100;
+  const costSummary = getVehicleCostSummary({
+    msrp,
+    selectedConfig,
+  });
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] pb-32 lg:pb-20 selection:bg-[var(--lime)] selection:text-black">
@@ -681,16 +686,16 @@ export const VehicleDetailPage = () => {
                         <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
                           <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.monthlyAvg}</div>
                           <div className="text-2xl font-display text-[var(--lime)]">
-                            {selectedConfig?.payment ? fmt(selectedConfig.payment + Math.round(3000 / 36)) : fmt(Math.round(msrp * 0.015 + 3000 / 36))}
+                            {fmt(costSummary.monthlyAverage)}
                           </div>
                           <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ {t.calc.moShort}</div>
                         </div>
                         <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
                           <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.totalTCO}</div>
                           <div className="text-2xl font-display text-[var(--w)]">
-                            {selectedConfig?.payment ? fmt(selectedConfig.payment * 36 + 3000) : fmt(Math.round(msrp * 0.015 * 36 + 3000))}
+                            {fmt(costSummary.totalCost)}
                           </div>
-                          <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ 36 {t.calc.moShort}</div>
+                          <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ {costSummary.termMonths} {t.calc.moShort}</div>
                         </div>
                       </div>
 

@@ -16,7 +16,7 @@ import { AuditLogger } from './server/services/AuditLogger';
 import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth, dealerAuth, userAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
-import catalogRoutes from "./server/routes/catalogRoutes";
+import catalogRoutes, { warmCatalogCache } from "./server/routes/catalogRoutes";
 import { MarketcheckInventoryService } from "./server/services/MarketcheckInventoryService";
 
 import { JobQueue } from './server/services/JobQueue';
@@ -5440,6 +5440,9 @@ const mapDealsForFrontend = (
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    warmCatalogCache().catch(error => {
+      console.error('Catalog warmup failed:', error);
+    });
   });
 }
 
