@@ -1,8 +1,43 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCatalogSelectedIncentiveIds, formatCatalogEntryFromQuote } from '../utils/catalogQuote';
+import {
+  buildCatalogSelectedIncentiveIds,
+  formatCatalogEntryFromQuote,
+  toCatalogIncentiveForSelection,
+} from '../utils/catalogQuote';
 
 describe('catalog quote parity helpers', () => {
+  it('marks lease manufacturer incentives as default for detail calculator parity', () => {
+    const incentive = toCatalogIncentiveForSelection({
+      id: 'lease-cash',
+      name: 'TFS Customer Cash',
+      amountCents: 150000,
+      type: 'manufacturer',
+      dealApplicability: 'LEASE',
+    });
+
+    expect(incentive).toEqual({
+      id: 'lease-cash',
+      name: 'TFS Customer Cash',
+      amountCents: 150000,
+      type: 'manufacturer',
+      isDefault: true,
+      dealApplicability: 'LEASE',
+    });
+  });
+
+  it('does not mark finance-only manufacturer incentives as default on lease detail pages', () => {
+    const incentive = toCatalogIncentiveForSelection({
+      id: 'finance-cash',
+      name: 'TFS Customer Cash',
+      amountCents: 100000,
+      type: 'manufacturer',
+      dealApplicability: 'FINANCE',
+    }, 'lease');
+
+    expect(incentive.isDefault).toBe(false);
+  });
+
   it('selects only advertised default incentives for catalog quote calculations', () => {
     const incentives = [
       { id: 'military', type: 'conditional', isDefault: false },

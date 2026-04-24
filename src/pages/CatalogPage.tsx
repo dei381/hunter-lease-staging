@@ -25,6 +25,8 @@ export const CatalogPage = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [availableMakes, setAvailableMakes] = useState<string[]>(['All']);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [brokenImageIds, setBrokenImageIds] = useState<string[]>([]);
 
@@ -49,6 +51,11 @@ export const CatalogPage = () => {
   const debouncedDown = useDebounce(downPayment, 500);
 
   useEffect(() => {
+    setCurrentPage(1);
+    setItems([]);
+  }, [selectedMake, selectedTerm, debouncedDown, sortBy, maxPayment, tier, selectedMileage, displayMode]);
+
+  useEffect(() => {
     const allowedTerms = displayMode === 'lease' ? [24, 36, 48] : [48, 60, 72];
     const fallbackTerm = displayMode === 'lease' ? 36 : 60;
 
@@ -59,7 +66,11 @@ export const CatalogPage = () => {
 
   // Fetch catalog
   useEffect(() => {
-    setIsLoading(true);
+    if (currentPage === 1) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
     setError(null);
 
     const mileageNum = parseInt(selectedMileage.replace('k', '')) * 1000;
@@ -70,7 +81,8 @@ export const CatalogPage = () => {
       tier,
       mode: displayMode,
       sort: sortBy,
-      limit: '20'
+      limit: '20',
+      page: currentPage.toString()
     });
 
     if (selectedMake !== 'All') params.set('make', selectedMake);
@@ -88,19 +100,26 @@ export const CatalogPage = () => {
           ? ['All', ...Array.from(new Set(nextItems.map((item: any) => item.make))).sort()]
           : ['All', ...(data.availableMakes || [])];
 
-        setItems(nextItems);
+        setItems(prev => {
+          if (currentPage === 1) return nextItems;
+          const byId = new Map(prev.map((item: any) => [item.id, item]));
+          nextItems.forEach((item: any) => byId.set(item.id, item));
+          return Array.from(byId.values());
+        });
         setTotalCount(nextTotalCount);
         setAvailableMakes(nextMakes);
-        setBrokenImageIds([]);
+        if (currentPage === 1) setBrokenImageIds([]);
         setIsLoading(false);
+        setIsLoadingMore(false);
       })
       .catch(err => {
         console.error('Failed to fetch catalog:', err);
         setError(err.message);
         setTotalCount(0);
         setIsLoading(false);
+        setIsLoadingMore(false);
       });
-  }, [selectedMake, selectedTerm, debouncedDown, sortBy, maxPayment, tier, selectedMileage, displayMode]);
+  }, [selectedMake, selectedTerm, debouncedDown, sortBy, maxPayment, tier, selectedMileage, displayMode, currentPage]);
 
   // Derived data
   const bodyStyles = useMemo(() => {
@@ -120,6 +139,8 @@ export const CatalogPage = () => {
       maxPayment,
     });
   }, [items, searchQuery, selectedBodyStyle, selectedModel, displayMode, maxPayment]);
+
+  const hasMoreServerItems = items.length < totalCount;
 
   const handleCardClick = (item: any) => {
     navigate(`/catalog/${item.id}`, { state: { displayMode } });
@@ -611,6 +632,21 @@ export const CatalogPage = () => {
                 )}
               </AnimatePresence>
             </div>
+
+            {!isLoading && !error && hasMoreServerItems && (
+              <div className="mt-8 flex justify-center">
+                <button
+                  onClick={() => setCurrentPage(page => page + 1)}
+                  disabled={isLoadingMore}
+                  className="px-6 py-3 rounded-xl border border-[var(--b2)] bg-[var(--s1)] text-[10px] font-bold uppercase tracking-widest text-[var(--w)] hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all disabled:opacity-60 disabled:cursor-wait inline-flex items-center gap-2"
+                >
+                  {isLoadingMore && <Loader2 size={14} className="animate-spin" />}
+                  {isLoadingMore
+                    ? (language === 'ru' ? 'Загружаем...' : 'Loading...')
+                    : (language === 'ru' ? 'Показать еще' : 'Load more')}
+                </button>
+              </div>
+            )}
           </main>
         </div>
       </div>

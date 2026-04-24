@@ -122,7 +122,10 @@ export const VehicleDetailPage = () => {
       amount: inc.amountCents / 100,
       type: inc.type,
       dbType: inc.type,
-      isDefault: inc.type === 'manufacturer' || inc.type === 'OEM_CASH'
+      dealApplicability: inc.dealApplicability,
+      isDefault: typeof inc.isDefault === 'boolean'
+        ? inc.isDefault
+        : inc.type === 'manufacturer' || inc.type === 'OEM_CASH'
     })),
   } : null, [vehicle, state?.displayMode]);
 

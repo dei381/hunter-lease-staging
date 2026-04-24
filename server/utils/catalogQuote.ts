@@ -34,6 +34,15 @@ interface IncentiveForCatalogSelection {
   amountCents?: number | null;
   type?: string | null;
   isDefault?: boolean | null;
+  dealApplicability?: string | null;
+}
+
+interface DbIncentiveForCatalogSelection {
+  id?: string | null;
+  name?: string | null;
+  amountCents?: number | null;
+  type?: string | null;
+  dealApplicability?: string | null;
 }
 
 interface QuoteForCatalogEntry {
@@ -82,6 +91,28 @@ export function buildCatalogSelectedIncentiveIds(incentives: IncentiveForCatalog
     .filter(isCatalogAdvertisedDefaultIncentive)
     .map(incentive => incentive.id)
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+export function toCatalogIncentiveForSelection(
+  incentive: DbIncentiveForCatalogSelection,
+  mode?: CatalogQuoteMode,
+): IncentiveForCatalogSelection {
+  const dealApplicability = String(incentive.dealApplicability || 'ALL').toUpperCase();
+  const normalizedType = incentive.type === 'conditional' ? 'special' : incentive.type;
+  const matchesMode = !mode || dealApplicability === 'ALL' || dealApplicability === mode.toUpperCase();
+  const isDefault = matchesMode && isCatalogAdvertisedDefaultIncentive({
+    type: normalizedType,
+    isDefault: true,
+  });
+
+  return {
+    id: incentive.id,
+    name: incentive.name,
+    amountCents: incentive.amountCents,
+    type: normalizedType,
+    isDefault,
+    dealApplicability,
+  };
 }
 
 function isSuccessfulQuote(quote?: QuoteForCatalogEntry | null): quote is QuoteForCatalogEntry {

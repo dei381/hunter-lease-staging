@@ -3,7 +3,7 @@ import prisma from '../lib/db';
 import NodeCache from 'node-cache';
 import { DealEngineFacade } from '../services/engine/DealEngineFacade';
 import { findCatalogPhotoRecord, resolveCatalogImageUrl } from '../utils/catalogImage';
-import { buildCatalogSelectedIncentiveIds, CatalogEntry, formatCatalogEntryFromQuote } from '../utils/catalogQuote';
+import { buildCatalogSelectedIncentiveIds, CatalogEntry, formatCatalogEntryFromQuote, toCatalogIncentiveForSelection } from '../utils/catalogQuote';
 
 const router = express.Router();
 const catalogCache = new NodeCache({ stdTTL: 300 }); // 5 min cache
@@ -34,6 +34,11 @@ function parseCatalogLimit(limit: unknown): number {
   const parsed = typeof limit === 'string' ? parseInt(limit, 10) : NaN;
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_CATALOG_LIMIT;
   return Math.min(parsed, MAX_CATALOG_LIMIT);
+}
+
+function parseCatalogPage(page: unknown): number {
+  const parsed = typeof page === 'string' ? parseInt(page, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
@@ -94,7 +99,7 @@ router.get('/', async (req, res) => {
   try {
     const {
       make, minPrice, maxPrice, bodyStyle, sort, term: qTerm,
-      down: qDown, mileage: qMileage, tier: qTier, limit: qLimit, mode: qMode
+      down: qDown, mileage: qMileage, tier: qTier, limit: qLimit, mode: qMode, page: qPage
     } = req.query;
 
     const requestedTerm = parseInt(qTerm as string) || 36;
@@ -104,11 +109,12 @@ router.get('/', async (req, res) => {
     const requestedMode = qMode === 'finance' ? 'finance' : 'lease';
     const requestedTier = typeof qTier === 'string' ? qTier : 't1';
     const requestedLimit = parseCatalogLimit(qLimit);
+    const requestedPage = parseCatalogPage(qPage);
     const selectedMake = typeof make === 'string' && make !== 'All' ? make : null;
     const makeNameFilter = selectedMake ? { equals: selectedMake } : { in: TARGET_BRANDS };
 
     // Cache key based on params
-    const cacheKey = `catalog_${make || 'all'}_${requestedTerm}_${requestedDown}_${requestedMileage}_${requestedTier}_${requestedMode}_${requestedLimit}`;
+    const cacheKey = `catalog_${make || 'all'}_${requestedTerm}_${requestedDown}_${requestedMileage}_${requestedTier}_${requestedMode}`;
     const cached = catalogCache.get<CatalogCachePayload>(cacheKey);
     if (cached) {
       const filtered = applyFilters(cached.entries, {
@@ -118,6 +124,7 @@ router.get('/', async (req, res) => {
         bodyStyle: bodyStyle as string,
         sort: sort as string,
         limit: requestedLimit.toString(),
+        page: requestedPage.toString(),
         mode: qMode as string,
       });
       return res.json({
@@ -140,8 +147,7 @@ router.get('/', async (req, res) => {
       orderBy: [
         { msrpCents: 'asc' },
         { name: 'asc' }
-      ],
-      take: requestedLimit
+      ]
     });
 
     // 2b. Fetch car photos
@@ -199,13 +205,8 @@ router.get('/', async (req, res) => {
         (!inc.effectiveTo || inc.effectiveTo >= now)
       );
 
-      const selectedIncentives = buildCatalogSelectedIncentiveIds(matchedIncentives.map(inc => ({
-        id: inc.id,
-        name: inc.name,
-        amountCents: inc.amountCents,
-        type: inc.type === 'conditional' ? 'special' : inc.type,
-        isDefault: inc.type !== 'conditional',
-      })));
+      const catalogIncentives = matchedIncentives.map(inc => toCatalogIncentiveForSelection(inc, requestedMode));
+      const selectedIncentives = buildCatalogSelectedIncentiveIds(catalogIncentives);
 
       const [leaseQuote, financeQuote] = await Promise.all([
         requestedMode === 'lease'
@@ -250,13 +251,7 @@ router.get('/', async (req, res) => {
         mode: requestedMode,
         leaseQuote,
         financeQuote,
-        matchedIncentives: matchedIncentives.map(i => ({
-          id: i.id,
-          name: i.name,
-          amountCents: i.amountCents,
-          type: i.type === 'conditional' ? 'special' : i.type,
-          isDefault: i.type !== 'conditional',
-        })),
+        matchedIncentives: catalogIncentives,
       });
     });
 
@@ -277,6 +272,7 @@ router.get('/', async (req, res) => {
       bodyStyle: bodyStyle as string,
       sort: sort as string,
       limit: requestedLimit.toString(),
+      page: requestedPage.toString(),
       mode: qMode as string,
     });
     res.json({
@@ -389,13 +385,7 @@ router.get('/:trimId', async (req, res) => {
       baseAPR: trim.baseAPR,
       rv36: trim.rv36,
       leaseCashCents: trim.leaseCashCents,
-      incentives: matchedIncentives.map(i => ({
-        id: i.id,
-        name: i.name,
-        amountCents: i.amountCents,
-        type: i.type,
-        dealApplicability: i.dealApplicability
-      }))
+      incentives: matchedIncentives.map(i => toCatalogIncentiveForSelection(i, 'lease')),
     });
   } catch (error: any) {
     console.error('Catalog detail error:', error);
@@ -404,7 +394,7 @@ router.get('/:trimId', async (req, res) => {
 });
 
 function applyFilters(entries: CatalogEntry[], filters: {
-  make?: string; minPrice?: string; maxPrice?: string; bodyStyle?: string; sort?: string; limit?: string; mode?: string;
+  make?: string; minPrice?: string; maxPrice?: string; bodyStyle?: string; sort?: string; limit?: string; page?: string; mode?: string;
 }): CatalogEntry[] {
   let result = getReadyCatalogEntries(entries);
   const paymentForMode = (entry: CatalogEntry) => filters.mode === 'finance'
@@ -442,7 +432,10 @@ function applyFilters(entries: CatalogEntry[], filters: {
   }
 
   if (filters.limit) {
-    result = result.slice(0, parseInt(filters.limit));
+    const limit = parseInt(filters.limit, 10);
+    const page = filters.page ? Math.max(1, parseInt(filters.page, 10) || 1) : 1;
+    const start = (page - 1) * limit;
+    result = result.slice(start, start + limit);
   }
 
   return result;
