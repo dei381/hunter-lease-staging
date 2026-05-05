@@ -380,6 +380,68 @@ export class DataResolver {
     bankPrograms = finalPrograms;
 
     if (bankPrograms.length === 0) {
+      console.log('No bank programs found, attempting VehicleTrim fallback for:', {
+        make: vehicle.make, model: vehicle.model, trim: vehicle.trim
+      });
+
+      // Fallback: use baseMF/baseAPR/rv36 from VehicleTrim (set via brand admin global settings)
+      const trimRecord = await prisma.vehicleTrim.findFirst({
+        where: {
+          isActive: true,
+          name: { equals: vehicle.trim, mode: 'insensitive' },
+          model: {
+            isActive: true,
+            name: { equals: vehicle.model, mode: 'insensitive' },
+            make: {
+              isActive: true,
+              name: { equals: vehicle.make, mode: 'insensitive' }
+            }
+          }
+        }
+      });
+
+      // If no exact trim match, try any trim for this make/model to get brand-level defaults
+      const fallbackTrim = trimRecord || await prisma.vehicleTrim.findFirst({
+        where: {
+          isActive: true,
+          baseMF: { gt: 0 },
+          model: {
+            isActive: true,
+            name: { equals: vehicle.model, mode: 'insensitive' },
+            make: {
+              isActive: true,
+              name: { equals: vehicle.make, mode: 'insensitive' }
+            }
+          }
+        }
+      });
+
+      const fallbackMF = fallbackTrim?.baseMF || 0;
+      const fallbackAPR = fallbackTrim?.baseAPR || 0;
+      const fallbackRV = fallbackTrim?.rv36 || 0;
+
+      if (fallbackMF > 0 || fallbackAPR > 0) {
+        console.log(`Using VehicleTrim fallback: mf=${fallbackMF}, apr=${fallbackAPR}, rv=${fallbackRV}`);
+        return [{
+          id: 'trim-fallback',
+          lenderId: null,
+          lender: null,
+          mf: fallbackMF || null,
+          apr: fallbackAPR || null,
+          rv: fallbackRV > 0 ? fallbackRV : 0.55,
+          rebates: 0,
+          programType: context.quoteType,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim || null,
+          year: vehicle.year,
+          term: context.term,
+          mileage: context.mileage || 10000,
+          batchId: null,
+          batch: null
+        } as any];
+      }
+
       console.log('NO PROGRAMS FOUND. Debug info:', {
         batchId: activeBatch.id,
         programType: context.quoteType,

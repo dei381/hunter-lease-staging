@@ -32,40 +32,48 @@ export const getCarDb = async () => {
       }
     });
 
-    const formattedMakes = makes.map(make => ({
-      id: make.name.toLowerCase().replace(/\s+/g, '-'),
-      name: make.name,
-      tiers: [
-        { id: "t1", label: "Tier 1", score: "740+", aprAdd: 0, mfAdd: 0, cls: "r1" },
-        { id: "t2", label: "Tier 2", score: "700–739", aprAdd: 1.5, mfAdd: 0.00040, cls: "r2" },
-        { id: "t3", label: "Tier 3", score: "660–699", aprAdd: 4.5, mfAdd: 0.00120, cls: "r3" },
-        { id: "t4", label: "Tier 4", score: "620–659", aprAdd: 9.0, mfAdd: 0.00240, cls: "r4" }
-      ],
-      baseMF: 0.002,
-      baseAPR: 6.9,
-      models: make.models.map(model => ({
-        id: model.name.toLowerCase().replace(/\s+/g, '-'),
-        name: model.name,
-        class: 'Unknown',
-        msrpRange: '',
-        years: model.years && model.years.length > 0 ? model.years : [new Date().getFullYear()],
-        imageUrl: model.imageUrl,
-        mf: 0.00150,
-        rv36: 0.60,
-        baseAPR: 4.9,
-        leaseCash: 0,
-        trims: model.trims.map(trim => ({
-          trimId: trim.id,
-          name: trim.name,
-          msrp: trim.msrpCents / 100,
-          mf: trim.baseMF,
-          apr: trim.baseAPR,
-          rv36: trim.rv36,
-          leaseCash: trim.leaseCashCents / 100,
-          photoLinks: parsePhotoLinks(trim.photoLinks)
+    const formattedMakes = makes.map(make => {
+      // Derive make-level baseMF/baseAPR from the first trim that has a non-zero value
+      const allTrims = make.models.flatMap(m => m.trims);
+      const representativeTrim = allTrims.find(t => t.baseMF > 0) || allTrims.find(t => t.baseAPR > 0);
+      const derivedBaseMF = representativeTrim?.baseMF || 0.002;
+      const derivedBaseAPR = representativeTrim?.baseAPR || 6.9;
+
+      return {
+        id: make.name.toLowerCase().replace(/\s+/g, '-'),
+        name: make.name,
+        tiers: [
+          { id: "t1", label: "Tier 1", score: "740+", aprAdd: 0, mfAdd: 0, cls: "r1" },
+          { id: "t2", label: "Tier 2", score: "700–739", aprAdd: 1.5, mfAdd: 0.00040, cls: "r2" },
+          { id: "t3", label: "Tier 3", score: "660–699", aprAdd: 4.5, mfAdd: 0.00120, cls: "r3" },
+          { id: "t4", label: "Tier 4", score: "620–659", aprAdd: 9.0, mfAdd: 0.00240, cls: "r4" }
+        ],
+        baseMF: derivedBaseMF,
+        baseAPR: derivedBaseAPR,
+        models: make.models.map(model => ({
+          id: model.name.toLowerCase().replace(/\s+/g, '-'),
+          name: model.name,
+          class: 'Unknown',
+          msrpRange: '',
+          years: model.years && model.years.length > 0 ? model.years : [new Date().getFullYear()],
+          imageUrl: model.imageUrl,
+          mf: 0.00150,
+          rv36: 0.60,
+          baseAPR: 4.9,
+          leaseCash: 0,
+          trims: model.trims.map(trim => ({
+            trimId: trim.id,
+            name: trim.name,
+            msrp: trim.msrpCents / 100,
+            mf: trim.baseMF,
+            apr: trim.baseAPR,
+            rv36: trim.rv36,
+            leaseCash: trim.leaseCashCents / 100,
+            photoLinks: parsePhotoLinks(trim.photoLinks)
+          }))
         }))
-      }))
-    }));
+      };
+    });
 
     return { makes: formattedMakes };
   } catch (error) {
@@ -160,13 +168,17 @@ export const saveCarDb = async (data: any) => {
         for (const trimData of trims) {
           if (!trimData.name) continue;
           
+          // Use make-level baseMF/baseAPR as fallback when trim doesn't have its own value
+          const effectiveMF = Number(trimData.mf) || Number(makeData.baseMF) || 0;
+          const effectiveAPR = Number(trimData.apr) || Number(makeData.baseAPR) || 0;
+
           await prisma.vehicleTrim.upsert({
             where: { modelId_name: { modelId: model.id, name: trimData.name } },
             update: {
               isActive: true,
               msrpCents: Math.round(Number(trimData.msrp || 0) * 100),
-              baseMF: Number(trimData.mf || 0),
-              baseAPR: Number(trimData.apr || 0),
+              baseMF: effectiveMF,
+              baseAPR: effectiveAPR,
               rv36: Number(trimData.rv36 || 0),
               leaseCashCents: Math.round(Number(trimData.leaseCash || 0) * 100),
               ...(trimData.photoLinks ? { photoLinks: JSON.stringify(trimData.photoLinks) } : {})
@@ -175,8 +187,8 @@ export const saveCarDb = async (data: any) => {
               modelId: model.id,
               name: trimData.name,
               msrpCents: Math.round(Number(trimData.msrp || 0) * 100),
-              baseMF: Number(trimData.mf || 0),
-              baseAPR: Number(trimData.apr || 0),
+              baseMF: effectiveMF,
+              baseAPR: effectiveAPR,
               rv36: Number(trimData.rv36 || 0),
               leaseCashCents: Math.round(Number(trimData.leaseCash || 0) * 100),
               photoLinks: trimData.photoLinks ? JSON.stringify(trimData.photoLinks) : null,
