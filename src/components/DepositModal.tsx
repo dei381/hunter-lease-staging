@@ -261,8 +261,6 @@ export const DepositModal = ({
 
   const paymentMethods = [
     { id: 'card', name: language === 'ru' ? 'Банковская карта' : 'Credit Card', icon: <CreditCard size={20} />, desc: 'Stripe Secure' },
-    { id: 'zelle', name: 'Zelle', icon: <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center text-[10px] text-white font-bold">Z</div>, desc: '279-208-5707' },
-    { id: 'cashapp', name: 'Cash App', icon: <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center text-[10px] text-white font-bold">$</div>, desc: '$cargwin' },
   ];
 
   return createPortal(
