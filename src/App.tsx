@@ -1,6 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { ScrollToTop } from './components/ScrollToTop';
 import { Helmet } from 'react-helmet-async';
 import { SEO } from './components/SEO';
 import { Calculator } from './components/Calculator';
@@ -8,25 +9,9 @@ import { DealsGrid } from './components/DealsGrid';
 import { LeadStatus } from './components/LeadStatus';
 import { DepositModal } from './components/DepositModal';
 import { DealCalculatorModal } from './components/DealCalculatorModal';
-import { TrustSection } from './components/TrustSection';
-import { LiveFeed } from './components/LiveFeed';
-import { LiveNotification } from './components/LiveNotification';
-import { RecentActivity } from './components/RecentActivity';
-import { ProcessTimeline } from './components/ProcessTimeline';
-import { DealerNetwork } from './components/DealerNetwork';
-import { HappyClients } from './components/HappyClients';
-import { SpecialBenefits } from './components/SpecialBenefits';
-import { BlogSection } from './components/BlogSection';
-import { CaseStudies } from './components/CaseStudies';
-import { SpecificReviews } from './components/SpecificReviews';
-import { FAQ } from './components/FAQ';
-import { CarQuiz } from './components/CarQuiz';
-import { PricingSection } from './components/PricingSection';
-import { LeaseEndAdvisor } from './components/LeaseEndAdvisor';
-import { DealAuditor } from './components/DealAuditor';
-import { ExtensionPromo } from './components/ExtensionPromo';
+
 import { Footer } from './components/Footer';
-import { FeedbackWidget } from './components/FeedbackWidget';
+
 import { AuthModal } from './components/AuthModal';
 import { ExpertChat } from './components/ExpertChat';
 import { TrackingModal } from './components/TrackingModal';
@@ -35,7 +20,7 @@ import { VisitTracker } from './components/VisitTracker';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageWelcomeModal } from './components/LanguageWelcomeModal';
 import { Lead } from './types';
-import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2, Lock, FileCheck } from 'lucide-react';
+import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2, Lock, FileCheck, ChevronRight } from 'lucide-react';
 import { useLanguageStore } from './store/languageStore';
 import { useAuthStore } from './store/authStore';
 import { useFeedbackStore } from './store/feedbackStore';
@@ -60,6 +45,7 @@ const GlossaryPage = lazy(() => import('./pages/GlossaryPage').then(module => ({
 const AboutPage = lazy(() => import('./pages/AboutPage').then(module => ({ default: module.AboutPage })));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(module => ({ default: module.PrivacyPolicy })));
 const TermsConditions = lazy(() => import('./pages/TermsConditions').then(module => ({ default: module.TermsConditions })));
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy').then(module => ({ default: module.RefundPolicy })));
 const LegalDisclosure = lazy(() => import('./pages/LegalDisclosure').then(module => ({ default: module.LegalDisclosure })));
 const AccessibilityStatement = lazy(() => import('./pages/AccessibilityStatement').then(module => ({ default: module.AccessibilityStatement })));
 const FinishSignUp = lazy(() => import('./pages/FinishSignUp').then(module => ({ default: module.FinishSignUp })));
@@ -67,8 +53,6 @@ const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ defau
 const DealerPortal = lazy(() => import('./pages/DealerPortal').then(module => ({ default: module.DealerPortal })));
 const LeaseTransfersPage = lazy(() => import('./pages/LeaseTransfersPage').then(module => ({ default: module.LeaseTransfersPage })));
 const SavedDealsPage = lazy(() => import('./pages/SavedDealsPage').then(module => ({ default: module.SavedDealsPage })));
-const CatalogPage = lazy(() => import('./pages/CatalogPage').then(module => ({ default: module.CatalogPage })));
-const VehicleDetailPage = lazy(() => import('./pages/VehicleDetailPage').then(module => ({ default: module.VehicleDetailPage })));
 const MarketcheckDealPage = lazy(() => import('./pages/MarketcheckDealPage').then(module => ({ default: module.MarketcheckDealPage })));
 
 const PageLoader = () => (
@@ -345,169 +329,85 @@ function MainApp() {
           }
         }}
       />
-      <main className="max-w-7xl mx-auto px-6 py-12 pb-32">
+      <main className="max-w-7xl mx-auto px-6 pt-8 md:pt-12 pb-32">
         {/* Hero Section */}
-        <div className="grid lg:grid-cols-[1.2fr,0.8fr] gap-16 mb-32 items-center pt-12">
-          <div className="space-y-10">
-            <div className="space-y-6">
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--lime)]/10 border border-[var(--lime)]/20 text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest"
-              >
-                <div className="w-1.5 h-1.5 rounded-full bg-[var(--lime)] animate-pulse" />
-                {t.hero.badge}
-              </motion.div>
-              <motion.h1 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="font-display text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-tight"
-              >
-                {t.hero.title1} <br />
-                <span className="text-[var(--lime)]">{t.hero.title2}</span>
-              </motion.h1>
-              <p className="text-[var(--mu2)] max-w-xl text-lg md:text-xl leading-relaxed">
-                {t.hero.subtitle}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button 
-                  onClick={() => navigate('/deals')} 
-                  className="flex flex-col items-start text-left bg-[var(--lime)] text-black p-6 rounded-2xl hover:bg-[var(--lime2)] transition-all group relative overflow-hidden shadow-[0_0_30px_rgba(204,255,0,0.15)] hover:shadow-[0_0_50px_rgba(204,255,0,0.3)]"
-                >
-                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
-                  <div className="text-[10px] font-bold uppercase tracking-widest mb-2 opacity-80">
-                    {language === 'ru' ? 'Путь А' : 'Path A'}
-                  </div>
-                  <div className="text-xl font-display uppercase leading-tight mb-2">
-                    {language === 'ru' ? 'Каталог оптовых цен' : 'Wholesale Catalog'}
-                  </div>
-                  <div className="text-xs opacity-80 font-medium">
-                    {language === 'ru' ? 'Выбери готовую машину по оптовой цене из каталога.' : 'Choose a pre-negotiated car at wholesale price from our catalog.'}
-                  </div>
-                  <ArrowRight className="w-5 h-5 mt-4 group-hover:translate-x-2 transition-transform" />
-                </button>
-
-                <button 
-                  onClick={() => scrollToSection('calc')} 
-                  className="flex flex-col items-start text-left bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] p-6 rounded-2xl hover:border-[var(--lime)] transition-all group"
-                >
-                  <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-2 group-hover:text-[var(--lime)] transition-colors">
-                    {language === 'ru' ? 'Путь Б' : 'Path B'}
-                  </div>
-                  <div className="text-xl font-display uppercase leading-tight mb-2">
-                    {language === 'ru' ? 'Калькулятор сделки' : 'Custom Deal Calculator'}
-                  </div>
-                  <div className="text-xs text-[var(--mu2)] font-medium">
-                    {language === 'ru' ? 'Собери свои условия и отправь заявку дилерам.' : 'Build your own terms and submit a request to dealers.'}
-                  </div>
-                  <ArrowRight className="w-5 h-5 mt-4 text-[var(--mu2)] group-hover:text-[var(--lime)] group-hover:translate-x-2 transition-all" />
-                </button>
-              </div>
-
-              <div className="mt-2 p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
-                <p className="text-xs text-[var(--w)] leading-relaxed">
-                  <span className="font-bold text-[var(--lime)]">{language === 'ru' ? 'Как мы зарабатываем: ' : 'How we make money: '}</span> 
-                  {language === 'ru' ? 'Мы получаем фиксированную комиссию от Fleet-отдела дилера за приведенного клиента. Нам невыгодно завышать вашу ставку, в отличие от классических продавцов.' : 'We receive a fixed commission from the dealer\'s Fleet department for a referred client. It is not profitable for us to inflate your rate, unlike classic sellers.'}
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 mt-2">
-                <button onClick={() => scrollToSection('quiz')} className="flex-1 bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest px-4 py-3 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {t.quizCta || "Take our 30-second quiz"}
-                </button>
-                <button onClick={() => scrollToSection('auditor')} className="flex-1 bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest px-4 py-3 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all flex items-center justify-center gap-2">
-                  <FileCheck className="w-4 h-4" />
-                  {t.dealAuditorCta || "Upload dealer offer"}
-                </button>
-              </div>
-              <div className="text-center mt-2">
-                <span className="inline-flex items-center gap-1.5 text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest">
-                  <ShieldCheck className="w-3 h-3 text-[var(--grn)]" />
-                  {t.softPull || "100% Soft Pull. No impact on your credit score."}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-8 border-t border-[var(--b2)]">
-              {[
-                { step: '01', title: t.hero.step1, desc: t.hero.step1Desc },
-                { step: '02', title: t.hero.step2, desc: t.hero.step2Desc },
-                { step: '03', title: t.hero.step3, desc: t.hero.step3Desc }
-              ].map((item, i) => (
-                <div key={i} className="flex items-start gap-3 group">
-                  <div className="text-xl font-display text-[var(--lime)]/20 group-hover:text-[var(--lime)]/40 transition-colors">{item.step}</div>
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--w)]">{item.title}</div>
-                    <div className="text-[9px] text-[var(--mu2)] uppercase tracking-widest font-medium">{item.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-8 flex items-center gap-3">
-              <div className="flex -space-x-3">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="w-10 h-10 rounded-full border-2 border-[var(--bg)] bg-[var(--s2)] overflow-hidden">
-                    <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" referrerPolicy="no-referrer" />
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs">
-                <div className="flex items-center gap-1 mb-0.5">
-                  <button 
-                    onClick={() => setIsLockModalOpen(true)}
-                    className="text-[var(--lime)] font-bold uppercase tracking-widest hover:underline flex items-center gap-1"
-                  >
-                    <ShieldCheck className="w-3 h-3" /> {t.hero.lockLink}
-                  </button>
-                </div>
-                <div className="text-[var(--mu2)] font-medium">{t.reviewsText || "4.9/5 based on 1,200+ LA deals"}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="hidden lg:block">
-            <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 space-y-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                <div className="w-64 h-64 border-4 border-[var(--lime)] rounded-full" />
-              </div>
-              <div className="space-y-2 relative z-10">
-                <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">{t.stats.companyName}</div>
-                <div className="text-4xl font-display">{t.statsCount?.dealers || "217+"}</div>
-                <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">{t.stats.dealers}</div>
-              </div>
-              <div className="h-px bg-[var(--b2)]" />
-              <div className="space-y-2 relative z-10">
-                <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">{t.stats.license}</div>
-                <div className="text-xl font-mono">{t.statsCount?.license || "#21318"}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quiz CTA */}
-        <div className="mb-16 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group hover:border-[var(--lime)]/50 transition-colors cursor-pointer" onClick={() => scrollToSection('quiz')}>
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--lime)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="relative z-10 flex-1">
-            <h3 className="text-xl font-display mb-2">
-              {language === 'ru' ? 'Не знаете, какую машину выбрать?' : 'Don\'t know which car to choose?'}
-            </h3>
-            <p className="text-[var(--mu2)] text-sm">
-              {language === 'ru' 
-                ? 'Пройдите наш 30-секундный квиз, чтобы найти лучшие предложения по лизингу для вашего образа жизни.' 
-                : 'Take our 30-second quiz to find the best lease deals for your lifestyle.'}
+        <div className="max-w-4xl mb-24 md:mb-32 space-y-8 md:space-y-12">
+          <div className="space-y-6 md:space-y-8">
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--lime)]/10 border border-[var(--lime)]/20 text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-[var(--lime)] animate-pulse" />
+              {t.hero.badge}
+            </motion.div>
+            <motion.h1 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="font-display text-5xl md:text-7xl lg:text-[6rem] leading-[0.95] tracking-tight"
+            >
+              {t.hero.title1} <br />
+              <span className="text-[var(--lime)]">{t.hero.title2}</span>
+            </motion.h1>
+            <p className="text-[var(--mu2)] max-w-xl text-lg md:text-xl leading-relaxed">
+              {t.hero.subtitle}
             </p>
           </div>
-          <button className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors flex items-center gap-2">
-            {language === 'ru' ? 'Пройти квиз' : 'Take Quiz'} <ArrowRight size={16} />
-          </button>
+
+          <div className="flex flex-col sm:flex-row gap-5 pt-4 w-full sm:w-auto">
+            <button 
+              onClick={() => navigate('/deals')} 
+              className="bg-[var(--lime)] text-black font-bold text-sm uppercase tracking-widest px-10 py-5 rounded-2xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(204,255,0,0.15)] group w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lime)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]"
+              aria-label={language === 'ru' ? 'Смотреть каталог авто' : 'Browse Catalog'}
+            >
+               {language === 'ru' ? 'Каталог Авто' : 'Browse Catalog'}
+               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
+            </button>
+            <button 
+              onClick={() => scrollToSection('calc')} 
+              className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-sm uppercase tracking-widest px-10 py-5 rounded-2xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all group flex items-center justify-center gap-3 w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lime)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]"
+              aria-label={language === 'ru' ? 'Сделать свой запрос' : 'Create Custom Request'}
+            >
+               {language === 'ru' ? 'Свой Запрос' : 'Custom Request'}
+               <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform opacity-50 group-hover:opacity-100" aria-hidden="true" />
+            </button>
+          </div>
+
+
         </div>
+
+        {/* Featured Deals Preview */}
+        <div className="mb-16 md:mb-32">
+          <div className="flex items-center justify-between mb-8">
+             <div className="flex items-center gap-4">
+                <h2 className="font-display text-4xl tracking-widest uppercase">{language === 'ru' ? 'Специальные предложения' : 'Featured Deals'}</h2>
+                <div className="hidden sm:block flex-1 h-px bg-[var(--b2)] w-12" />
+             </div>
+             <Link 
+               to="/deals" 
+               className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest hover:text-[var(--lime)] transition-colors flex items-center gap-1"
+             >
+               {language === 'ru' ? 'Смотреть все' : 'View All'} <ArrowRight size={12} />
+             </Link>
+          </div>
+          <div className="relative">
+             <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[var(--bg)] to-transparent z-10 pointer-events-none" />
+             <div className="max-h-[600px] overflow-hidden -mx-4 px-4 pb-8 relative" style={{ maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)' }}>
+               <DealsGrid limit={3} hideFilters={true} />
+             </div>
+             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                <button
+                  onClick={() => navigate('/deals')}
+                  className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest shadow-2xl hover:border-[var(--lime)] transition-all flex items-center gap-2 relative overflow-hidden group"
+                >
+                  <div className="absolute inset-0 bg-[var(--lime)]/10 translate-y-full group-hover:translate-y-0 transition-transform" />
+                  <span className="relative z-10">{language === 'ru' ? 'Смотреть весь каталог' : 'Browse Full Catalog'}</span>
+                </button>
+             </div>
+          </div>
+        </div>
+
+
 
         {/* Founder's Letter & Legal Status */}
         <div className="mb-32 grid md:grid-cols-2 gap-8">
@@ -553,10 +453,10 @@ function MainApp() {
             </div>
           </div>
           <DealsGrid limit={6} />
-          <div className="mt-8 text-center">
-            <button onClick={() => navigate('/deals')} className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-10 py-4 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all">
+          <div className="mt-8 text-center flex justify-center">
+            <Link to="/deals" className="block bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-10 py-4 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all">
               {t.market?.viewAll || "View All Deals"}
-            </button>
+            </Link>
           </div>
         </div>
 
@@ -705,9 +605,7 @@ function MainApp() {
           </div>
         </div>
 
-        <div id="how-it-works">
-          <ProcessTimeline />
-        </div>
+
 
         {/* Transparency & Trust Section */}
         <div className="mb-32">
@@ -724,11 +622,7 @@ function MainApp() {
           </div>
         </div>
 
-        <div id="quiz" className="mb-32">
-          <CarQuiz onSelect={handleSelect} />
-        </div>
 
-        {language === 'ru' && <SpecialBenefits />}
 
 
 
@@ -778,29 +672,68 @@ function MainApp() {
           </div>
         </div>
 
-        <DealerNetwork />
-        <LeaseEndAdvisor />
-        <DealAuditor />
-        <ExtensionPromo />
-        <CaseStudies />
-        <SpecificReviews />
-        <div id="reviews">
-          <HappyClients />
-        </div>
-        <BlogSection />
-        <div id="faq">
-          <FAQ />
-        </div>
-        <TrustSection />
 
-        <div className="mt-32 text-center space-y-8">
+
+        {/* Popular Searches / Quick Categories */}
+        <div className="mt-32 pt-16 border-t border-[var(--b2)] text-left px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
+            
+            <div>
+              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Top Makes & Models</h4>
+              <ul className="space-y-4">
+                <li><Link to="/deals?make=Toyota" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Toyota</Link></li>
+                <li><Link to="/deals?make=Honda&model=Civic" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Honda Civic</Link></li>
+                <li><Link to="/deals?make=Jeep&model=Grand+Cherokee" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Jeep Grand Cherokee</Link></li>
+                <li><Link to="/deals?make=Audi&model=Q5" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Audi Q5</Link></li>
+                <li><Link to="/deals?make=BMW&model=X3" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease BMW X3</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Deals by Body Style</h4>
+              <ul className="space-y-4">
+                <li><Link to="/deals?bodyStyle=SUV" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">SUV Lease Deals</Link></li>
+                <li><Link to="/deals?bodyStyle=Sedan" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Sedan Lease Deals</Link></li>
+                <li><Link to="/deals?bodyStyle=Truck" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Truck Lease Deals</Link></li>
+                <li><Link to="/deals?fuelType=Electric" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Electric Car (EV) Offers</Link></li>
+                <li><Link to="/deals?fuelType=Hybrid" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Hybrid Car Offers</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Deals Near You</h4>
+              <ul className="space-y-4">
+                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Los Angeles CA</Link></li>
+                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Irvine CA</Link></li>
+                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Beverly Hills CA</Link></li>
+                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Santa Monica CA</Link></li>
+                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Pasadena CA</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Popular Searches</h4>
+              <ul className="space-y-4">
+                <li><Link to="/deals?max=300" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Car lease deals under $300</Link></li>
+                <li><Link to="/deals?max=500&bodyStyle=SUV" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">SUV lease deals under $500</Link></li>
+                <li><Link to="/deals?down=0" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Zero down lease deals</Link></li>
+                <li><Link to="/deals?class=Luxury" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Luxury car lease specials</Link></li>
+                <li><Link to="/deals?quick=threeRow" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">7-Seater family SUVs</Link></li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+
+        <div className="mt-32 text-center space-y-8 flex flex-col items-center">
           <h2 className="font-display text-5xl md:text-6xl tracking-tight">{t.cta.title}</h2>
-          <button onClick={() => navigate('/deals')} className="bg-[var(--lime)] text-black font-display text-2xl tracking-widest px-12 py-6 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-2xl shadow-[var(--lime)]/20 flex flex-col items-center justify-center mx-auto">
+          <Link to="/deals" className="inline-flex bg-[var(--lime)] text-black font-display text-2xl tracking-widest px-12 py-6 rounded-xl hover:bg-[var(--lime2)] transition-all hover:scale-105 shadow-2xl shadow-[var(--lime)]/20 flex-col items-center justify-center mx-auto text-center">
             <span>{t.hero.btnCalc}</span>
-            <span className="text-xs font-sans font-bold uppercase opacity-70 mt-2">{t.hero.btnCalcSub}</span>
-          </button>
+            <span className="text-xs font-sans font-bold uppercase opacity-70 mt-2 block">{t.hero.btnCalcSub}</span>
+          </Link>
         </div>
       </main>
+
 
       <AnimatePresence>
         {leadData && (
@@ -953,7 +886,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const navLinks = [
     { to: '/#calc', label: t.nav.calculator, id: 'calc' },
-    { to: '/catalog', label: language === 'ru' ? 'Каталог' : 'Catalog' },
     { to: '/deals', label: t.nav.dealsCatalog },
     { to: '/saved', label: t.nav.savedDeals },
     { to: '/blog', label: t.nav.blog },
@@ -1035,6 +967,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden p-2 text-[var(--mu2)] hover:text-[var(--w)] transition-colors"
+            aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
           >
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -1103,7 +1036,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       {children}
       <Footer />
       <ExpertChat />
-      <FeedbackWidget />
+
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
@@ -1117,6 +1050,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <ScrollToTop />
       <Toaster position="top-right" />
       <VisitTracker />
       <LanguageWelcomeModal />
@@ -1124,8 +1058,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Layout><MainApp /></Layout>} />
           <Route path="/deals" element={<Layout><DealsPage /></Layout>} />
-          <Route path="/catalog" element={<Layout><CatalogPage /></Layout>} />
-          <Route path="/catalog/:trimId" element={<Layout><VehicleDetailPage /></Layout>} />
           <Route path="/lease-transfers" element={<Layout><LeaseTransfersPage /></Layout>} />
           <Route path="/compare" element={<Layout><ComparePage /></Layout>} />
           <Route path="/deal/:id" element={<Layout><DealPage /></Layout>} />
@@ -1139,6 +1071,7 @@ export default function App() {
           <Route path="/calibrator" element={<Calibrator />} />
           <Route path="/privacy" element={<Layout><PrivacyPolicy /></Layout>} />
           <Route path="/terms" element={<Layout><TermsConditions /></Layout>} />
+          <Route path="/refund-policy" element={<Layout><RefundPolicy /></Layout>} />
           <Route path="/legal-disclosure" element={<Layout><LegalDisclosure /></Layout>} />
           <Route path="/accessibility" element={<Layout><AccessibilityStatement /></Layout>} />
           <Route path="/finish-sign-up" element={<Layout><FinishSignUp /></Layout>} />

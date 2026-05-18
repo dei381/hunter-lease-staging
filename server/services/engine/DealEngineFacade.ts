@@ -6,7 +6,7 @@ import { PureMathEngine } from './PureMathEngine';
 import { Formatter } from './Formatter';
 import { FinancialData, CalcMode } from '../../../src/types/engine';
 import prisma from '../../lib/db';
-import { getTaxRateByZip, hasTaxRateByZip } from '../../utils/taxRates';
+import { getTaxRateByZip } from '../../utils/taxRates';
 
 export class DealEngineFacade {
   static async calculateForConsumer(rawBody: any): Promise<PaymentBreakdown> {
@@ -26,23 +26,12 @@ export class DealEngineFacade {
     markups?: { mf_markup?: number; rv_markup?: number; apr_markup?: number; hidden_fees?: number; };
   }> {
     // 1. Check if we have the minimum required fields
-    const defaultField = { value: 0, provenance_status: 'unresolved' };
-    if (!data.salePrice) data.salePrice = { value: (data.msrp?.value || 0) - (data.hunterDiscount?.value || 0), provenance_status: 'calculated' };
-    if (!data.moneyFactor) data.moneyFactor = { value: 0, provenance_status: 'unresolved' };
-    if (!data.residualValue) data.residualValue = { value: 0, provenance_status: 'unresolved' };
-    if (!data.term) data.term = { value: 36, provenance_status: 'default' };
-    if (!data.acquisitionFee) data.acquisitionFee = { value: 0, provenance_status: 'default' };
-    if (!data.rebates) data.rebates = { value: 0, provenance_status: 'default' };
-    if (!data.docFee) data.docFee = { value: 0, provenance_status: 'default' };
-    if (!data.dmvFee) data.dmvFee = { value: 0, provenance_status: 'default' };
-    if (!data.taxMonthly) data.taxMonthly = { value: 0, provenance_status: 'default' };
-
-    if (data.msrp?.provenance_status === 'unresolved' || data.salePrice?.provenance_status === 'unresolved') {
+    if (data.msrp.provenance_status === 'unresolved' || data.salePrice.provenance_status === 'unresolved') {
       return { mode: 'ESTIMATE', calculatedPayment: 0, delta: 0 };
     }
 
-    const hasEstimatedFees = data.docFee?.provenance_status === 'estimated_from_rule' || data.dmvFee?.provenance_status === 'estimated_from_rule';
-    const hasEstimatedTaxes = data.taxMonthly?.provenance_status === 'estimated_from_rule';
+    const hasEstimatedFees = data.docFee.provenance_status === 'estimated_from_rule' || data.dmvFee.provenance_status === 'estimated_from_rule';
+    const hasEstimatedTaxes = data.taxMonthly.provenance_status === 'estimated_from_rule';
 
     let hasVerifiedRates = false;
     let markups: { mf_markup?: number; rv_markup?: number; apr_markup?: number; hidden_fees?: number; } = {};
@@ -57,8 +46,8 @@ export class DealEngineFacade {
           if (trim) {
             const baseMf = trim.mf || 0;
             const baseRv = trim.rv36 || 0;
-            const dealerMf = data.moneyFactor?.value || 0;
-            const dealerRv = data.residualValue?.value || 0;
+            const dealerMf = data.moneyFactor.value || 0;
+            const dealerRv = data.residualValue.value || 0;
             
             if (dealerMf > 0 && baseMf > 0) {
               if (dealerMf > baseMf + 0.00010) {
@@ -78,8 +67,8 @@ export class DealEngineFacade {
               }
             }
             
-            if (data.moneyFactor?.provenance_status === 'matched_from_verified_program' && 
-                data.residualValue?.provenance_status === 'matched_from_verified_program') {
+            if (data.moneyFactor.provenance_status === 'matched_from_verified_program' && 
+                data.residualValue.provenance_status === 'matched_from_verified_program') {
               hasVerifiedRates = true;
             }
           }
@@ -91,12 +80,12 @@ export class DealEngineFacade {
     const msrp = data.msrp.value || 0;
     const hunterDiscount = data.hunterDiscount?.value || 0;
     const manufacturerRebate = data.manufacturerRebate?.value || 0;
-    const salePrice = data.salePrice?.value || (msrp - hunterDiscount);
-    const rvPercent = data.residualValue?.value || 0.5;
-    let mf = data.moneyFactor?.value || 0.002;
-    const term = data.term?.value || 36;
-    const acqFee = data.acquisitionFee?.value || 0;
-    const rebates = (data.rebates?.value || 0) + manufacturerRebate;
+    const salePrice = data.salePrice.value || (msrp - hunterDiscount);
+    const rvPercent = data.residualValue.value || 0.5;
+    let mf = data.moneyFactor.value || 0.002;
+    const term = data.term.value || 36;
+    const acqFee = data.acquisitionFee.value || 0;
+    const rebates = (data.rebates.value || 0) + manufacturerRebate;
 
     const residualValueCents = rvPercent > 1 ? rvPercent * 100 : msrp * rvPercent * 100;
 
@@ -112,11 +101,11 @@ export class DealEngineFacade {
         docFeeCents: 0,
         dmvFeeCents: 0,
         brokerFeeCents: 0,
-        taxRate: data.taxMonthly?.value || 0
+        taxRate: data.taxMonthly.value || 0
       });
 
       const totalPayment = mathResult.finalPaymentCents / 100;
-      const dealerPayment = data.monthlyPayment?.value || 0;
+      const dealerPayment = data.monthlyPayment.value || 0;
       const delta = Math.abs(totalPayment - dealerPayment);
 
       let mode: CalcMode = 'ESTIMATE';
@@ -152,7 +141,6 @@ export class DealEngineFacade {
     settings.dmvFeeCents = Math.round(vehicle.msrpCents * 0.0065) + 15000;
 
     // Dynamic Tax Rate by ZIP
-    const hasExplicitZipTaxRate = hasTaxRateByZip(context.zipCode || '');
     settings.taxRate = getTaxRateByZip(context.zipCode || '');
 
     if (programs.length === 0) {
@@ -357,10 +345,10 @@ export class DealEngineFacade {
     // Populate options - group by lender and pick the best one for each
     const lenderBestResults = new Map<string, typeof allResults[0]>();
     for (const r of allResults) {
-      const lenderKey = r.sourceMetadata.lenderId || r.sourceMetadata.lenderName || 'Unknown';
-      const existing = lenderBestResults.get(lenderKey);
+      const lenderName = r.sourceMetadata.lenderName || 'Unknown';
+      const existing = lenderBestResults.get(lenderName);
       if (!existing || r.monthlyPaymentCents < existing.monthlyPaymentCents) {
-        lenderBestResults.set(lenderKey, r);
+        lenderBestResults.set(lenderName, r);
       }
     }
 
@@ -373,10 +361,6 @@ export class DealEngineFacade {
 
     if (vehicle.availableIncentives) {
       bestResult.availableIncentives = vehicle.availableIncentives;
-    }
-
-    if (context.zipCode && !hasExplicitZipTaxRate) {
-      bestResult.warnings.push(`APPROXIMATE_TAX_RATE:${context.zipCode}`);
     }
 
     // Save QuoteSnapshot

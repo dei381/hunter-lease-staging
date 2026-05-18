@@ -285,6 +285,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /marketcheck_views/{vin} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['count', 'lastViewed']) &&
+                       request.resource.data.count is number &&
+                       request.resource.data.lastViewed is timestamp;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'lastViewed']) &&
+                       request.resource.data.count is number &&
+                       request.resource.data.lastViewed is timestamp;
+      allow delete: if isAdmin();
+    }
+
     match /calibrator_leads/{id} {
       allow read, write: if isAdmin();
     }

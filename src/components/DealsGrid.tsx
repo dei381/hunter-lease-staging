@@ -11,11 +11,10 @@ import { InventoryAlertModal } from './InventoryAlertModal';
 import { DealCard } from './DealCard';
 import { getCarImage, CarPhoto } from '../utils/carImage';
 import { fetchWithCache } from '../utils/fetchWithCache';
-import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
 
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
-export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: any) => void, filter?: string, limit?: number }) => {
+export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }: { onSelect?: (deal: any) => void, filter?: string, limit?: number, hideFilters?: boolean }) => {
   const navigate = useNavigate();
   const { language } = useLanguageStore();
   const { settings, fetchSettings } = useSettingsStore();
@@ -65,7 +64,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
             ...deal,
             payment: Number(deal.payment) || 0,
             down: Number(deal.down) || 3000,
-            mileage: getDefaultLeaseMileage(deal.make)
+            mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
           };
         });
         setDeals(recalculated);
@@ -127,10 +126,11 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
   return (
     <div className="space-y-8">
       {/* Advanced Filters */}
-      <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-4 flex flex-wrap gap-6 items-end">
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <label className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest block">{t.maxPayment}</label>
+      {!hideFilters && (
+        <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-4 flex flex-wrap gap-6 items-end">
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest block">{t.maxPayment}</label>
             <span className="bg-[var(--lime)]/10 text-[var(--lime)] px-2 py-0.5 rounded text-[10px] font-bold font-mono">{fmt(maxPayment)}</span>
           </div>
           <input 
@@ -210,11 +210,23 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
           <TrendingDown className="w-3 h-3" /> {(translations[language] as any).alerts.btnNotify}
         </button>
       </div>
+      )}
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {displayedDeals.length > 0 ? displayedDeals.map(deal => (
           <div 
             key={deal.id}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (onSelect) {
+                  onSelect({ ...deal, isFirstTimeBuyer, hasCosigner });
+                } else {
+                  navigate(`/deal/${deal.id}`, { state: { isFirstTimeBuyer, hasCosigner } });
+                }
+              }
+            }}
             onClick={() => {
               if (onSelect) {
                 onSelect({ ...deal, isFirstTimeBuyer, hasCosigner });
@@ -222,7 +234,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                 navigate(`/deal/${deal.id}`, { state: { isFirstTimeBuyer, hasCosigner } });
               }
             }}
-            className={`bg-[var(--s1)] border border-[var(--b1)] rounded-2xl overflow-hidden transition-all hover:border-[var(--lime)]/40 hover:-translate-y-1 cursor-pointer relative group ${deal.hot ? 'ring-1 ring-[var(--lime)]/20' : ''}`}
+            className={`bg-[var(--s1)] border border-[var(--b1)] rounded-2xl overflow-hidden transition-all hover:border-[var(--lime)]/40 hover:-translate-y-1 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lime)] focus-visible:border-transparent cursor-pointer relative group ${deal.hot ? 'ring-1 ring-[var(--lime)]/20' : ''}`}
           >
             {deal.hot && <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--lime)] to-[var(--teal)]" />}
             
@@ -273,20 +285,16 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (isInCompare(deal.id)) {
-                      removeFromCompare(deal.id);
-                    } else {
-                      addToCompare(deal);
-                    }
+                    toggleDeal(deal);
                   }}
-                  title={isInCompare(deal.id) ? (language === 'ru' ? 'Удалить из сравнения' : 'Remove from compare') : (language === 'ru' ? 'Добавить в сравнение' : 'Add to compare')}
+                  title={isSaved(deal.id) ? (language === 'ru' ? 'Удалить из сохраненных' : 'Remove from saved') : (language === 'ru' ? 'Сохранить' : 'Save')}
                   className={`p-2 rounded-full backdrop-blur-sm transition-colors ${
-                    isInCompare(deal.id) 
+                    isSaved(deal.id) 
                       ? 'bg-[var(--lime)] text-white' 
                       : 'bg-black/40 text-white hover:bg-black/60'
                   }`}
                 >
-                  <Heart size={16} className={isInCompare(deal.id) ? "fill-current" : ""} />
+                  <Heart size={16} className={isSaved(deal.id) ? "fill-current" : ""} />
                 </button>
               </div>
 
@@ -298,71 +306,57 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
             </div>
 
             <div className="p-5 border-b border-[var(--b1)]">
-              <h3 className="font-display text-2xl tracking-tight leading-tight mb-1">{deal.make} {deal.model}</h3>
-              <div className="flex justify-between items-center">
-                <p className="text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">{deal.trim}</p>
-                <div className="flex items-center gap-2">
-                  {deal.displayType === 'lease' && (
-                    <span className="text-[9px] text-[var(--lime)] font-bold bg-[var(--lime)]/10 px-2 py-0.5 rounded-full">
-                      {tcalc.mileageOptions[deal.mileage as keyof typeof tcalc.mileageOptions]} {tcalc.miles}
-                    </span>
-                  )}
-                  <span className="text-[9px] text-[var(--mu2)] bg-[var(--s2)] px-2 py-0.5 rounded-full">{deal.class}</span>
+              <div className="mb-3">
+                <h3 className="font-display text-xl tracking-tight leading-tight text-[var(--w)] line-clamp-2 min-h-[3.3rem]">
+                  {deal.year || ''} {deal.make} {deal.model} <span className="text-[var(--mu2)] font-sans text-sm tracking-normal">{deal.trim}</span>
+                </h3>
+              </div>
+
+              {/* Contract / Price Box */}
+              <div className="border border-[var(--b2)] rounded-2xl p-4 bg-[var(--s2)]/40 mb-4 relative flex flex-col justify-center">
+                <div className="text-[10px] uppercase font-bold text-[var(--mu2)] mb-1 tracking-widest">
+                  {deal.displayType === 'lease' ? t.lease : t.finance}
                 </div>
+                
+                <div className="flex items-baseline gap-1 mb-2">
+                  <span className="font-display text-4xl text-[var(--w)] leading-none">
+                    {fmt(deal.displayPayment || 0)}
+                  </span>
+                  <span className="text-xs text-[var(--mu2)] font-bold">/mo.</span>
+                </div>
+                
+                <div className="text-[11px] text-[var(--mu2)] flex items-center flex-wrap gap-x-1.5 gap-y-0.5">
+                  <span><span className="text-[var(--w)]">+{fmt(deal.down || 3000)}</span> due</span>
+                  <span className="text-[var(--mu)] opacity-50">•</span>
+                  <span><span className="text-[var(--w)]">{deal.displayTerm}</span> mo</span>
+                  {deal.displayType === 'lease' && deal.mileage && (
+                    <>
+                      <span className="text-[var(--mu)] opacity-50">•</span>
+                      <span><span className="text-[var(--w)]">{deal.mileage.replace('k', ',000')}</span> mi/yr</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Discounts & Incentives Pill */}
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-medium text-[var(--mu2)]">Discounts & Incentives</span>
+                {deal.savings > 0 ? (
+                  <span className="bg-[var(--grn)]/10 text-[var(--grn)] text-[11px] font-bold px-2.5 py-1 rounded-md border border-[var(--grn)]/20 shadow-sm">
+                    {fmt(deal.savings)}
+                  </span>
+                ) : (
+                  <span className="text-xs font-mono text-[var(--mu2)]">—</span>
+                )}
               </div>
             </div>
 
             <div className="p-5 space-y-4">
-              <div className="flex justify-between items-end">
-                <div>
-                  <div className="text-[8px] font-bold text-[var(--mu)] uppercase tracking-widest mb-1">{t.monthly}</div>
-                  <div className="font-display text-5xl text-[var(--lime)] leading-none mb-2">
-                    {fmt(deal.displayPayment || 0)}
-                  </div>
-                  
-                  {effectiveFTB && (
-                    <div className="text-[8px] text-[var(--mu2)] italic mb-2">
-                      * {t.ftbNote}
-                    </div>
-                  )}
-                  
-                  {/* Market Comparison Block */}
-                  <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-xl p-3 space-y-2 mb-4">
-                    <div className="flex justify-between items-center text-[8px]">
-                      <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{tcalc.opportunityCost}</span>
-                      <span className="text-[var(--mu2)] line-through font-mono">{fmt((deal.displayPayment * 1.25))}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[8px] text-[var(--w)] uppercase font-bold tracking-widest">{tcalc.hunterPrice}</span>
-                      <span className="text-lg font-display text-[var(--w)]">{fmt(deal.displayPayment)}</span>
-                    </div>
-                    <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
-                      <span className="text-[8px] text-[var(--lime)] uppercase font-bold tracking-widest">{tcalc.avoidableMarkup}</span>
-                      <span className="text-sm font-display text-[var(--lime)]">{fmt(((deal.displayPayment * 0.25) * parseInt(deal.displayTerm || '36')))}</span>
-                    </div>
-                  </div>
-
-                  {/* TCO Data */}
-                  <div className="flex flex-col gap-2 border-t border-[var(--b1)] pt-3">
-                    <div className="flex justify-between items-center text-[9px] text-[var(--mu2)] uppercase tracking-widest">
-                      <div className="flex items-center gap-1">
-                        <span>{translations[language].deals.msrp}</span>
-                      </div>
-                      <span className="text-[var(--w)] font-bold">{fmt(deal.msrp)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[9px] text-[var(--mu2)] uppercase tracking-widest">
-                      <span>{tcalc.tcoLabel}</span>
-                      <span className="text-[var(--w)] font-bold">{fmt(deal.displayPayment + 200)} / {tcalc.mo}</span>
-                    </div>
-                  </div>
+              {effectiveFTB && (
+                <div className="text-[8px] text-[var(--mu2)] italic mb-2">
+                  * {t.ftbNote}
                 </div>
-                <div className="text-right">
-                  <div className="text-[9px] text-[var(--w)] font-bold">{deal.displayTerm} {translations[language].transparency.months}</div>
-                  <div className="text-[9px] text-[var(--mu2)]">{tcalc.downPayment}: {fmt(deal.down || 0)}</div>
-                </div>
-              </div>
-
-
+              )}
               
               <div className="flex gap-2 items-start bg-[var(--lime)]/5 p-3 rounded-xl border border-[var(--lime)]/10">
                 <Info className="w-3 h-3 text-[var(--lime)] mt-0.5 shrink-0" />
@@ -432,8 +426,6 @@ export const DealsGrid = ({ onSelect, filter = '', limit }: { onSelect?: (deal: 
         mileage={transparencyDeal?.mileage || '10k'}
         isFirstTimeBuyer={effectiveFTB}
       />
-
-      <ComparisonTray />
     </div>
   );
 };

@@ -5,7 +5,6 @@ import { useLanguageStore } from '../store/languageStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { fetchWithCache } from '../utils/fetchWithCache';
-import { getDefaultLeaseMileage } from '../utils/defaultLeaseMileage';
 
 interface CarQuizProps {
   onSelect: (deal: any) => void;
@@ -49,8 +48,8 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
           let payment = Math.round(deal.payment + paymentAdjustment);
 
           if (deal.type === 'lease') {
-            const usesTenKDefault = getDefaultLeaseMileage(deal.make) === '10k';
-            if (!usesTenKDefault) {
+            const isKiaHyundai = ['Kia', 'Hyundai'].includes(deal.make);
+            if (!isKiaHyundai) {
               const rvIncrease = deal.msrp * 0.01;
               const monthlySaving = rvIncrease / term;
               payment = Math.round(payment - monthlySaving);
@@ -61,7 +60,7 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
             ...deal,
             payment,
             down: targetDown,
-            mileage: getDefaultLeaseMileage(deal.make)
+            mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
           };
         });
         setDeals(recalculated);

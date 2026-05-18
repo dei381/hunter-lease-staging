@@ -48,7 +48,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
         {deal.image || getCarImage(photos, deal.make, deal.model, deal.year) ? (
           <img 
             src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} 
-            alt={`${deal.make} ${deal.model}`} 
+            alt={`${deal.year || ''} ${deal.make} ${deal.model} Lease Deal`} 
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
             referrerPolicy="no-referrer" 
             loading="lazy"

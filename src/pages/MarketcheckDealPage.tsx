@@ -10,6 +10,7 @@ import { ProcessTimeline } from '../components/ProcessTimeline';
 import { DealerReviews } from '../components/DealerReviews';
 import { SmartPriceAlertModal } from '../components/SmartPriceAlertModal';
 import { CompareBar } from '../components/CompareBar';
+import { SEO } from '../components/SEO';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ChevronLeft, 
@@ -35,7 +36,10 @@ import {
   ThumbsUp,
   ThumbsDown,
   ChevronRight,
-  Fuel
+  Fuel,
+  ExternalLink,
+  FileText,
+  SlidersHorizontal
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
@@ -360,18 +364,26 @@ export const MarketcheckDealPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] pb-20">
+      <SEO 
+        title={`Lease ${listing.year} ${listing.make} ${listing.model} | Hunter Lease`}
+        description={`Get a pre-negotiated lease deal on the ${listing.year} ${listing.make} ${listing.model}. Browse features, options, and customize your payment.`}
+        ogImage={listing.imageUrl || listing.images?.[0]}
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
         <div className="flex flex-col gap-2">
-          {/* Compact Header Area */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 py-1">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 mb-1">
-                <Breadcrumbs make={listing.make} model={listing.model} />
+          {/* Enhanced Hero Section - Higher conversion layout */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 pt-4 pb-2">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest leading-none">
+                  {language === 'ru' ? 'Отличная цена' : 'Great Deal'}
+                </span>
               </div>
-              <h1 className="font-display text-4xl md:text-5xl leading-none tracking-tight uppercase">
+              <Breadcrumbs make={listing.make} model={listing.model} />
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display uppercase tracking-tighter leading-[0.9] mt-2 mb-4">
                 {listing.make} <span className="text-[var(--mu2)]">{listing.model}</span>
               </h1>
-              <div className="flex items-center gap-4 text-[var(--mu2)]">
+              <div className="flex flex-wrap items-center gap-4 text-[var(--mu2)]">
                 <span className="font-mono text-[10px] tracking-widest">{listing.year} {t.modelYear}</span>
                 <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
                 <span className="font-mono text-[10px] tracking-widest">{listing.trim || t.premiumPlus}</span>
@@ -379,37 +391,53 @@ export const MarketcheckDealPage: React.FC = () => {
                 <div className="flex items-center gap-1.5 relative group cursor-help bg-[var(--lime)]/10 border border-[var(--lime)]/30 px-2 py-0.5 rounded-full">
                   <ShieldCheck size={12} className="text-[var(--lime)]" />
                   <span className="font-mono text-[10px] font-bold tracking-widest text-[var(--lime)]">{t.passedAudit}</span>
-                  <div className="absolute top-full left-0 mt-2 w-64 p-3 bg-[var(--s2)] border border-[var(--b2)] rounded-xl text-[10px] text-[var(--mu2)] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
-                    {translations[language].lock?.key2Desc || "Mathematically guaranteed: the dealer cannot add hidden fees."}
-                  </div>
                 </div>
+                {viewCount > 5 && (
+                  <>
+                    <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-[var(--mu2)] uppercase">
+                      <Eye size={12} className="text-[var(--lime)]" />
+                      {language === 'ru' ? `${viewCount} смотрят сейчас` : `${viewCount} looking`}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsAlertOpen(true)}
-                className="px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
-              >
-                <Bell size={12} className="text-[var(--lime)]" />
-                {language === 'ru' ? 'Следить за ценой' : 'Price Alert'}
-              </button>
-              <button
-                onClick={() => {
-                  if (isInCompare(listing.id?.toString() || listing.vin)) {
-                    removeFromCompare(listing.id?.toString() || listing.vin);
-                  } else {
-                    addToCompare(dealForCalc);
-                  }
-                }}
-                title={isInCompare(listing.id?.toString() || listing.vin) ? (language === 'ru' ? 'Удалить из сравнения' : 'Remove from compare') : (language === 'ru' ? 'Добавить в сравнение' : 'Add to compare')}
-                className={`p-2 rounded-xl transition-colors flex items-center justify-center border ${
-                  isInCompare(listing.id?.toString() || listing.vin) 
-                    ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
-                    : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
-                }`}
-              >
-                <Heart size={16} className={isInCompare(listing.id?.toString() || listing.vin) ? "fill-current" : ""} />
-              </button>
+            
+            <div className="flex flex-col items-start md:items-end gap-3 bg-[var(--s1)] p-4 rounded-2xl border border-[var(--b2)] w-full md:w-auto">
+              <div className="text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest mb-1">
+                 {tc.leasePayment} / {activeSelection?.term || 36} {tc.moShort}
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-4xl text-[var(--w)] leading-none">${activeSelection?.payment || dealForCalc.displayPayment}</span>
+                <span className="text-xs text-[var(--mu2)] font-bold">/ {tc.moShort}</span>
+              </div>
+              
+              <div className="flex items-center gap-2 mt-2 w-full">
+                <button
+                  onClick={() => setIsAlertOpen(true)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-[var(--b2)] hover:border-[var(--mu)] transition-colors text-[10px] font-bold uppercase text-[var(--mu2)] hover:text-white flex items-center justify-center gap-2"
+                >
+                  <Bell size={12} />
+                  {language === 'ru' ? 'За ценой' : 'Alert'}
+                </button>
+                <button
+                  onClick={() => {
+                    if (isInCompare(listing.id?.toString() || listing.vin)) {
+                      removeFromCompare(listing.id?.toString() || listing.vin);
+                    } else {
+                      addToCompare(dealForCalc);
+                    }
+                  }}
+                  className={`px-4 py-3 rounded-xl transition-colors flex items-center justify-center border ${
+                    isInCompare(listing.id?.toString() || listing.vin) 
+                      ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
+                      : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
+                  }`}
+                >
+                  <Heart size={14} className={isInCompare(listing.id?.toString() || listing.vin) ? "fill-current" : ""} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -434,9 +462,9 @@ export const MarketcheckDealPage: React.FC = () => {
           </div>
 
           {/* Main Content Grid */}
-          <div className="flex flex-col-reverse lg:grid lg:grid-cols-12 gap-8 relative items-start mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative items-start mt-6">
             {/* Left Column: Gallery & Technical Specs */}
-            <div className="lg:col-span-7 space-y-8">
+            <div className="lg:col-span-7 space-y-8 order-2 lg:order-1">
               <motion.div
                 id="gallery"
                 initial={{ opacity: 0, y: 20 }}
@@ -634,6 +662,37 @@ export const MarketcheckDealPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* External Links Section */}
+              {(listing.vdp_url || listing.dealer?.website || listing.build?.window_sticker_url || listing.vdp_url) && (
+                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-4">
+                  <h3 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{language === 'ru' ? 'Дополнительные ссылки' : 'External Links'}</h3>
+                  <div className="flex flex-wrap gap-4">
+                    {(listing.vdp_url || listing.dealer?.website) && (
+                      <a 
+                        href={(listing.vdp_url || listing.dealer?.website).startsWith('http') ? (listing.vdp_url || listing.dealer?.website) : `https://${listing.vdp_url || listing.dealer?.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--b1)] hover:bg-[var(--s1)] border border-[var(--b2)] hover:border-[var(--mu)] rounded-xl text-xs font-bold text-[var(--w)] transition-colors"
+                      >
+                        <ExternalLink size={14} className="text-[var(--lime)]" />
+                        {language === 'ru' ? 'Страница дилера' : 'Original Dealer Page'}
+                      </a>
+                    )}
+                    {listing.build?.window_sticker_url && (
+                      <a 
+                        href={listing.build.window_sticker_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--b1)] hover:bg-[var(--s1)] border border-[var(--b2)] hover:border-[var(--mu)] rounded-xl text-xs font-bold text-[var(--w)] transition-colors"
+                      >
+                        <FileText size={14} className="text-[var(--lime)]" />
+                        {language === 'ru' ? 'Виндоу стикер' : 'Window Sticker'}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Incentives Section */}
               {incentives.length > 0 && (
                 <div className="space-y-4">
@@ -660,21 +719,56 @@ export const MarketcheckDealPage: React.FC = () => {
                 </div>
               )}
             </div>
-          </div>
+          {/* End Left Column, moving onto Right Column: Calculator */}
 
           {/* Right Column: Calculator */}
-          <div className="lg:col-span-5">
-            <div className="sticky top-24 max-h-[calc(100vh-6rem)] overflow-y-auto pb-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <Calculator 
-                deal={dealForCalc}
-                mode="offer"
-                vehiclePrice={listing.price || listing.msrp || 0}
-                onProceed={handleProceed}
-                onChange={(data) => setActiveSelection(data)}
-                initialIsFirstTimeBuyer={isFirstTimeBuyer}
-                initialHasCosigner={hasCosigner}
-                viewCount={viewCount}
-              />
+          <div id="calculator" className="lg:col-span-5 relative scroll-mt-24 order-1 lg:order-2">
+            <div className="sticky top-[calc(var(--nh)+1.5rem)] self-start z-30 space-y-6 pb-24">
+              <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-6 md:p-8 relative overflow-hidden group">
+                  <div className="flex flex-col gap-1 mb-8 relative z-10">
+                    <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold">
+                       {tc.leasePayment} / {activeSelection?.term || 36} {tc.moShort}
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-display text-5xl text-[var(--lime)] leading-none">${activeSelection?.payment || dealForCalc.displayPayment}</span>
+                      <span className="text-sm text-[var(--mu2)] font-bold">/ {tc.moShort}</span>
+                    </div>
+                    <div className="text-xs text-[var(--mu2)] mt-1">${activeSelection?.down !== undefined ? activeSelection.down : 3000} due</div>
+                  </div>
+
+                  <div className="space-y-3 relative z-10">
+                    <button 
+                      onClick={() => handleProceed(activeSelection || dealForCalc)}
+                      className="w-full bg-[var(--lime)] text-black py-4 rounded-xl font-display text-xl tracking-widest hover:scale-[1.02] transition-transform flex flex-col items-center justify-center uppercase shadow-lg shadow-[var(--lime)]/5"
+                    >
+                      <span className="flex items-center gap-2">
+                        {language === 'ru' ? 'Узнать наличие' : 'Check Availability'}
+                        <ArrowRight size={18} />
+                      </span>
+                      <span className="text-[10px] font-sans opacity-70 lowercase font-bold tracking-normal mt-0.5">no commitment</span>
+                    </button>
+                    
+                    <details className="group/calc">
+                      <summary className="w-full py-3 rounded-xl border border-[var(--b2)] hover:border-[var(--mu)] transition-colors text-xs font-bold uppercase text-[var(--mu2)] hover:text-white flex items-center justify-center gap-2 cursor-pointer list-none select-none">
+                        <SlidersHorizontal size={14} />
+                        {language === 'ru' ? 'Настроить платеж' : 'Customize Payment'}
+                      </summary>
+                      <div className="pt-4 animate-in slide-in-from-top-4 duration-300">
+                        <Calculator 
+                          deal={dealForCalc}
+                          mode="offer"
+                          vehiclePrice={listing.price || listing.msrp || 0}
+                          onProceed={handleProceed}
+                          onChange={(data) => setActiveSelection(data)}
+                          initialIsFirstTimeBuyer={isFirstTimeBuyer}
+                          initialHasCosigner={hasCosigner}
+                          viewCount={viewCount}
+                          hideCTA={true}
+                        />
+                      </div>
+                    </details>
+                  </div>
+              </div>
               
               {/* Trust Badges */}
               <div className="mt-6 grid grid-cols-2 gap-4">
@@ -813,6 +907,7 @@ export const MarketcheckDealPage: React.FC = () => {
           </div>
         </div>
       </div>
+      </div>
       {/* Lower Page Journey */}
       <div className="mt-32 space-y-32">
         
@@ -895,10 +990,13 @@ export const MarketcheckDealPage: React.FC = () => {
             <div className="flex flex-wrap justify-center gap-4 pt-4">
               <button 
                 onClick={() => handleProceed(activeSelection || dealForCalc)}
-                className="bg-[var(--lime)] text-black px-8 py-4 rounded-xl font-display text-xl tracking-widest hover:scale-105 transition-transform flex items-center gap-4 uppercase"
+                className="bg-[var(--lime)] text-black px-12 py-4 rounded-xl font-display text-2xl tracking-widest hover:scale-105 transition-transform flex flex-col items-center justify-center uppercase"
               >
-                <span>{t.lockInDeal}</span>
-                <ArrowRight size={20} />
+                <span className="flex items-center gap-2">
+                  {language === 'ru' ? 'Узнать наличие' : 'Check Availability'}
+                  <ArrowRight size={20} />
+                </span>
+                <span className="text-[10px] font-sans opacity-70 lowercase font-bold tracking-normal mt-1 block h-3">no commitment / strings free</span>
               </button>
               <button 
                 onClick={() => window.open('https://hunterlease.com/credit-application', '_blank')}
@@ -914,19 +1012,20 @@ export const MarketcheckDealPage: React.FC = () => {
       {/* Mobile Sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
         <div className="flex flex-col">
-          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">{tc.leasePayment}</div>
-          <div className="flex items-baseline gap-1">
-            <span className="font-display text-2xl text-[var(--w)] leading-none">${activeSelection?.payment || 'N/A'}</span>
-            <span className="text-[10px] text-[var(--mu2)]">/mo</span>
+          <div className="text-[10px] text-[var(--w)] uppercase tracking-widest font-bold mb-0.5">
+             {tc.leasePayment} / {activeSelection?.term || 36} {tc.moShort}
           </div>
-          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${activeSelection?.down !== undefined ? activeSelection.down : 3000} due</div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-display text-2xl text-[var(--lime)] leading-none">${activeSelection?.payment || dealForCalc.displayPayment}</span>
+            <span className="text-[10px] text-[var(--mu2)] uppercase">/ mo</span>
+          </div>
         </div>
         <button 
           onClick={() => handleProceed(activeSelection || dealForCalc)}
-          className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
+          className="flex flex-col bg-[var(--lime)] text-black px-6 py-2.5 rounded-xl font-display tracking-widest hover:scale-[1.02] transition-transform items-center justify-center uppercase"
         >
-          <span>{t.lockInDeal}</span>
-          <ArrowRight size={18} />
+          <span className="text-sm font-bold">{language === 'ru' ? 'Связаться' : 'Check Availability'}</span>
+          <span className="text-[9px] opacity-70 lowercase font-sans">no commitment</span>
         </button>
       </div>
 

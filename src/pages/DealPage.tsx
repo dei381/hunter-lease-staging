@@ -380,9 +380,9 @@ export const DealPage = () => {
           </div>
 
           {/* Main Content Grid */}
-          <div className="flex flex-col-reverse lg:grid lg:grid-cols-12 gap-8 relative items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative items-start">
             {/* Left Column: Gallery & Technical Specs */}
-            <div className="lg:col-span-7 space-y-8">
+            <div className="lg:col-span-7 space-y-8 order-2 lg:order-1">
               <motion.div
                 id="gallery"
                 initial={{ opacity: 0, y: 20 }}
@@ -645,8 +645,8 @@ export const DealPage = () => {
             </div>
 
             {/* Right Column: Calculator */}
-            <div id="calculator" className="lg:col-span-5 relative scroll-mt-24">
-              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6 pb-8">
+            <div id="calculator" className="lg:col-span-5 relative scroll-mt-24 order-1 lg:order-2">
+              <div className="sticky top-[calc(var(--nh)+1.5rem)] self-start z-30 space-y-6 pb-24">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}

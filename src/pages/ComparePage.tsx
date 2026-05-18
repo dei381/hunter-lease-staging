@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Helmet } from 'react-helmet-async';
+import { SEO } from '../components/SEO';
 import { X, ArrowLeft, Check, Minus } from 'lucide-react';
 import { useGarageStore } from '../store/garageStore';
 import { useLanguageStore } from '../store/languageStore';
@@ -46,9 +46,10 @@ export const ComparePage = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] pt-24 pb-32 px-4 sm:px-6 lg:px-8">
-      <Helmet>
-        <title>Compare Deals | Hunter Lease</title>
-      </Helmet>
+      <SEO 
+        title="Compare Car Lease Deals | Hunter Lease"
+        description="Side-by-side comparison of pre-negotiated car lease offers. See MSRP, monthly payments, and total savings." 
+      />
 
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-12">

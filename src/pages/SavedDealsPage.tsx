@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Helmet } from 'react-helmet-async';
+import { SEO } from '../components/SEO';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
@@ -43,9 +43,10 @@ export const SavedDealsPage = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] pt-32 pb-24">
-      <Helmet>
-        <title>{language === 'ru' ? 'Сохраненные предложения' : 'Saved Deals'} | Hunter Lease</title>
-      </Helmet>
+      <SEO 
+        title={`${language === 'ru' ? 'Сохраненные предложения' : 'Saved Deals'} | Hunter Lease`}
+        description={language === 'ru' ? 'Ваша персональная коллекция автомобилей. Сравнивайте предложения и выбирайте лучшее.' : 'Your personal collection of saved vehicles. Compare deals and choose the best one.'}
+      />
 
       <div className="container mx-auto px-4">
         <div className="mb-12">

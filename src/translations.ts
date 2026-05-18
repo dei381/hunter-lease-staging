@@ -1172,7 +1172,7 @@ export const translations = {
       senderNameDesc:
         "Please provide the name as it appears on your card.",
       confirmTerms:
-        "I understand the $95 platform deposit is fully refundable if my requested terms cannot be met by the dealership.",
+        "I understand the $95 platform deposit is fully refundable if my requested terms cannot be met by the dealership. Once the dealer approves and accepts the terms, the deposit becomes non-refundable. I agree to the",
       processing: "PROCESSING...",
       havePaid: "SUBMIT DEPOSIT & REQUEST",
       secureTransaction: "Secure 256-bit Encryption",
@@ -3050,7 +3050,7 @@ export const translations = {
       senderNameDesc:
         "Пожалуйста, укажите имя так, как оно написано на вашей карте.",
       confirmTerms:
-        "Я понимаю, что депозит платформы в размере $95 полностью возвращается, если мои запрошенные условия не могут быть выполнены дилерским центром.",
+        "Я понимаю, что депозит платформы в размере $95 полностью возвращается, если дилерский центр не может выполнить мои запрошенные условия. Как только дилер одобрит и примет заявку, депозит становится невозвратным. Я принимаю",
       processing: "ОБРАБОТКА...",
       havePaid: "ОТПРАВИТЬ ДЕПОЗИТ И ЗАЯВКУ",
       secureTransaction: "Надежное 256-битное шифрование",

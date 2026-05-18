@@ -166,6 +166,7 @@ export const Footer = () => {
         <div className="flex flex-wrap justify-center md:justify-end gap-8 text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">
           <Link to="/privacy" className="hover:text-[var(--lime)] transition-colors">{t.legal.privacy}</Link>
           <Link to="/terms" className="hover:text-[var(--lime)] transition-colors">{t.legal.terms}</Link>
+          <Link to="/refund-policy" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Возврат / Refund Policy' : 'Refund Policy'}</Link>
           <Link to="/legal-disclosure" className="hover:text-[var(--lime)] transition-colors">{t.legal.broker}</Link>
           <Link to="/accessibility" className="hover:text-[var(--lime)] transition-colors">{t.legal.accessibility}</Link>
           <span className="text-[var(--mu2)]">{t.footer.licensedBroker}</span>

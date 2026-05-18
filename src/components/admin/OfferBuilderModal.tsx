@@ -490,7 +490,7 @@ export const OfferBuilderModal = ({ isOpen, onClose, onSave }: { isOpen: boolean
                         onClick={() => setSelectedMediaId(m.id)}
                         className={`cursor-pointer border-2 rounded-lg overflow-hidden h-20 relative ${selectedMediaId === m.id ? 'border-indigo-500 ring-2 ring-indigo-500 ring-offset-1' : 'border-transparent'}`}
                       >
-                        <img src={m.url} alt="Car" className="w-full h-full object-cover" />
+                        <img src={m.url} alt="" role="presentation" className="w-full h-full object-cover" />
                       </div>
                     ))}
                   </div>

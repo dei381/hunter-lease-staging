@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { DragDropUploader } from './DragDropUploader';
 import { DealEditor } from './DealEditor';
-import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator, Target, Sparkles } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator, Target, Sparkles, Layout, Globe, BookText, Languages } from 'lucide-react';
 import { doc, getDoc, setDoc, collection, getDocs, orderBy, query, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -22,11 +22,14 @@ const ReviewsAdmin = lazy(() => import('./ReviewsAdmin').then(m => ({ default: m
 const FeedbackAdmin = lazy(() => import('./FeedbackAdmin').then(m => ({ default: m.FeedbackAdmin })));
 const AuditLogsAdmin = lazy(() => import('./admin/AuditLogsAdmin').then(m => ({ default: m.AuditLogsAdmin })));
 const BlogAdmin = lazy(() => import('./BlogAdmin').then(m => ({ default: m.BlogAdmin })));
+const HomepageAdmin = lazy(() => import('./admin/HomepageAdmin').then(m => ({ default: m.HomepageAdmin })));
+const LandingPagesAdmin = lazy(() => import('./admin/LandingPagesAdmin').then(m => ({ default: m.LandingPagesAdmin })));
+const PagesCMSAdmin = lazy(() => import('./admin/PagesCMSAdmin').then(m => ({ default: m.PagesCMSAdmin })));
+const TemplatesAdmin = lazy(() => import('./admin/TemplatesAdmin').then(m => ({ default: m.TemplatesAdmin })));
+const TranslationsAdmin = lazy(() => import('./admin/TranslationsAdmin').then(m => ({ default: m.TranslationsAdmin })));
 const IncentivesAdmin = lazy(() => import('./IncentivesAdmin').then(m => ({ default: m.IncentivesAdmin })));
-const BulkEditAdmin = lazy(() => import('./BulkEditAdmin').then(m => ({ default: m.BulkEditAdmin })));
 const DealersAdmin = lazy(() => import('./DealersAdmin').then(m => ({ default: m.DealersAdmin })));
 const PromoCodesAdmin = lazy(() => import('./PromoCodesAdmin').then(m => ({ default: m.PromoCodesAdmin })));
-const CalculatorAuditAdmin = lazy(() => import('./admin/CalculatorAuditAdmin').then(m => ({ default: m.CalculatorAuditAdmin })));
 const CalibratorLeadsAdmin = lazy(() => import('./admin/CalibratorLeadsAdmin').then(m => ({ default: m.CalibratorLeadsAdmin })));
 const PromoAIAdmin = lazy(() => import('./admin/PromoAIAdmin').then(m => ({ default: m.PromoAIAdmin })));
 const OfferBuilderModal = lazy(() => import('./admin/OfferBuilderModal').then(m => ({ default: m.OfferBuilderModal })));
@@ -68,7 +71,7 @@ interface Deal {
 }
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'calibrator' | 'promo-ai' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'bulk-edit' | 'dealers' | 'promos' | 'calculator-audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'deals' | 'leads' | 'calibrator' | 'promo-ai' | 'cars' | 'users' | 'settings' | 'media' | 'banks' | 'analytics' | 'reviews' | 'feedback' | 'audit' | 'blog' | 'incentives' | 'dealers' | 'promos' | 'homepage' | 'landing-pages' | 'pages-cms' | 'templates' | 'translations'>('overview');
   const [deals, setDeals] = useState<Deal[]>([]);
   const [dealsPage, setDealsPage] = useState(1);
   const [dealsTotalPages, setDealsTotalPages] = useState(1);
@@ -1071,7 +1074,7 @@ export function AdminDashboard() {
                   activeTab === 'overview' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <BarChart3 className="w-4 h-4" />
+                <Activity className="w-4 h-4" />
                 <span>{t.overview}</span>
               </button>
               )}
@@ -1089,82 +1092,9 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {/* CRM & Sales Group */}
+          {/* Catalog & Operations Group */}
           <div className="px-4 mb-6">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">CRM & Sales</h2>
-            <div className="space-y-1">
-              {canAccess('leads') && (
-              <button
-                onClick={() => setActiveTab('leads')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'leads' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Activity className="w-4 h-4" />
-                <span>{t.leads}</span>
-              </button>
-              )}
-              {canAccess('leads') && (
-              <button
-                onClick={() => setActiveTab('calibrator')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'calibrator' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Target className="w-4 h-4" />
-                <span>Калибратор</span>
-              </button>
-              )}
-              {canAccess('deals') && (
-              <button
-                onClick={() => setActiveTab('promo-ai')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'promo-ai' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Promo AI</span>
-              </button>
-              )}
-              {canAccess('users') && (
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'users' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>{t.users}</span>
-              </button>
-              )}
-              {canAccess('reviews') && (
-              <button
-                onClick={() => setActiveTab('reviews')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'reviews' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Star className="w-4 h-4" />
-                <span>{t.reviews}</span>
-              </button>
-              )}
-              {canAccess('feedback') && (
-              <button
-                onClick={() => setActiveTab('feedback')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'feedback' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>{t.feedback}</span>
-              </button>
-              )}
-            </div>
-          </div>
-
-          {/* Inventory & Pricing Group */}
-          <div className="px-4 mb-6">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Inventory & Pricing</h2>
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Operations</h2>
             <div className="space-y-1">
               {canAccess('deals') && (
               <button
@@ -1174,7 +1104,7 @@ export function AdminDashboard() {
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                <span>{t.deals}</span>
+                <span>{t.deals} / Queue</span>
               </button>
               )}
               {canAccess('cars') && (
@@ -1196,7 +1126,18 @@ export function AdminDashboard() {
                 }`}
               >
                 <Building2 className="w-4 h-4" />
-                <span>Dealers</span>
+                <span>Dealerships</span>
+              </button>
+              )}
+              {canAccess('banks') && (
+              <button
+                onClick={() => setActiveTab('banks')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'banks' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Database className="w-4 h-4" />
+                <span>Lenders & Finance</span>
               </button>
               )}
               {canAccess('incentives') && (
@@ -1210,26 +1151,106 @@ export function AdminDashboard() {
                 <span>OEM Incentives</span>
               </button>
               )}
-              {canAccess('banks') && (
+            </div>
+          </div>
+
+          {/* CRM & Sales Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">CRM & Users</h2>
+            <div className="space-y-1">
+              {canAccess('leads') && (
               <button
-                onClick={() => setActiveTab('banks')}
+                onClick={() => setActiveTab('leads')}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'banks' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  activeTab === 'leads' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Database className="w-4 h-4" />
-                <span>{t.banks}</span>
+                <UserCheck className="w-4 h-4" />
+                <span>{t.leads}</span>
               </button>
               )}
-              {canAccess('bulk-edit') && (
+              {canAccess('users') && (
               <button
-                onClick={() => setActiveTab('bulk-edit')}
+                onClick={() => setActiveTab('users')}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'bulk-edit' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  activeTab === 'users' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Layers className="w-4 h-4" />
-                <span>Bulk Edit</span>
+                <Users className="w-4 h-4" />
+                <span>{t.users}</span>
+              </button>
+              )}
+              {canAccess('leads') && (
+              <button
+                onClick={() => setActiveTab('calibrator')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'calibrator' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Target className="w-4 h-4" />
+                <span>Pricing Calibrator</span>
+              </button>
+              )}
+            </div>
+          </div>
+
+          {/* Content & Representation Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Content & Representation</h2>
+            <div className="space-y-1">
+              {canAccess('settings') && (
+              <button
+                onClick={() => setActiveTab('homepage')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'homepage' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Layout className="w-4 h-4" />
+                <span>Homepage / Banners</span>
+              </button>
+              )}
+              {canAccess('settings') && (
+              <button
+                onClick={() => setActiveTab('landing-pages')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'landing-pages' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                <span>Landing Pages (SEO)</span>
+              </button>
+              )}
+              {canAccess('settings') && (
+              <button
+                onClick={() => setActiveTab('pages-cms')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'pages-cms' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <BookText className="w-4 h-4" />
+                <span>Static Pages CMS</span>
+              </button>
+              )}
+              {canAccess('settings') && (
+              <button
+                onClick={() => setActiveTab('templates')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'templates' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+                <span>Email/SMS Templates</span>
+              </button>
+              )}
+              {canAccess('settings') && (
+              <button
+                onClick={() => setActiveTab('translations')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'translations' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Languages className="w-4 h-4" />
+                <span>Dictionary (EN/RU)</span>
               </button>
               )}
             </div>
@@ -1237,8 +1258,19 @@ export function AdminDashboard() {
 
           {/* Marketing Group */}
           <div className="px-4 mb-6">
-            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Marketing</h2>
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Marketing / Blog</h2>
             <div className="space-y-1">
+              {canAccess('deals') && (
+              <button
+                onClick={() => setActiveTab('promo-ai')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'promo-ai' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Promo AI</span>
+              </button>
+              )}
               {canAccess('promos') && (
               <button
                 onClick={() => setActiveTab('promos')}
@@ -1275,6 +1307,35 @@ export function AdminDashboard() {
             </div>
           </div>
 
+          {/* Support Group */}
+          <div className="px-4 mb-6">
+            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">Feedback & Reports</h2>
+            <div className="space-y-1">
+              {canAccess('reviews') && (
+              <button
+                onClick={() => setActiveTab('reviews')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'reviews' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Star className="w-4 h-4" />
+                <span>Customer Reviews</span>
+              </button>
+              )}
+              {canAccess('feedback') && (
+              <button
+                onClick={() => setActiveTab('feedback')}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'feedback' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                <span>Bug Reports</span>
+              </button>
+              )}
+            </div>
+          </div>
+
           {/* System Group */}
           <div className="px-4 mb-6">
             <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">System</h2>
@@ -1298,18 +1359,7 @@ export function AdminDashboard() {
                 }`}
               >
                 <List className="w-4 h-4" />
-                <span>{t.auditLogs}</span>
-              </button>
-              )}
-              {canAccess('audit') && (
-              <button
-                onClick={() => setActiveTab('calculator-audit')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'calculator-audit' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Calculator className="w-4 h-4" />
-                <span>Calculator Audit</span>
+                <span>System Logs</span>
               </button>
               )}
               <button
@@ -2451,17 +2501,45 @@ export function AdminDashboard() {
             </Suspense>
           </section>
         )}
-        {activeTab === 'calculator-audit' && (
-          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
-            <Suspense fallback={<AdminLoader />}>
-              <CalculatorAuditAdmin />
-            </Suspense>
-          </section>
-        )}
         {activeTab === 'blog' && (
           <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
             <Suspense fallback={<AdminLoader />}>
               <BlogAdmin />
+            </Suspense>
+          </section>
+        )}
+        {activeTab === 'homepage' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <Suspense fallback={<AdminLoader />}>
+              <HomepageAdmin />
+            </Suspense>
+          </section>
+        )}
+        {activeTab === 'landing-pages' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <Suspense fallback={<AdminLoader />}>
+              <LandingPagesAdmin />
+            </Suspense>
+          </section>
+        )}
+        {activeTab === 'pages-cms' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <Suspense fallback={<AdminLoader />}>
+              <PagesCMSAdmin />
+            </Suspense>
+          </section>
+        )}
+        {activeTab === 'templates' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <Suspense fallback={<AdminLoader />}>
+              <TemplatesAdmin />
+            </Suspense>
+          </section>
+        )}
+        {activeTab === 'translations' && (
+          <section className="bg-white shadow-sm ring-1 ring-slate-200 rounded-xl overflow-hidden p-6">
+            <Suspense fallback={<AdminLoader />}>
+              <TranslationsAdmin />
             </Suspense>
           </section>
         )}
@@ -2768,14 +2846,6 @@ export function AdminDashboard() {
           <section className="animate-fade-in">
             <Suspense fallback={<AdminLoader />}>
               <IncentivesAdmin />
-            </Suspense>
-          </section>
-        )}
-        
-        {activeTab === 'bulk-edit' && (
-          <section className="animate-fade-in">
-            <Suspense fallback={<AdminLoader />}>
-              <BulkEditAdmin />
             </Suspense>
           </section>
         )}

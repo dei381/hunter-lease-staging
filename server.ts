@@ -16,7 +16,6 @@ import { AuditLogger } from './server/services/AuditLogger';
 import { adminAuth, superAdminAuth, contentManagerAuth, salesAgentAuth, generalAdminAuth, dealerAuth, userAuth } from "./server/middleware/auth";
 import calculatorAdminRoutes from "./server/routes/calculatorAdminRoutes";
 import quoteRoutes from "./server/routes/quoteRoutes";
-import catalogRoutes, { warmCatalogCache } from "./server/routes/catalogRoutes";
 import { MarketcheckInventoryService } from "./server/services/MarketcheckInventoryService";
 
 import { JobQueue } from './server/services/JobQueue';
@@ -54,11 +53,6 @@ JobQueue.registerHandler('SYNC_EXTERNAL_CARS', async (job, updateProgress) => {
   return { appliedCount };
 });
 
-JobQueue.registerHandler('SYNC_MARKETCHECK_INVENTORY', async (job, updateProgress) => {
-  const result = await MarketcheckInventoryService.syncInventory(job.data?.options || {}, updateProgress);
-  return result;
-});
-
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err);
 });
@@ -74,8 +68,6 @@ import { DealEngineFacade } from "./server/services/engine/DealEngineFacade";
 import { PureMathEngine } from "./server/services/engine/PureMathEngine";
 import { EligibilityEngine } from "./server/services/EligibilityEngine";
 import { MarketcheckSyncService } from "./server/services/MarketcheckSyncService";
-import { StripeService } from "./server/services/StripeService";
-import { CreditService } from "./server/services/CreditService";
 
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
@@ -231,15 +223,16 @@ const upload = multer({
 const ingestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // Limit each IP to 10 requests per windowMs
-  message: { error: 'Too many requests from this IP, please try again later.' }
+  message: { error: 'Too many requests from this IP, please try again later.' },
+  validate: { xForwardedForHeader: false, trustProxy: false }
 });
 
 // Validation Schemas
 const leadSchema = z.object({
   client: z.object({
-    name: z.string().max(100).optional().default(''),
-    phone: z.string().max(20).optional().or(z.literal('')),
-    email: z.string().max(200).optional().or(z.literal('')),
+    name: z.string().min(2).max(100),
+    phone: z.string().min(10).max(20),
+    email: z.string().email().optional().or(z.literal('')),
     payMethod: z.string().max(50).optional(),
     paymentName: z.string().max(100).optional(),
     isFirstTimeBuyer: z.boolean().optional().default(false),
@@ -256,16 +249,16 @@ const leadSchema = z.object({
     payoff: z.string().max(50).optional(),
   }).nullable().optional(),
   car: z.object({
-    make: z.string().max(50).optional().default(''),
-    model: z.string().max(50).optional().default(''),
-    year: z.union([z.string(), z.number()]).optional(),
+    make: z.string().max(50),
+    model: z.string().max(50),
+    year: z.union([z.string(), z.number()]),
     trim: z.string().max(100).optional(),
-    msrp: z.union([z.string(), z.number()]).optional(),
-  }).optional(),
+    msrp: z.union([z.string(), z.number()]),
+  }),
   calc: z.object({
-    type: z.string().max(20).optional(),
-    payment: z.union([z.string(), z.number()]).optional(),
-    down: z.union([z.string(), z.number()]).optional(),
+    type: z.string().max(20),
+    payment: z.union([z.string(), z.number()]),
+    down: z.union([z.string(), z.number()]),
     tier: z.string().max(20).optional(),
     zip: z.string().max(10).optional(),
     mileage: z.string().max(20).optional(),
@@ -396,7 +389,8 @@ async function startServer() {
   loadDataFromFirestore().catch(err => console.error("Initial data load failed:", err));
   
   const app = express();
-  app.set('trust proxy', 1);
+  app.set('trust proxy', 1); // Trust the Google Cloud Run reverse proxy for rate limiting
+
   const PORT = 3000;
 
   // Seed default data (non-blocking)
@@ -437,83 +431,6 @@ async function startServer() {
     if (dealCount === 0) {
       console.log('No deals found in database. Please create deals via the admin panel.');
     }
-
-    // Seed bank programs for calculator if insufficient
-    // Ensure lenders always exist
-    let lender = await prisma.lender.findFirst({ where: { name: 'BMW Financial Services' } });
-    if (!lender) {
-      lender = await prisma.lender.create({
-        data: { name: 'BMW Financial Services', isCaptive: true, lenderType: 'CAPTIVE', priority: 1, isActive: true }
-      });
-      console.log('Created lender: BMW Financial Services');
-    }
-    let mbLender = await prisma.lender.findFirst({ where: { name: 'Mercedes-Benz Financial Services' } });
-    if (!mbLender) {
-      mbLender = await prisma.lender.create({
-        data: { name: 'Mercedes-Benz Financial Services', isCaptive: true, lenderType: 'CAPTIVE', priority: 1, isActive: true }
-      });
-      console.log('Created lender: Mercedes-Benz Financial Services');
-    }
-
-    const programCount = await prisma.bankProgram.count();
-    if (programCount < 10) {
-      console.log(`Only ${programCount} bank programs — seeding more...`);
-      
-      let batch = await prisma.programBatch.findFirst({ where: { status: 'ACTIVE' } });
-      if (!batch) {
-        batch = await prisma.programBatch.create({
-          data: { status: 'ACTIVE', isValid: true, description: 'Default seed programs', publishedAt: new Date() }
-        });
-      }
-
-      const programSeeds = [
-        // BMW 3 Series — Lease
-        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 24, mileage: 10000, rv: 0.62, mf: 0.00125, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.55, mf: 0.00125, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2024, term: 36, mileage: 10000, rv: 0.52, mf: 0.00135, apr: null, rebates: 0 },
-        // BMW 3 Series — Finance
-        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 36, mileage: null, rv: null, mf: null, apr: 4.9, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 48, mileage: null, rv: null, mf: null, apr: 5.49, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: '3 Series', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.9, rebates: 0 },
-        // BMW X5
-        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'BMW', model: 'X5', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.58, mf: 0.00115, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'BMW', model: 'X5', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.49, rebates: 0 },
-        // Mercedes C-Class — Lease
-        { batchId: batch.id, lenderId: mbLender.id, programType: 'LEASE', make: 'Mercedes-Benz', model: 'C-Class', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.53, mf: 0.00145, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: mbLender.id, programType: 'LEASE', make: 'Mercedes-Benz', model: 'C-Class', trim: 'ALL', year: 2024, term: 36, mileage: 10000, rv: 0.50, mf: 0.00155, apr: null, rebates: 0 },
-        // Mercedes C-Class — Finance
-        { batchId: batch.id, lenderId: mbLender.id, programType: 'FINANCE', make: 'Mercedes-Benz', model: 'C-Class', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.99, rebates: 0 },
-        // Mercedes E-Class
-        { batchId: batch.id, lenderId: mbLender.id, programType: 'LEASE', make: 'Mercedes-Benz', model: 'E-Class', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.50, mf: 0.00160, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: mbLender.id, programType: 'FINANCE', make: 'Mercedes-Benz', model: 'E-Class', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 6.29, rebates: 0 },
-        // Audi A4
-        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'Audi', model: 'A4', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.52, mf: 0.00140, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'Audi', model: 'A4', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.79, rebates: 0 },
-        // Audi Q5
-        { batchId: batch.id, lenderId: lender.id, programType: 'LEASE', make: 'Audi', model: 'Q5', trim: 'ALL', year: 2025, term: 36, mileage: 10000, rv: 0.54, mf: 0.00130, apr: null, rebates: 0 },
-        { batchId: batch.id, lenderId: lender.id, programType: 'FINANCE', make: 'Audi', model: 'Q5', trim: 'ALL', year: 2025, term: 60, mileage: null, rv: null, mf: null, apr: 5.59, rebates: 0 },
-      ];
-
-      await prisma.bankProgram.createMany({ data: programSeeds });
-      console.log(`Seeded ${programSeeds.length} bank programs in batch ${batch.id}`);
-    }
-
-    // Ensure VehicleTrims have MSRP values for calculator
-    const trimsWithoutMsrp = await prisma.vehicleTrim.findMany({ where: { msrpCents: 0, isActive: true } });
-    if (trimsWithoutMsrp.length > 0) {
-      const msrpDefaults: Record<string, number> = {
-        '330i': 4400000, '330i xDrive': 4600000, 'M340i': 5600000, 'M340i xDrive': 5800000,
-        'xDrive40i': 6400000, 'M50': 8200000,
-        'C 300': 4700000, 'C 300 4MATIC': 4900000, 'AMG C 43': 6200000, 'AMG C 63': 7700000,
-        'E 350': 6000000, 'E 350 4MATIC': 6200000, 'AMG E 53': 7500000,
-        'Premium': 4200000, 'Premium Plus': 4600000, 'Prestige': 5000000,
-      };
-      for (const trim of trimsWithoutMsrp) {
-        const msrp = msrpDefaults[trim.name] || 4500000;
-        await prisma.vehicleTrim.update({ where: { id: trim.id }, data: { msrpCents: msrp } });
-      }
-      console.log(`Updated MSRP for ${trimsWithoutMsrp.length} trims`);
-    }
   } catch (err) {
     console.error('Seeding error:', err);
   }
@@ -532,40 +449,19 @@ async function startServer() {
     ? { origin: allowedOrigins.length > 0 ? allowedOrigins : false } 
     : {};
   app.use(cors(corsOptions));
-
-  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    try {
-      const sig = req.headers['stripe-signature'] as string;
-      const result = await StripeService.handleWebhook(req.body, sig);
-      res.json(result);
-    } catch (error: any) {
-      console.error('Stripe webhook error:', error.message);
-      res.status(400).json({ error: error.message });
-    }
-  });
-
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // MVP Calculator Routes
   app.use("/api/v2", quoteRoutes);
-  app.use("/api/v2/catalog", catalogRoutes);
   app.use("/api/admin/calculator", calculatorAdminRoutes);
-
-  // Security headers
-  app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    next();
-  });
 
   // Security: Rate limiting for lead submission and feedback
   const standardLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // Limit each IP to 20 requests per windowMs
-    message: { error: 'Too many requests from this IP, please try again later.' }
+    message: { error: 'Too many requests from this IP, please try again later.' },
+    validate: { xForwardedForHeader: false, trustProxy: false }
   });
 
   // --- API ROUTES ---
@@ -742,6 +638,40 @@ async function startServer() {
       res.json({ hasKey });
     } catch (error) {
       res.json({ hasKey: !!(process.env.API_KEY || process.env.GEMINI_API_KEY) });
+    }
+  });
+
+  // --- Content Management API ---
+  app.get("/api/admin/content/:key", async (req, res) => {
+    try {
+      const { key } = req.params;
+      const setting = await prisma.siteSettings.findUnique({
+        where: { key }
+      });
+      res.json({ data: setting && setting.data ? JSON.parse(setting.data) : null });
+    } catch (error) {
+      console.error("Failed to fetch content data:", error);
+      res.status(500).json({ error: 'Failed to fetch content' });
+    }
+  });
+
+  app.post("/api/admin/content/:key", express.json(), async (req, res) => {
+    try {
+      const { key } = req.params;
+      const data = req.body;
+      const setting = await prisma.siteSettings.upsert({
+        where: { key },
+        update: { data: JSON.stringify(data) },
+        create: {
+          id: `content_${key}`,
+          key,
+          data: JSON.stringify(data)
+        }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to save content data:", error);
+      res.status(500).json({ error: 'Failed to save content' });
     }
   });
 
@@ -2023,84 +1953,6 @@ You must return the response as a JSON array of objects. Each object must have t
     res.json(JobQueue.getAllJobs());
   });
 
-  // Bulk discovery: sync all major brands at once
-  app.post("/api/admin/sync-external/discover-all", adminAuth, async (req, res) => {
-    try {
-      const apiKey = (process.env.MARKETCHECK_API_KEY || process.env.API_KEY || '').trim();
-      if (!apiKey) {
-        return res.status(400).json({ error: "Marketcheck API Key is not configured." });
-      }
-
-      const DEFAULT_MAKES = [
-        'Toyota', 'Honda', 'Nissan', 'Hyundai', 'Kia',
-        'BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Acura',
-        'Chevrolet', 'Ford', 'Jeep', 'Subaru', 'Mazda',
-        'Volkswagen', 'Volvo', 'Genesis', 'Infiniti', 'Cadillac',
-        'Lincoln', 'Buick', 'GMC', 'Ram', 'Dodge'
-      ];
-
-      const { makes: requestedMakes } = req.body || {};
-      const makesToSync = (requestedMakes && requestedMakes.length > 0) ? requestedMakes : DEFAULT_MAKES;
-
-      // Ensure all requested makes exist in carDb
-      const carDb = await getCarDb();
-      for (const makeName of makesToSync) {
-        const existing = carDb.makes.find((m: any) => m.name === makeName);
-        if (!existing) {
-          carDb.makes.push({
-            id: makeName.toLowerCase().replace(/\s+/g, '-'),
-            name: makeName,
-            tiers: [],
-            baseMF: 0.002,
-            baseAPR: 6.9,
-            models: []
-          });
-        }
-      }
-
-      const diff = await MarketcheckSyncService.fetchDiff(apiKey, carDb, makesToSync, undefined, {
-        msrp: true, mf: true, rv: true, rebates: true
-      });
-
-      // Auto-apply if requested
-      const autoApply = req.body?.autoApply !== false;
-      if (autoApply && diff.cars && diff.cars.length > 0) {
-        const appliedCount = await MarketcheckSyncService.applyDiff(carDb, diff, db);
-        await saveCarDb(carDb);
-        clearCarCache();
-        
-        const userId = (req as any).user?.dbUser?.id || (req as any).user?.uid || 'system';
-        await AuditLogger.log(userId, 'BULK_DISCOVERY', 'CarDatabase', undefined, {
-          makes: makesToSync,
-          discovered: diff.cars.length,
-          applied: appliedCount,
-          dealers: diff.dealers?.length || 0,
-          incentives: diff.incentives?.length || 0
-        });
-
-        return res.json({
-          message: `Bulk discovery complete`,
-          makes: makesToSync.length,
-          discovered: diff.cars.length,
-          applied: appliedCount,
-          dealers: diff.dealers?.length || 0,
-          incentives: diff.incentives?.length || 0,
-          diff: diff.cars.slice(0, 50) // Preview first 50
-        });
-      }
-
-      res.json({
-        message: "Discovery preview",
-        makes: makesToSync.length,
-        discovered: diff.cars?.length || 0,
-        diff
-      });
-    } catch (error: any) {
-      console.error("Bulk discovery failed:", error);
-      res.status(502).json({ error: "Bulk discovery failed", details: error.message });
-    }
-  });
-
   app.get("/api/admin/jobs/:id", adminAuth, (req, res) => {
     const job = JobQueue.getJob(req.params.id);
     if (!job) return res.status(404).json({ error: "Job not found" });
@@ -2122,7 +1974,7 @@ You must return the response as a JSON array of objects. Each object must have t
 
   app.get("/api/marketcheck/search", async (req, res) => {
     try {
-      const { make, model, rows = 55, start = 0 } = req.query;
+      const { make, model, trim, rows = 55, start = 0 } = req.query;
       const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
       
       let url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&latitude=34.0522&longitude=-118.2437&radius=100&car_type=new&rows=${rows}&start=${start}`;
@@ -2136,6 +1988,7 @@ You must return the response as a JSON array of objects. Each object must have t
       }
       
       if (model && model !== 'All') url += `&model=${encodeURIComponent(model as string)}`;
+      if (trim && trim !== 'All') url += `&trim=${encodeURIComponent(trim as string)}`;
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -3068,14 +2921,14 @@ FACEBOOK:
   app.post("/api/lead", standardLimiter, async (req, res) => {
     try {
       // Security: Validate input
-      const validatedData = leadSchema.passthrough().parse(req.body);
+      const validatedData = leadSchema.parse(req.body);
       const { client, tradeIn, car, calc, source } = validatedData;
 
       const lead = await prisma.lead.create({
         data: {
           source: source || 'catalog_deal',
-          clientName: client.name || '',
-          clientPhone: client.phone || '',
+          clientName: client.name,
+          clientPhone: client.phone,
           clientEmail: client.email || '',
           payMethod: client.payMethod || '',
           paymentName: client.paymentName || '',
@@ -3089,11 +2942,11 @@ FACEBOOK:
           tradeInHasLoan: tradeIn?.hasLoan || false,
           tradeInPayoff: tradeIn?.payoff ? Number(tradeIn.payoff) : undefined,
 
-          carMake: car?.make || '',
-          carModel: car?.model || '',
-          carYear: car?.year ? Number(car.year) : 0,
-          carTrim: car?.trim,
-          carMsrp: car?.msrp ? Number(car.msrp) : 0,
+          carMake: car.make,
+          carModel: car.model,
+          carYear: Number(car.year),
+          carTrim: car.trim,
+          carMsrp: Number(car.msrp),
 
           calcType: calc.type,
           calcPayment: Number(calc.payment),
@@ -3645,39 +3498,18 @@ FACEBOOK:
   });
 
   // Stripe Payment Intent (for seamless modal)
-  app.post("/api/create-payment-intent", async (req, res) => {
+  app.post("/api/create-payment-intent", userAuth, async (req, res) => {
     try {
       const { leadId } = req.body;
-      const authHeader = req.headers.authorization;
-      let userId: string | undefined;
-
-      if (!leadId) {
-        return res.status(400).json({ error: "Lead ID required" });
-      }
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.split('Bearer ')[1]?.trim();
-        if (token) {
-          try {
-            const decodedToken = await admin.auth().verifyIdToken(token);
-            userId = decodedToken.uid;
-          } catch (error) {
-            return res.status(401).json({ error: "Unauthorized access: Invalid token" });
-          }
-        }
+      const userId = (req as any).user?.uid;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User ID required" });
       }
 
       const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-      if (!lead) {
+      if (!lead || lead.userId !== userId) {
         return res.status(404).json({ error: "Lead not found" });
-      }
-
-      if (lead.userId && !userId) {
-        return res.status(401).json({ error: "User authentication required" });
-      }
-
-      if (lead.userId && lead.userId !== userId) {
-        return res.status(403).json({ error: "Lead does not belong to the current user" });
       }
 
       if (!process.env.STRIPE_SECRET_KEY) {
@@ -3685,12 +3517,20 @@ FACEBOOK:
         return res.json({ clientSecret: "pi_mock_secret_12345" });
       }
 
-      const paymentIntent = await StripeService.createPaymentIntent({
-        leadId: lead.id,
-        userId,
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: 9500, // $95.00
+        currency: 'usd',
+        metadata: {
+          leadId: lead.id,
+          userId: userId
+        },
+        // Automatic payment methods enabled by default
+        automatic_payment_methods: {
+          enabled: true,
+        },
       });
 
-      res.json({ clientSecret: paymentIntent.clientSecret, paymentId: paymentIntent.paymentId });
+      res.json({ clientSecret: paymentIntent.client_secret });
     } catch (error) {
       console.error("Error creating payment intent:", error);
       res.status(500).json({ error: "Failed to create payment intent" });
@@ -4068,7 +3908,7 @@ FACEBOOK:
 
       await prisma.auditLog.create({
         data: {
-          userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
+          userId: (req as any).user.id,
           action: "CREATE",
           entityId: deal.id,
           entity: "DealRecord",
@@ -4145,7 +3985,7 @@ FACEBOOK:
 
       await prisma.auditLog.create({
         data: {
-          userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
+          userId: (req as any).user.id,
           action: "UPDATE",
           entityId: updatedDeal.id,
           entity: "DealRecord",
@@ -4168,7 +4008,7 @@ FACEBOOK:
 
       await prisma.auditLog.create({
         data: {
-          userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
+          userId: (req as any).user.id,
           action: "DELETE",
           entityId: id,
           entity: "DealRecord",
@@ -4259,7 +4099,7 @@ FACEBOOK:
 
         await prisma.auditLog.create({
           data: {
-            userId: (req as any).user.dbUser?.id || (req as any).user.uid || 'system',
+            userId: (req as any).user.id,
             action: "BULK_UPDATE",
             entityId: deal.id,
             entity: "DealRecord",
@@ -4719,6 +4559,13 @@ const mapDealsForFrontend = (
           console.error(`Failed to parse financialData for deal ${deal.id}:`, e);
         }
         if (!data) continue;
+        
+        // Skip this deal if its Make is explicitly hidden in carDb map
+        const makeKey = data.make?.toLowerCase();
+        const makeInfo = cachedMaps?.makeMap?.get(makeKey);
+        if (makeInfo?.isHidden) {
+          continue;
+        }
 
         if (shouldDeduplicate) {
           const key = `${data.make}-${data.model}-${data.trim}`;
@@ -4915,8 +4762,8 @@ const mapDealsForFrontend = (
   // Marketcheck Sync Route
   app.post("/api/admin/marketcheck/sync", adminAuth, async (req, res) => {
     try {
-      const job = await JobQueue.addJob('SYNC_MARKETCHECK_INVENTORY', { options: req.body || {} });
-      res.json({ message: "Marketcheck inventory sync job started", jobId: job.id });
+      const result = await MarketcheckInventoryService.syncInventory();
+      res.json(result);
     } catch (error: any) {
       console.error("Marketcheck sync failed:", error);
       res.status(500).json({ error: "Sync failed", message: error.message });
@@ -5055,341 +4902,6 @@ const mapDealsForFrontend = (
     }
   });
 
-  // ============================================
-  // STRIPE PAYMENT ROUTES
-  // ============================================
-
-  // Create checkout session for $95 deposit
-  app.post('/api/payments/create-session', async (req, res) => {
-    try {
-      const { leadId, userId, quoteId, customerEmail, vehicleDescription } = req.body;
-      if (!leadId) return res.status(400).json({ error: 'leadId is required' });
-
-      const result = await StripeService.createCheckoutSession({
-        leadId, userId, quoteId, customerEmail, vehicleDescription
-      });
-      res.json(result);
-    } catch (error: any) {
-      console.error('Create checkout session error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Get payment status for a lead
-  app.get('/api/payments/lead/:leadId', async (req, res) => {
-    try {
-      const payment = await StripeService.getPaymentByLead(req.params.leadId);
-      res.json(payment || { status: 'none' });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Admin: refund a payment
-  app.post('/api/admin/payments/:id/refund', adminAuth, async (req, res) => {
-    try {
-      const result = await StripeService.refundPayment(req.params.id, req.body.reason);
-      res.json(result);
-    } catch (error: any) {
-      console.error('Refund error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Admin: list all payments
-  app.get('/api/admin/payments', adminAuth, async (req, res) => {
-    try {
-      const payments = await prisma.payment.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: { lead: { select: { id: true, name: true, clientName: true, carMake: true, carModel: true } } }
-      });
-      res.json(payments);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ============================================
-  // 700CREDIT ROUTES
-  // ============================================
-
-  // Record credit consent
-  app.post('/api/credit/consent', async (req, res) => {
-    try {
-      const { leadId, userId } = req.body;
-      if (!leadId) return res.status(400).json({ error: 'leadId is required' });
-
-      const creditCheck = await CreditService.recordConsent(leadId, userId);
-      res.json(creditCheck);
-    } catch (error: any) {
-      console.error('Credit consent error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Execute soft pull
-  app.post('/api/credit/soft-pull', async (req, res) => {
-    try {
-      const { creditCheckId, applicant } = req.body;
-      if (!creditCheckId || !applicant) {
-        return res.status(400).json({ error: 'creditCheckId and applicant data are required' });
-      }
-
-      const result = await CreditService.executeSoftPull(creditCheckId, applicant);
-      // Return obfuscated summary to client (no raw score)
-      res.json({
-        creditBand: result.creditBand,
-        scoreRange: result.scoreRange,
-        status: 'completed',
-      });
-    } catch (error: any) {
-      console.error('Soft pull error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Dealer view: get obfuscated credit summary
-  app.get('/api/credit/summary/:leadId', generalAdminAuth, async (req, res) => {
-    try {
-      const summary = await CreditService.getDealerSummary(req.params.leadId);
-      res.json(summary || { status: 'not_checked' });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Admin view: get full credit details
-  app.get('/api/admin/credit/:id', adminAuth, async (req, res) => {
-    try {
-      const details = await CreditService.getFullDetails(req.params.id);
-      res.json(details);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Admin: list all credit checks
-  app.get('/api/admin/credit-checks', adminAuth, async (req, res) => {
-    try {
-      const checks = await prisma.creditCheck.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: { lead: { select: { id: true, name: true, clientName: true } } }
-      });
-      res.json(checks);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ============================================
-  // DEALER ASSIGNMENT ROUTES
-  // ============================================
-
-  // Assign lead to dealer
-  app.post('/api/admin/dealer-assignments', adminAuth, async (req, res) => {
-    try {
-      const { leadId, dealerPartnerId, staffId } = req.body;
-      if (!leadId || !dealerPartnerId) {
-        return res.status(400).json({ error: 'leadId and dealerPartnerId are required' });
-      }
-
-      const dealer = await prisma.dealerPartner.findUnique({ where: { id: dealerPartnerId } });
-      if (!dealer) return res.status(404).json({ error: 'Dealer not found' });
-
-      const assignment = await prisma.dealerAssignment.create({
-        data: {
-          leadId,
-          dealerPartnerId,
-          staffId: staffId || null,
-          status: 'pending',
-          slaDeadline: new Date(Date.now() + (dealer.slaHours || 24) * 60 * 60 * 1000),
-        },
-      });
-
-      // Notify dealer
-      if (dealer.email) {
-        const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-        if (lead) {
-          await NotificationService.notifyDealerNewLead(
-            dealer.email,
-            dealer.phone || '',
-            { carYear: lead.carYear, carMake: lead.carMake, carModel: lead.carModel, carMsrp: lead.carMsrp, calcPayment: lead.calcPayment }
-          );
-        }
-      }
-
-      // Update lead counters
-      await prisma.lead.update({
-        where: { id: leadId },
-        data: { dealersSent: { increment: 1 } },
-      });
-
-      res.json(assignment);
-    } catch (error: any) {
-      console.error('Dealer assignment error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Dealer accepts/rejects assignment
-  app.put('/api/dealer-assignments/:id/respond', generalAdminAuth, async (req, res) => {
-    try {
-      const { action, comment, counterOffer } = req.body;
-      if (!['accept', 'reject', 'counter'].includes(action)) {
-        return res.status(400).json({ error: 'action must be accept, reject, or counter' });
-      }
-
-      const now = new Date();
-      const updateData: any = { comment: comment || null };
-
-      if (action === 'accept') {
-        updateData.status = 'accepted';
-        updateData.acceptedAt = now;
-      } else if (action === 'reject') {
-        updateData.status = 'rejected';
-        updateData.rejectedAt = now;
-      } else if (action === 'counter') {
-        updateData.status = 'countered';
-        updateData.counterOffer = counterOffer || null;
-      }
-
-      const assignment = await prisma.dealerAssignment.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: { lead: true, dealerPartner: true },
-      });
-
-      // Notify client if accepted
-      if (action === 'accept' && assignment.lead) {
-        const clientEmail = assignment.lead.clientEmail || assignment.lead.email;
-        const clientPhone = assignment.lead.clientPhone || assignment.lead.phone;
-        const vehicle = `${assignment.lead.carYear} ${assignment.lead.carMake} ${assignment.lead.carModel}`;
-
-        if (clientEmail) {
-          await NotificationService.notifyDealerAccepted(
-            clientEmail, clientPhone || '', assignment.dealerPartner.name, vehicle
-          );
-        }
-
-        await prisma.lead.update({
-          where: { id: assignment.leadId },
-          data: {
-            dealersAccepted: { increment: 1 },
-            acceptedBy: assignment.dealerPartner.name,
-            status: 'accepted',
-          },
-        });
-      }
-
-      res.json(assignment);
-    } catch (error: any) {
-      console.error('Assignment response error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Get assignments for a lead
-  app.get('/api/admin/dealer-assignments/lead/:leadId', adminAuth, async (req, res) => {
-    try {
-      const assignments = await prisma.dealerAssignment.findMany({
-        where: { leadId: req.params.leadId },
-        include: { dealerPartner: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      res.json(assignments);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Get assignments for a dealer (dealer portal)
-  app.get('/api/dealer/assignments', generalAdminAuth, async (req, res) => {
-    try {
-      const user = (req as any).user?.dbUser;
-      if (!user?.dealerPartnerId) {
-        return res.status(403).json({ error: 'Not associated with a dealer' });
-      }
-
-      const assignments = await prisma.dealerAssignment.findMany({
-        where: { dealerPartnerId: user.dealerPartnerId },
-        include: {
-          lead: {
-            select: {
-              id: true, name: true, clientName: true, carMake: true, carModel: true,
-              carYear: true, carTrim: true, carMsrp: true, calcPayment: true, calcType: true
-            }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-      res.json(assignments);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ============================================
-  // NOTIFICATION LOG ROUTES (admin)
-  // ============================================
-
-  app.get('/api/admin/notification-logs', adminAuth, async (req, res) => {
-    try {
-      const logs = await prisma.notificationLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      });
-      res.json(logs);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ============================================
-  // NOTIFICATION TEMPLATES (admin CRUD)
-  // ============================================
-
-  app.get('/api/admin/notification-templates', adminAuth, async (req, res) => {
-    try {
-      const templates = await prisma.notificationTemplate.findMany({ orderBy: { key: 'asc' } });
-      res.json(templates);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post('/api/admin/notification-templates', adminAuth, async (req, res) => {
-    try {
-      const { key, channel, subject, body } = req.body;
-      const template = await prisma.notificationTemplate.create({
-        data: { key, channel, subject, body }
-      });
-      res.json(template);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.put('/api/admin/notification-templates/:id', adminAuth, async (req, res) => {
-    try {
-      const template = await prisma.notificationTemplate.update({
-        where: { id: req.params.id },
-        data: req.body,
-      });
-      res.json(template);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete('/api/admin/notification-templates/:id', adminAuth, async (req, res) => {
-    try {
-      await prisma.notificationTemplate.delete({ where: { id: req.params.id } });
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // --- STATIC ASSETS ---
   // Serve public folder at root to ensure /uploads/... paths work correctly
   app.use(express.static(path.join(process.cwd(), 'public')));
@@ -5440,9 +4952,6 @@ const mapDealsForFrontend = (
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    warmCatalogCache().catch(error => {
-      console.error('Catalog warmup failed:', error);
-    });
   });
 }
 
