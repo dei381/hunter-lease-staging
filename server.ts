@@ -385,6 +385,54 @@ async function sendLeadEmail(lead: any, type: 'new' | 'credit-app') {
   }
 }
 
+async function sendLeadTelegram(lead: any, type: 'new' | 'credit-app') {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  let text = '';
+  if (type === 'new') {
+    const carLine = `${lead.carYear || ''} ${lead.carMake || ''} ${lead.carModel || ''}${lead.carTrim ? ' ' + lead.carTrim : ''}`.trim();
+    text = [
+      `<b>🚗 New Lead</b>`,
+      `<b>Client:</b> ${lead.clientName || '-'}`,
+      `<b>Phone:</b> ${lead.clientPhone || '-'}`,
+      `<b>Email:</b> ${lead.clientEmail || '-'}`,
+      `<b>Car:</b> ${carLine || '-'}`,
+      `<b>Payment:</b> $${lead.calcPayment ?? '-'}/${lead.calcType || '-'} | down $${lead.calcDown ?? '-'} | term ${lead.calcTerm || '-'}`,
+      lead.hasTradeIn ? `<b>Trade-in:</b> ${lead.tradeInYear || ''} ${lead.tradeInMake || ''} ${lead.tradeInModel || ''}` : '',
+      `<b>Lead ID:</b> ${lead.id}`,
+    ].filter(Boolean).join('\n');
+  } else {
+    let app: any = {};
+    try { app = JSON.parse(lead.creditApp || '{}'); } catch {}
+    text = [
+      `<b>📝 Credit Application</b>`,
+      `<b>Client:</b> ${app.firstName || ''} ${app.lastName || ''}`.trim(),
+      `<b>Email:</b> ${app.email || '-'}`,
+      `<b>Employer:</b> ${app.employer || '-'}`,
+      `<b>Income:</b> $${app.monthlyIncome || '-'} (${app.incomeType || '-'})`,
+      `<b>Lead ID:</b> ${lead.id}`,
+    ].filter(Boolean).join('\n');
+  }
+
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      console.error(`Telegram notify failed for lead ${lead.id}: ${r.status} ${body}`);
+    } else {
+      console.log(`Telegram notified for lead ${lead.id}`);
+    }
+  } catch (error) {
+    console.error(`Telegram notify error for lead ${lead.id}:`, error);
+  }
+}
+
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
@@ -3144,8 +3192,9 @@ FACEBOOK:
         console.warn("Firestore backup failed, but backend succeeded:", fsError);
       }
 
-      // Send notification email
+      // Send notifications
       sendLeadEmail(lead, 'new');
+      sendLeadTelegram(lead, 'new');
 
       res.json({ success: true, leadId: lead.id });
     } catch (error) {
@@ -3178,8 +3227,9 @@ FACEBOOK:
         }
       });
 
-      // Send credit app email
+      // Send credit app notifications
       sendLeadEmail(updatedLead, 'credit-app');
+      sendLeadTelegram(updatedLead, 'credit-app');
 
       res.json({ success: true });
     } catch (error) {
