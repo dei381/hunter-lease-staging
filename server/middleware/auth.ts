@@ -47,10 +47,18 @@ const verifyRole = async (req: Request, res: Response, next: NextFunction, allow
     const decodedToken = await admin.auth().verifyIdToken(token);
     
     let user = await db.user.findUnique({ where: { email: decodedToken.email } });
-    
-    if (!user && decodedToken.email === 'azat.cutliahmetov@gmail.com') {
-      user = await db.user.create({
-        data: {
+
+    const superAdminEmails = (process.env.SUPER_ADMIN_EMAILS || 'azat.cutliahmetov@gmail.com')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean);
+    const loginEmail = (decodedToken.email || '').toLowerCase();
+
+    if (!user && loginEmail && superAdminEmails.includes(loginEmail)) {
+      user = await db.user.upsert({
+        where: { email: decodedToken.email },
+        update: { role: 'SUPER_ADMIN' },
+        create: {
           email: decodedToken.email,
           name: decodedToken.name || 'Super Admin',
           role: 'SUPER_ADMIN'
