@@ -13,6 +13,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import { useMarketcheck } from '../hooks/useMarketcheck';
 import { CompareBar } from '../components/CompareBar';
 import { logEvent } from '../components/VisitTracker';
+import { cn } from '../utils/cn';
 import { fetchWithCache } from '../utils/fetchWithCache';
 
 const fmt = (n: any) => {
@@ -258,6 +259,11 @@ export const DealsPage = () => {
       const totalCost = (currentPayment * selectedTerm) + downPayment;
       const valueScore = totalCost > 0 ? (msrp / totalCost).toFixed(2) : '0';
 
+      const totalIncentives = (deal.availableIncentives || []).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+      const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
+      const savingsPctObj = msrp > 0 ? badgeTotalSavings / msrp : 0;
+      const leaseValueRatio = msrp > 0 ? currentPayment / msrp : 0;
+
       return {
         ...deal,
         msrp, // Ensure msrp is a number in the processed deal
@@ -265,7 +271,10 @@ export const DealsPage = () => {
         displayMarketAvg: isNaN(currentMarketAvg) ? 0 : currentMarketAvg,
         displayType: displayMode,
         displayTerm: selectedTerm,
-        valueScore: parseFloat(valueScore)
+        valueScore: parseFloat(valueScore),
+        badgeTotalSavings,
+        savingsPctObj,
+        leaseValueRatio
       };
     });
   }, [deals, mcInventory, displayMode, selectedTerm, downPayment]);
@@ -843,7 +852,7 @@ export const DealsPage = () => {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-10" />
                       
                       {/* Badges */}
-                      <div className="absolute top-3 left-3 flex flex-col gap-2 z-20">
+                      <div className="absolute top-3 left-3 flex flex-col gap-2 z-20 hover:z-30">
                         {deal.hot && (
                           <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
                             {t.hot}
@@ -858,13 +867,38 @@ export const DealsPage = () => {
                             Verified
                           </span>
                         )}
+                        {deal.savingsPctObj >= 0.06 && (
+                          <span className="bg-[#00E58F] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative">
+                            {language === 'ru' ? 'Отличная скидка' : 'Great Price'}
+                          </span>
+                        )}
+                        {deal.savingsPctObj >= 0.03 && deal.savingsPctObj < 0.06 && (
+                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative">
+                            {language === 'ru' ? 'Хорошая скидка' : 'Good Price'}
+                          </span>
+                        )}
+                        {deal.badgeTotalSavings > 0 && (
+                          <span className="bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative">
+                            {language === 'ru' ? `Ниже MSRP на ${fmt(deal.badgeTotalSavings)}` : `Save ${fmt(deal.badgeTotalSavings)}`}
+                          </span>
+                        )}
+                        {deal.displayType === 'lease' && deal.leaseValueRatio > 0 && deal.leaseValueRatio <= 0.0125 && (
+                          <span className={cn(
+                            "text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative",
+                            deal.leaseValueRatio <= 0.010 ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                          )}>
+                            {deal.leaseValueRatio <= 0.010 
+                              ? (language === 'ru' ? 'Отличный лизинг' : 'Exceptional Lease') 
+                              : (language === 'ru' ? 'Хороший лизинг' : 'Good Lease')}
+                          </span>
+                        )}
                       </div>
                     </div>
 
                       {/* Content Section - Bottom */}
                       <div className="p-5 flex-1 flex flex-col pt-4">
                         {/* 1. Vehicle Identity */}
-                        <div className="mb-3">
+                        <div className="mb-3 flex justify-between items-start">
                           <h3 className="font-display text-xl tracking-tight leading-tight text-[var(--w)] line-clamp-2 min-h-[3.3rem]">
                             {deal.year} {deal.make} {deal.model} <span className="text-[var(--mu2)] font-sans text-sm tracking-normal">{deal.trim}</span>
                           </h3>
@@ -899,10 +933,19 @@ export const DealsPage = () => {
                         {/* 3. Discounts & Incentives Pill */}
                         <div className="flex justify-between items-center mb-5 mt-auto">
                           <span className="text-xs font-medium text-[var(--mu2)]">Discounts & Incentives</span>
-                          {deal.savings > 0 ? (
-                            <span className="bg-[var(--grn)]/10 text-[var(--grn)] text-[11px] font-bold px-2.5 py-1 rounded-md border border-[var(--grn)]/20 shadow-sm">
-                              {fmt(deal.savings)}
-                            </span>
+                          {deal.badgeTotalSavings > 0 ? (
+                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                              {deal.discountPercent > 0 && (
+                                <span className="text-[10px] font-mono text-[var(--grn)] uppercase font-bold tracking-widest bg-[var(--grn)]/10 px-1.5 py-0.5 rounded border border-[var(--grn)]/20">
+                                  -{deal.discountPercent.toFixed(1)}%
+                                </span>
+                              )}
+                              {deal.badgeTotalSavings > 0 && (
+                                <span className="bg-[var(--grn)]/10 text-[var(--grn)] text-[11px] font-bold px-2.5 py-1 rounded-md border border-[var(--grn)]/20 shadow-sm whitespace-nowrap">
+                                  - {fmt(deal.badgeTotalSavings)}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs font-mono text-[var(--mu2)]">—</span>
                           )}

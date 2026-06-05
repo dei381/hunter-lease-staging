@@ -17,6 +17,6 @@ async function run() {
       tradeInEquity: 0
   });
 
-  console.log("Calculated terms:", JSON.stringify(quote.lease, null, 2));
+  console.log("Calculated terms:", JSON.stringify(quote, null, 2));
 }
 run();

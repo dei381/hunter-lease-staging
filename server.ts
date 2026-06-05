@@ -1974,6 +1974,10 @@ You must return the response as a JSON array of objects. Each object must have t
 
   app.get("/api/marketcheck/search", async (req, res) => {
     try {
+      const cacheKey = "mc-search-" + req.originalUrl;
+      if (apiCache.has(cacheKey)) {
+        return res.json(apiCache.get(cacheKey));
+      }
       const { make, model, trim, rows = 55, start = 0 } = req.query;
       const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
       
@@ -1996,6 +2000,7 @@ You must return the response as a JSON array of objects. Each object must have t
       }
       
       const data = await response.json();
+      apiCache.set(cacheKey, data, 1800); // cache for 30 mins
       res.json(data);
     } catch (error) {
       console.error("Error fetching marketcheck data:", error);
@@ -2006,6 +2011,9 @@ You must return the response as a JSON array of objects. Each object must have t
   app.get("/api/marketcheck/listing/:vin", async (req, res) => {
     try {
       const { vin } = req.params;
+      const ck = "mclisting-" + vin;
+      if (apiCache.has(ck)) return res.json(apiCache.get(ck));
+      
       const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
       const url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&vins=${vin}`;
       
@@ -2014,6 +2022,7 @@ You must return the response as a JSON array of objects. Each object must have t
       
       const data = await response.json();
       if (data.listings && data.listings.length > 0) {
+        apiCache.set("mclisting-" + req.params.vin, data.listings[0], 3600);
         res.json(data.listings[0]);
       } else {
         res.status(404).json({ error: "Listing not found" });
@@ -2422,7 +2431,11 @@ You must return the response as a JSON array of objects. Each object must have t
   // --- CAR PHOTO MANAGEMENT ---
   app.get("/api/car-photos", async (req, res) => {
     try {
+      if (apiCache.has("car-photos")) {
+        return res.json(apiCache.get("car-photos"));
+      }
       const carPhotos = await getCarPhotos();
+      apiCache.set("car-photos", carPhotos, 300);
       res.json(carPhotos);
     } catch (error) {
       console.error("Failed to fetch car photos:", error);
@@ -4293,7 +4306,9 @@ const mapDealsForFrontend = (
       availableIncentives: data.availableIncentives || [],
       leaseCash: leaseCash || 0,
       rebates: data.rebates || 0,
-      discount: data.discount || 0,
+      discount: discount || data.discount || 0,
+      dealerDiscountCents: data.dealerDiscountCents || 0,
+      discountPercent: data.discountPercent || 0,
       // New fields for detailed deal page
       bodyStyle: bodyStyle,
       fuelType: fuelType,
@@ -4316,6 +4331,10 @@ const mapDealsForFrontend = (
   // Get approved/published deals for Marketplace
   app.get("/api/deals", async (req, res) => {
     try {
+      const cacheKey = "deals-" + req.originalUrl;
+      if (apiCache.has(cacheKey)) {
+        return res.json(apiCache.get(cacheKey));
+      }
       const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier, displayMode: queryDisplayMode, id: queryId, ids: queryIds, limit: queryLimit, make: queryMake } = req.query;
       
       const whereClause: any = {
@@ -4455,8 +4474,11 @@ const mapDealsForFrontend = (
       const mappedDeals = mapDealsForFrontend(finalDealsToProcess, cachedMaps, cachedPhotos, settings, req.query);
       console.timeEnd('mapDeals');
 
+      const finalResponse = [...mappedDeals, ...(mcDeals || [])];
+      apiCache.set(cacheKey, finalResponse, 300); // cache for 5 minutes
+
       // Return database deals merged with Marketcheck deals
-      res.json([...mappedDeals, ...(mcDeals || [])]);
+      res.json(finalResponse);
     } catch (error) {
       console.error("Failed to fetch published deals:", error);
       res.status(500).json({ error: "Failed to fetch deals" });
