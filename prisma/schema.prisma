@@ -261,60 +261,60 @@ model User {
 }
 
 model Lead {
-  id               String      @id @default(uuid())
-  email            String?
-  phone            String?
-  name             String?
-  clientName       String?
-  clientPhone      String?
-  clientEmail      String?
-  source           String?
-  status           String      @default("new")
-  dealersSent      Int         @default(0)
-  dealersAccepted  Int         @default(0)
-  acceptedBy       String?
-  carMake          String?
-  carModel         String?
-  carYear          Int?
-  carTrim          String?
-  carMsrp          Int?
-  calcType         String?
-  calcPayment      Int?
-  calcDown         Int?
-  calcTier         String?
-  calcZip          String?
-  calcMileage      String?
-  calcTerm         String?
-  payMethod        String?
-  paymentName      String?
-  isFirstTimeBuyer Boolean     @default(false)
-  hasTradeIn       Boolean     @default(false)
-  tradeInMake      String?
-  tradeInModel     String?
-  tradeInYear      Int?
-  tradeInMileage   Int?
-  tradeInVin       String?
-  tradeInHasLoan   Boolean     @default(false)
-  tradeInPayoff    Int?
-  creditApp        String?
-  userId           String?
-  payload          String?
-  depositStatus    String      @default("pending")
-  depositAmount    Int?
-  depositId        String?
-  creditConsent    Boolean     @default(false)
-  creditScore      Int?
-  vin              String?
-  createdAt        DateTime    @default(now())
-  assignedToId     String?
-  dealId           String?
-  notes            String?
-  brokerFeeCents   Int         @default(0)
-  dealerReserveCents Int       @default(0)
-  complaints       Complaint[]
-  assignedTo       User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
-  deal             DealRecord? @relation(fields: [dealId], references: [id])
-  offers           LeadOffer[]
+  id                 String      @id @default(uuid())
+  email              String?
+  phone              String?
+  name               String?
+  clientName         String?
+  clientPhone        String?
+  clientEmail        String?
+  source             String?
+  status             String      @default("new")
+  dealersSent        Int         @default(0)
+  dealersAccepted    Int         @default(0)
+  acceptedBy         String?
+  carMake            String?
+  carModel           String?
+  carYear            Int?
+  carTrim            String?
+  carMsrp            Int?
+  calcType           String?
+  calcPayment        Int?
+  calcDown           Int?
+  calcTier           String?
+  calcZip            String?
+  calcMileage        String?
+  calcTerm           String?
+  payMethod          String?
+  paymentName        String?
+  isFirstTimeBuyer   Boolean     @default(false)
+  hasTradeIn         Boolean     @default(false)
+  tradeInMake        String?
+  tradeInModel       String?
+  tradeInYear        Int?
+  tradeInMileage     Int?
+  tradeInVin         String?
+  tradeInHasLoan     Boolean     @default(false)
+  tradeInPayoff      Int?
+  creditApp          String?
+  userId             String?
+  payload            String?
+  depositStatus      String      @default("pending")
+  depositAmount      Int?
+  depositId          String?
+  creditConsent      Boolean     @default(false)
+  creditScore        Int?
+  vin                String?
+  createdAt          DateTime    @default(now())
+  assignedToId       String?
+  dealId             String?
+  notes              String?
+  brokerFeeCents     Int         @default(0)
+  dealerReserveCents Int         @default(0)
+  complaints         Complaint[]
+  assignedTo         User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  deal               DealRecord? @relation(fields: [dealId], references: [id])
+  offers             LeadOffer[]
 
   @@index([userId])
   @@index([status])
@@ -395,22 +395,22 @@ model DealRecord {
   seoDescription           String?
   seoTitle                 String?
   lender                   Lender?  @relation(fields: [lenderId], references: [id])
-  
+
   // Lifecycle Management
-  expirationDate           DateTime?
-  isSoldOut                Boolean  @default(false)
-  
+  expirationDate DateTime?
+  isSoldOut      Boolean   @default(false)
+
   // Marketing & Storefront
-  tags                     String?  // JSON array of tags e.g. ["Special Offer", "1 Left"]
-  isPinned                 Boolean  @default(false)
-  
+  tags     String? // JSON array of tags e.g. ["Special Offer", "1 Left"]
+  isPinned Boolean @default(false)
+
   // Analytics & Performance
-  viewCount                Int      @default(0)
-  leadCount                Int      @default(0)
-  
+  viewCount Int @default(0)
+  leadCount Int @default(0)
+
   // Team & Workflow
-  dealerNotes              String?  // Internal note about which dealer/manager provided this
-  leads                    Lead[]
+  dealerNotes String? // Internal note about which dealer/manager provided this
+  leads       Lead[]
 
   @@index([publishStatus])
   @@index([lenderId])
@@ -508,15 +508,15 @@ model DealerAdjustment {
 }
 
 model ProgramOverride {
-  id              String         @id @default(uuid())
-  bankId          String?
-  make            String?
-  model           String?
-  mfMarkup        Float?
-  aprMarkup       Float?
-  isActive        Boolean        @default(true)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id        String   @id @default(uuid())
+  bankId    String?
+  make      String?
+  model     String?
+  mfMarkup  Float?
+  aprMarkup Float?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PromoAIPost {
@@ -629,4 +629,45 @@ model VehicleTrim {
   updatedAt      DateTime     @updatedAt
 
   @@unique([modelId, name])
+}
+
+model VehicleStyle {
+  id                       String           @id @default(uuid())
+  year                     Int
+  make                     String
+  model                    String
+  trim                     String
+  style                    String // e.g. "XSE AWD"
+  powertrain               String? // e.g. "Hybrid"
+  drivetrain               String? // e.g. "AWD"
+  transmission             String? // e.g. "eCVT"
+  body                     String? // e.g. "Sedan"
+  baseMsrpCents            Int
+  destinationFeeCents      Int
+  msrpWithDestinationCents Int
+  sourceUrl                String?
+  sourceDate               DateTime?
+  isActive                 Boolean          @default(true)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  listings                 VehicleListing[]
+
+  @@unique([year, make, model, trim, style])
+  @@index([make, model, year, trim])
+}
+
+model VehicleListing {
+  id                String       @id @default(uuid())
+  styleId           String
+  vin               String?      @unique
+  dealerId          String?
+  stickerMsrpCents  Int
+  sellingPriceCents Int
+  leaseProgramId    String? // Link to a lease/finance program ID if needed
+  status            String       @default("AVAILABLE") // AVAILABLE, SOLD, PENDING
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  style             VehicleStyle @relation(fields: [styleId], references: [id])
+
+  @@index([styleId])
 }

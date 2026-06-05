@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle, ChevronDown, ChevronUp, Zap, Clock, ShieldCheck, Info, TrendingDown, Eye, X, CheckCircle2, AlertCircle, Building2, ClipboardList } from 'lucide-react';
+import { HelpCircle, ChevronDown, ChevronUp, Zap, Clock, ShieldCheck, Info, TrendingDown, Eye, X, CheckCircle2, AlertCircle, Building2, ClipboardList, ZoomIn, ChevronRight, Tag, Award, ThumbsUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
@@ -13,6 +13,7 @@ import { getVal } from '../utils/finance';
 import { TradeInEstimator } from './TradeInEstimator';
 import { useDebounce } from '../hooks/useDebounce';
 import { useCarData } from '../hooks/useCarData';
+import { useLocationStore } from '../store/locationStore';
 
 const fmt = (n: any) => {
   if (n === null || n === undefined) return 'N/A';
@@ -70,7 +71,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [tradeInEquity, setTradeInEquity] = useState(0);
   const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 60 : (parseInt(deal?.term) || 36)));
   const [mileage, setMileage] = useState(['Kia', 'Hyundai'].includes(deal?.make) ? '10k' : '7.5k');
-  const [zipCode, setZipCode] = useState('90210');
+  const { zipCode } = useLocationStore();
   const [showIncentives, setShowIncentives] = useState(!isStandalone);
   const [selectedIncentives, setSelectedIncentives] = useState<string[]>([]);
   const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(initialIsFirstTimeBuyer);
@@ -151,10 +152,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
             isFirstTimeBuyer,
             hasCosigner,
             isStandalone: isCustomCar,
-            adminOverrides: (vehiclePrice || incentiveCashBack) ? {
-              dealerDiscountCents: vehiclePrice ? (currentCar.msrp * 100 - vehiclePrice * 100) : undefined,
-              // We'll handle incentiveCashBack separately in the backend or just add it to selectedIncentives
-            } : undefined,
+            adminOverrides: {
+              ...(vehiclePrice ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 } : {}),
+              ...(currentCar?.mf !== undefined ? { mf: Number(currentCar.mf) } : {}),
+              ...(currentCar?.rv !== undefined ? { rv: typeof currentCar.rv === 'string' && currentCar.rv.includes('%') ? parseInt(currentCar.rv) / 100 : Number(currentCar.rv) } : {}),
+              ...(currentCar?.baseAPR !== undefined ? { apr: Number(currentCar.baseAPR) } : {})
+            },
             marketcheckData: (vehiclePrice || incentiveCashBack || currentCar.msrp) ? {
               priceCents: vehiclePrice ? vehiclePrice * 100 : undefined,
               msrpCents: currentCar.msrp ? currentCar.msrp * 100 : undefined,
@@ -289,8 +292,18 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [trimsData, deal, selectedModel?.id, selectedTrim, deepLinkProcessed.trim]);
 
   const effectiveIncentives = useMemo(() => {
-    return deal?.availableIncentives || quoteData?.availableIncentives || currentCar?.availableIncentives || [];
-  }, [deal?.availableIncentives, quoteData?.availableIncentives, currentCar?.availableIncentives]);
+    const incs = deal?.availableIncentives || quoteData?.availableIncentives || currentCar?.availableIncentives || [];
+    if (incs.length === 0 && (deal?.rebates > 0 || currentCar?.rebates > 0)) {
+      return [{
+        id: 'rebate_default',
+        name: 'Manufacturer Rebate',
+        amount: deal?.rebates || currentCar?.rebates,
+        type: 'manufacturer',
+        isDefault: true
+      }];
+    }
+    return incs;
+  }, [deal, quoteData, currentCar]);
 
   useEffect(() => {
     // Only set default incentives on initial load if none are selected
@@ -375,74 +388,96 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
   console.log('Calculator rendering, carDbLoading:', carDbLoading, 'carDbError:', carDbError, 'makes count:', carDb?.makes?.length);
 
+  const msrpObj = Number(currentCar?.msrp) || 0;
+  const badgeTotalSavings = (Number(currentCar?.savings) || 0) + (showIncentives ? totalIncentives : 0);
+  const savingsPctObj = msrpObj > 0 ? badgeTotalSavings / msrpObj : 0;
+  
+  const tenPercentDown = msrpObj * 0.10;
+  const diffInDown = down - tenPercentDown;
+  const paymentAdjustment = term > 0 ? diffInDown / term : 0;
+  const theoretical10PctPayment = calculatedPayment ? (calculatedPayment + paymentAdjustment) : 0;
+  const leaseValueRatio = msrpObj > 0 ? theoretical10PctPayment / msrpObj : 0;
+
+  const badges = [];
+
+  if (badgeTotalSavings > 0) {
+    if (savingsPctObj >= 0.06) {
+      badges.push({ type: 'excellent-price', label: language === 'ru' ? 'Отличная скидка' : 'Great Price', color: 'bg-[#00E58F] text-black', icon: <Tag size={12}/> });
+    } else if (savingsPctObj >= 0.03) {
+      badges.push({ type: 'good-price', label: language === 'ru' ? 'Хорошая скидка' : 'Good Price', color: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30', icon: <Tag size={12}/> });
+    }
+    
+    badges.push({ 
+      type: 'savings', 
+      label: language === 'ru' ? `Ниже MSRP на ${fmt(badgeTotalSavings)}` : `Save ${fmt(badgeTotalSavings)}`, 
+      color: 'bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)]',
+      icon: <TrendingDown size={12} className="text-[#00E58F]" /> 
+    });
+  }
+
+  if (calcType === 'lease' && leaseValueRatio > 0 && leaseValueRatio <= 0.0125) {
+    if (leaseValueRatio <= 0.010) {
+      badges.push({ type: 'excellent-lease', label: language === 'ru' ? 'Отличный лизинг' : 'Exceptional Lease', color: 'bg-blue-500 text-white', icon: <Award size={12}/> });
+    } else {
+      badges.push({ type: 'good-lease', label: language === 'ru' ? 'Хороший лизинг' : 'Good Lease', color: 'bg-blue-500/20 text-blue-400 border border-blue-500/30', icon: <ThumbsUp size={12}/> });
+    }
+  }
+
   return (
     <>
-    <div className="bg-[var(--s1)] text-[var(--w)] rounded-2xl border border-[var(--b2)] overflow-hidden shadow-2xl">
+    <div className="text-[var(--w)] overflow-hidden">
       {/* Header with Urgency Timer */}
       {!isCustomCar && (
-        <div className="p-4 border-b border-[var(--b2)] bg-[var(--w)]/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="space-y-1 w-full">
-            <div className="flex items-center gap-3 mb-1">
-              <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                <Eye size={12} className="text-[var(--lime)]" />
-                <span>{viewCount} {translations[language].dealPage.viewingNow}</span>
+        <div className="pb-4 flex flex-row items-center justify-between gap-4">
+          <div className="space-y-1.5 flex-1">
+            {badges.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                 {badges.map(b => (
+                   <div key={b.type} className={`px-2 py-0.5 rounded text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 w-max ${b.color}`}>
+                     {b.icon}
+                     {b.label}
+                   </div>
+                 ))}
               </div>
-              {viewCount > 100 && deal?.createdAt && (viewCount / Math.max(1, (new Date().getTime() - new Date(deal.createdAt).getTime()) / (1000 * 60 * 60 * 24))) > 33 && (
-                <>
-                  <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-                    <Zap size={12} className="text-orange-500" />
-                    <span>{translations[language].dealPage.highDemand}</span>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="px-1.5 py-0.5 bg-[var(--lime)] text-black text-[10px] font-bold uppercase tracking-tighter rounded">{t.liveDeal}</span>
-              <span className="font-mono text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.id}: {currentCar?.id ? (currentCar.id * 12345 ^ 0xABCDEF).toString(16).padStart(8, '0').toUpperCase() : 'CUSTOM'}</span>
-            </div>
-            <h1 className="text-xl font-display leading-tight uppercase">
-              {currentCar?.make} <span className="text-[var(--mu2)]">{currentCar?.model}</span>
+            )}
+            <h1 className="text-2xl lg:text-3xl font-display font-medium text-[var(--w)] leading-tight">
+              {currentCar?.make} {currentCar?.model} {calcType}
             </h1>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">
-              {t.msrp}: <span className="text-[var(--w)] font-mono">{fmt(currentCar?.msrp)}</span>
+            <div className="text-sm md:text-base text-[var(--mu2)] uppercase tracking-tight font-medium">
+              {currentCar?.year} {currentCar?.trim}
+            </div>
+            <div className="text-sm md:text-base font-medium text-[var(--mu2)] uppercase tracking-tight mt-1">
+              MSRP <span className="font-mono">{fmt(currentCar?.msrp)}</span>
             </div>
           </div>
 
           {/* Circular Timer */}
-          <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-[var(--b2)] pt-3 sm:pt-0">
-            <div className="text-left sm:text-right">
-              <div className="text-[8px] font-bold text-[var(--lime)] uppercase tracking-widest">{translations[language].dealPage.verifiedDeal}</div>
-              <div className="text-[10px] font-mono font-bold text-[var(--w)]">
-                {timeLeft ? (
-                  timeLeft.days > 0 
-                    ? `${timeLeft.days}d ${timeLeft.hours}h ${timeLeft.minutes}m` 
-                    : `${timeLeft.hours}h ${timeLeft.minutes}m ${timeLeft.seconds}s`
-                ) : '0d 0h 0m'} {translations[language].dealPage.remaining}
+          {timeLeft && (
+            <div className="flex flex-col items-center justify-center shrink-0 w-[72px] h-[72px] rounded-full border border-[var(--b2)] bg-[var(--bg)] shadow-sm relative">
+                <svg className="w-full h-full -rotate-90 absolute inset-0 text-[var(--b2)] opacity-30 select-none">
+                  <circle cx="36" cy="36" r="34" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <motion.circle 
+                    cx="36" cy="36" r="34" fill="none" stroke="currentColor" strokeWidth="2" 
+                    className="text-[var(--lime)] opacity-100"
+                    strokeDasharray="214"
+                    initial={{ strokeDashoffset: 214 }}
+                    animate={{ 
+                      strokeDashoffset: 214 * (1 - (
+                        ((timeLeft?.days || 0) * 24 + (timeLeft?.hours || 0) + (timeLeft?.minutes || 0) / 60) / 72
+                      )) 
+                    }}
+                  />
+                </svg>
+              <div className="text-center z-10 px-1 flex flex-col items-center mt-1">
+                 <div className="text-[7.5px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-0.5" style={{ lineHeight: '1.1' }}>TIME LEFT</div>
+                 <div className="text-[10px] font-mono font-medium text-[var(--w)] flex flex-col items-center text-center">
+                   {timeLeft.days > 0 
+                      ? <>{timeLeft.days} day{timeLeft.days !== 1 ? 's' : ''}<br/>{timeLeft.hours} hour{timeLeft.hours !== 1 ? 's' : ''}</>
+                      : `${timeLeft.hours}h ${timeLeft.minutes}m`}
+                 </div>
               </div>
             </div>
-            <div className="relative w-12 h-12 flex items-center justify-center">
-              <svg className="w-full h-full -rotate-90">
-                <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--b2)]" />
-                <motion.circle 
-                  cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeWidth="2" 
-                  className="text-[var(--lime)]"
-                  strokeDasharray="132"
-                  initial={{ strokeDashoffset: 132 }}
-                  animate={{ 
-                    strokeDashoffset: 132 * (1 - (
-                      ((timeLeft?.days || 0) * 24 + (timeLeft?.hours || 0) + (timeLeft?.minutes || 0) / 60) / 72
-                    )) 
-                  }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-[9px] font-mono font-bold text-[var(--w)] leading-none">
-                  {timeLeft?.days && timeLeft.days > 0 ? `${timeLeft.days}d` : `${timeLeft?.hours}h`}
-                </span>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -534,11 +569,13 @@ export const Calculator: React.FC<CalculatorProps> = ({
         </div>
       )}
 
-        {/* Lease/Finance Toggle & Grid Matrix - Pixel Perfect to Reference */}
-        <div className="p-4 sm:p-6 flex flex-col gap-6 w-full max-w-[800px] mx-auto">
+
+
+        {/* Lease/Finance Toggle & Grid Matrix */}
+        <div className="flex flex-col w-full max-w-[800px] mx-auto px-4 md:px-0">
           
-          {/* Top Pill - Glued to the Grid visually */}
-          <div className="flex bg-[var(--s2)] p-1 rounded-xl w-full border border-[var(--b2)] shadow-sm">
+          {/* Top Pill / Toggle */}
+          <div className="flex w-full overflow-hidden border border-[var(--b2)] rounded-t-xl mt-2">
             {(['lease', 'finance'] as const).map((m) => (
               <button
                 key={m}
@@ -547,10 +584,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   setTerm(m === 'finance' ? 60 : 36);
                 }}
                 className={cn(
-                  "flex-1 py-3 text-xs font-bold tracking-widest transition-all uppercase rounded-lg",
+                  "flex-1 py-3 text-xs md:text-sm font-bold tracking-widest transition-all uppercase outline-none",
                   calcType === m 
-                    ? "bg-[var(--w)] text-[var(--s1)] shadow-md" 
-                    : "text-[var(--mu2)] hover:text-[var(--w)] bg-transparent"
+                    ? "bg-[var(--s1)] text-[var(--w)] border-b-2 border-transparent" 
+                    : "bg-[var(--s2)] text-[var(--mu2)] hover:text-[var(--w)] border-b-2 border-[var(--b2)] cursor-pointer hover:bg-[var(--s1)]/50"
                 )}
               >
                 {m === 'lease' ? t.lease : t.finance}
@@ -558,35 +595,29 @@ export const Calculator: React.FC<CalculatorProps> = ({
             ))}
           </div>
 
-          {/* Grid Constraints matching reference but responsive */}
-          <div className="rounded-xl overflow-hidden shadow-xl drop-shadow-2xl border border-[var(--b2)] bg-[var(--b2)]">
-            <div className="grid grid-cols-2 2xl:grid-cols-4 gap-[1px] w-full">
-
-              {/* Term */}
-              <div className="flex flex-col bg-[var(--s2)] hover:bg-[var(--w)]/5 transition-colors group">
-                <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-[var(--b2)] min-h-[56px] flex items-center">
-                  <span className="text-[9px] font-bold text-[var(--mu2)] uppercase">Term<br/>Length</span>
-                </div>
-                <div className="px-3 sm:px-4 py-3 sm:py-4 relative min-h-[56px] flex items-center">
+          {/* Matrix table */}
+          <div className="bg-[var(--s1)] rounded-b-xl border border-[var(--b2)] border-t-0 flex flex-col pt-1 pb-1">
+            
+           <div className="grid grid-cols-2 lg:grid-cols-4">
+               {/* Term Value */}
+               <div className="relative min-w-0 border-b lg:border-b-0 lg:border-r border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors">
+                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Term Length</span></div>
                   <select 
                     value={term}
                     onChange={(e) => setTerm(parseInt(e.target.value))}
-                    className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate"
+                    disabled={!!deal}
+                    className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative disabled:opacity-50"
                   >
-                    {(calcType === 'lease' ? [24, 36, 48] : [48, 60, 72, 84, 96]).map(v => (
-                      <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">Best - {v} {t.moShort}</option>
+                    {(deal ? [parseInt(deal.term) || 36] : (calcType === 'lease' ? [36] : [60])).map(v => (
+                      <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{v} {t.moShort}</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--w)] group-hover:scale-110 transition-transform pointer-events-none" />
-                </div>
-              </div>
+                  {!deal && <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />}
+               </div>
 
-              {/* Mileage */}
-              <div className={cn("flex flex-col bg-[var(--s2)] hover:bg-[var(--w)]/5 transition-colors group", calcType !== 'lease' && "opacity-50 pointer-events-none")}>
-                <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-[var(--b2)] min-h-[56px] flex items-center">
-                  <span className="text-[9px] font-bold text-[var(--mu2)] uppercase">Annual<br/>Mileage</span>
-                </div>
-                <div className="px-3 sm:px-4 py-3 sm:py-4 relative min-h-[56px] flex items-center">
+               {/* Mileage Value */}
+               <div className={cn("relative min-w-0 border-b lg:border-b-0 lg:border-r border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors", calcType !== 'lease' && "opacity-50 pointer-events-none")}>
+                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Annual Mileage</span></div>
                   <select 
                     value={mileage}
                     onChange={(e) => {
@@ -594,7 +625,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                       onMileageChange?.(e.target.value);
                     }}
                     disabled={calcType !== 'lease'}
-                    className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate"
+                    className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative disabled:opacity-50"
                   >
                     {[ '7.5k', '10k', '12k', '15k', '20k' ].map(v => {
                       const val = t.mileageOptions[v as keyof typeof t.mileageOptions] || (v === '20k' ? '20,000' : v);
@@ -603,20 +634,16 @@ export const Calculator: React.FC<CalculatorProps> = ({
                       )
                     })}
                   </select>
-                  <ChevronDown className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--w)] group-hover:scale-110 transition-transform pointer-events-none" />
-                </div>
-              </div>
+                  <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />
+               </div>
 
-              {/* Tier */}
-              <div className="flex flex-col bg-[var(--s2)] hover:bg-[var(--w)]/5 transition-colors group relative">
-                <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-[var(--b2)] min-h-[56px] flex items-center">
-                  <span className="text-[9px] font-bold text-[var(--mu2)] uppercase">Credit<br/>Tier</span>
-                </div>
-                <div className="px-3 sm:px-4 py-3 sm:py-4 relative min-h-[56px] flex items-center">
+               {/* Tier Value */}
+               <div className="relative min-w-0 border-r lg:border-b-0 border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors">
+                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Credit Tier</span></div>
                   <select 
                     value={tier}
                     onChange={(e) => setTier(e.target.value)}
-                    className="w-full bg-transparent text-sm leading-tight font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate"
+                    className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative"
                   >
                     <option value="t1" className="bg-[var(--s1)] text-[var(--w)]">Super Elite 740+</option>
                     <option value="t2" className="bg-[var(--s1)] text-[var(--w)]">Elite 720-739</option>
@@ -625,189 +652,157 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     <option value="t5" className="bg-[var(--s1)] text-[var(--w)]">Sub Prime 620-659</option>
                     <option value="t6" className="bg-[var(--s1)] text-[var(--w)]">Poor &lt;620</option>
                   </select>
-                  <ChevronDown className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--w)] group-hover:scale-110 transition-transform pointer-events-none" />
-                </div>
-              </div>
+                  <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />
+               </div>
 
-              {/* Down Payment */}
-              <div className="flex flex-col bg-[var(--s2)] hover:bg-[var(--w)]/5 transition-colors group">
-                <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-[var(--b2)] min-h-[56px] flex items-center">
-                  <span className="text-[9px] font-bold text-[var(--mu2)] uppercase">Due At<br/>Signing</span>
-                </div>
-                <div className="px-3 sm:px-4 py-3 sm:py-4 relative min-h-[56px] flex items-center">
+               {/* Down Payment Value */}
+               <div className="relative min-w-0 group hover:bg-[var(--w)]/5 transition-colors">
+                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Due At Signing</span></div>
                   <select 
                     value={down}
                     onChange={(e) => setDown(parseInt(e.target.value))}
-                    className="w-full bg-transparent text-sm font-bold outline-none appearance-none cursor-pointer pr-6 text-[var(--w)] truncate"
+                    className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative"
                   >
                     {[0, 1000, 2000, 3000, 4000, 5000].map(v => (
                       <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{fmt(v)}</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--w)] group-hover:scale-110 transition-transform pointer-events-none" />
-                </div>
-              </div>
-
+                  <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />
+               </div>
             </div>
           </div>
         </div>
 
-        {/* Incentives Box - Like Reference */}
-        {!isStandalone && (
-          <div className="px-4 sm:px-6 py-2 w-full max-w-[800px] mx-auto">
-            <div className="bg-[var(--s1)] rounded-2xl p-6 sm:p-8 flex flex-col items-center gap-6 shadow-inner border border-[var(--b2)]">
-              
-              <div className="flex bg-[var(--s2)] p-1 rounded-xl w-full sm:max-w-[400px] shadow-sm border border-[var(--b2)]">
+        {/* Incentives Box and Price Block combined somewhat to match Autobandit */}
+        <div className="w-full max-w-[800px] mx-auto mt-6 px-4 md:px-0">
+          {!isStandalone && (
+            <>
+              <div className="flex w-full mb-2">
                 <button
-                  onClick={() => {
-                    setShowIncentives(false);
-                    // Automatically clear selection if choosing without incentives (optional but makes sense logically)
-                    setSelectedIncentives([]);
-                  }}
-                  className={cn(
-                    "flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-widest rounded-lg transition-all",
-                    !showIncentives ? "bg-[var(--mu1)] text-[var(--w)] shadow-sm" : "text-[var(--mu2)] hover:text-[var(--w)]"
-                  )}
-                >
-                  {language === 'ru' ? 'БЕЗ ИНСЕНТИВОВ' : 'WITHOUT INCENTIVES'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowIncentives(true);
-                     // If switching back to with incentives and it's empty, auto select defaults again
-                     if (selectedIncentives.length === 0) {
-                        const defaultIds = effectiveIncentives
-                          .filter((inc: any) => inc.isDefault || inc.type === 'dealer')
-                          .map((inc: any) => inc.id);
-                        setSelectedIncentives(defaultIds);
-                     }
-                  }}
-                  className={cn(
-                    "flex-1 py-3 text-[10px] md:text-xs font-bold uppercase tracking-widest rounded-lg transition-all",
-                    showIncentives ? "bg-[var(--mu1)] text-[var(--w)] shadow-sm" : "text-[var(--mu2)] hover:text-[var(--w)]"
-                  )}
-                >
-                  {language === 'ru' ? 'С ИНСЕНТИВАМИ*' : 'WITH INCENTIVES*'}
-                </button>
-              </div>
-
-              {showIncentives && effectiveIncentives.length > 0 && (
-                <div className="mt-2 border border-[var(--lime)]/30 bg-[var(--lime)]/5 rounded-2xl py-4 px-6 w-full flex flex-col md:flex-row items-center justify-between gap-5 shadow-sm">
-                  <button 
-                    onClick={() => setIsIncentivesModalOpen(true)}
-                    className="text-sm font-bold text-[var(--lime)] border-b border-dashed border-[var(--lime)]/40 hover:border-[var(--lime)] transition-colors cursor-pointer text-center md:text-left"
-                  >
-                    {translations[language].calc.incentiveSavings
-                      .replace('{amount}', fmt(totalIncentives))
-                      .replace('{count}', selectedIncentives.length.toString())}
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setIsIncentivesModalOpen(true)}
-                    className="px-5 py-3 bg-[var(--w)] text-black hover:bg-white rounded-full text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 shadow-md w-full md:w-auto justify-center whitespace-nowrap shrink-0"
-                  >
-                    <ClipboardList size={14} /> 
-                    {language === 'ru' ? 'ОБНОВИТЬ ИНСЕНТИВЫ' : 'UPDATE INCENTIVES'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Mobile Wizard Nav Placeholder */}
-        {isMobile && wizardStep === 0 && (
-          <div className="px-4 mt-4">
-            <button 
-              onClick={() => setWizardStep(1)}
-              className="w-full bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] py-4 rounded-xl text-xs font-bold uppercase tracking-widest hover:border-[var(--lime)] transition-colors"
-            >
-              Next: Results
-            </button>
-          </div>
-        )}
-
-        {/* Big Price CTA Block Layout responsive and fluid */}
-        <div className="px-4 sm:px-6 pt-8 pb-10 mt-4 border-t border-[var(--b2)] w-full max-w-[800px] mx-auto min-w-0">
-          
-          <div className="flex flex-wrap items-end justify-between w-full relative z-10 gap-x-8 gap-y-8">
-             
-             {/* Left Text Detail */}
-             <div className="flex flex-col items-start text-left gap-3 w-full sm:w-auto flex-1 min-w-[240px]">
-                <div className="text-xl sm:text-2xl font-display uppercase tracking-widest text-[var(--w)] flex items-start gap-2 sm:gap-3 leading-tight break-words">
-                   <span className="text-[var(--lime)] text-2xl sm:text-3xl font-light shrink-0 mt-[-2px]">$</span> 
-                   <span className="break-words leading-tight">{isCustomCar ? (language === 'ru' ? 'РАСЧЕТНЫЙ ПЛАТЕЖ' : 'ESTIMATED PAYMENT') : (language === 'ru' ? 'ЗАФИКСИРОВАТЬ СДЕЛКУ' : 'LEASE IT NOW')}</span>
-                </div>
-                
-                <div className="text-sm font-bold text-[var(--mu2)] flex items-center gap-2 mt-2 sm:mt-4 ml-1 w-full flex-wrap">
-                   {language === 'ru' ? 'Ежемесячный платеж' : 'Monthly payment'}
-                   <button onClick={() => setIsTransparencyOpen(true)} className="hover:text-[var(--w)] transition-colors cursor-pointer bg-[var(--s2)] rounded-full p-0.5"><Info size={14} /></button>
-                </div>
-                
-                <div className="text-xs font-bold text-[var(--mu2)] flex items-center gap-2 mt-1 sm:mt-2 ml-1 opacity-80 w-full min-w-0">
-                   <Building2 size={16} className="shrink-0" /> <span className="truncate">{deal?.lender || 'Volkswagen Financial Services'}</span>
-                </div>
-             </div>
-
-             {/* Right Price & Button aligned */}
-             <div className="flex flex-col items-start sm:items-end w-full sm:w-auto flex-[1.5] min-w-[260px] gap-3">
-                
-                  <>
-                    <div className="flex items-baseline sm:items-end gap-2 sm:gap-3 w-full justify-start sm:justify-end flex-wrap">
-                       <span className={cn(
-                         "text-6xl sm:text-7xl font-display leading-none tracking-tighter transition-opacity duration-300 break-words -ml-1 sm:ml-0",
-                         isCalculating ? "opacity-50" : "opacity-100",
-                         quoteStatus === 'NO_PROGRAMS' ? "text-[var(--mu2)]" : "text-[var(--w)]"
-                       )}>
-                         {quoteStatus === 'NO_PROGRAMS' && !currentCar?.displayPayment ? (language === 'ru' ? 'Н/Д' : 'N/A') : fmt(calculatedPayment)}
-                       </span>
-                       <span className="text-xs sm:text-sm font-bold text-[var(--mu2)] mb-1 sm:mb-2 shrink-0">per month</span>
-                    </div>
-                    
-                    <div className="text-xs sm:text-sm font-bold flex items-center gap-2 text-[var(--mu2)] flex-wrap sm:mr-1">
-                       (+{fmt(down)} {language === 'ru' ? 'при подписании' : 'due at signing'})
-                       <button onClick={() => setIsTransparencyOpen(true)} className="hover:text-[var(--w)] bg-[var(--s2)] rounded-full p-0.5 transition-colors cursor-pointer shrink-0"><Info size={12} /></button>
-                    </div>
-
-                    {!isCalibrator && !hideCTA && (
-                       <div className="flex flex-col items-start sm:items-end w-full max-w-[360px] shrink-0 gap-4 mt-2 sm:mt-4">
-                          <button 
-                            onClick={() => currentCar && onProceed?.({ 
-                              ...currentCar, payment: calculatedPayment, type: calcType, down, term: `${term} mo`, tier, mileage, source: isCustomCar ? 'custom_calculator' : 'catalog_deal'
-                            })}
-                            disabled={isCalculating}
-                            className={cn("w-full h-[56px] sm:h-[64px] font-display text-base sm:text-lg tracking-widest uppercase rounded-full shadow-2xl transition-all flex items-center justify-center relative overflow-hidden group",
-                              isCalculating 
-                              ? "bg-[var(--b2)] text-[var(--mu2)] cursor-not-allowed border border-[var(--b3)]" 
-                              : "bg-[var(--lime)] hover:bg-[var(--lime2)] text-black shadow-[0_0_30px_rgba(204,255,0,0.2)] hover:shadow-[0_0_50px_rgba(204,255,0,0.4)]"
-                            )}
-                          >
-                            <span className="relative z-10 flex items-center gap-2 text-center w-full justify-center px-4">
-                               {isCustomCar ? (language === 'ru' ? 'ОТПРАВИТЬ ЗАЯВКУ' : 'SUBMIT REQUEST') : (language === 'ru' ? 'ОФОРМИТЬ СДЕЛКУ' : 'LEASE IT NOW')}
-                            </span>
-                            {!isCalculating && <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />}
-                          </button>
-                          
-                          <div className="flex items-center justify-start sm:justify-end gap-2 sm:gap-3 text-xs text-[var(--mu2)] w-full font-bold ml-1 sm:ml-0 flex-wrap">
-                              Whats next <button className="bg-[var(--s2)] rounded-full p-0.5 hover:text-white transition-colors cursor-help shrink-0"><Info size={12} /></button>
-                              
-                              <div className="px-2 sm:px-3 py-1.5 sm:ml-2 bg-[var(--s2)] border border-[var(--b2)] rounded-md uppercase tracking-widest text-[8px] sm:text-[9px] text-[var(--mu2)] flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity cursor-pointer whitespace-nowrap">
-                                 <span className="text-[var(--w)]">Price</span>
-                                 <span className="text-white">Transparency</span>
-                                 <CheckCircle2 size={12} className="text-[var(--lime)] ml-0.5" />
-                              </div>
-                          </div>
-                       </div>
+                    onClick={() => setShowIncentives(false)}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] md:text-[11px] font-bold uppercase tracking-widest transition-all rounded-l-md border border-[var(--b2)]",
+                      !showIncentives ? "bg-[var(--s1)] text-[var(--w)] border-r-0 ring-1 ring-[var(--b2)]" : "bg-[var(--s2)] text-[var(--mu2)] hover:text-[var(--w)] border-r-0"
                     )}
-                  </>
+                  >
+                    {language === 'ru' ? 'БЕЗ ИНСЕНТИВОВ' : 'WITHOUT INCENTIVES'}
+                  </button>
+                  <button
+                    onClick={() => setShowIncentives(true)}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] md:text-[11px] font-bold uppercase tracking-widest transition-all rounded-r-md border border-[var(--b2)]",
+                      showIncentives ? "bg-[var(--s1)] text-[var(--w)] ring-1 ring-[var(--b2)]" : "bg-[var(--s2)] text-[var(--mu2)] hover:text-[var(--w)]"
+                    )}
+                  >
+                    {language === 'ru' ? 'С ИНСЕНТИВАМИ*' : 'WITH INCENTIVES*'}
+                </button>
+              </div>
+
+              <AnimatePresence>
+              {showIncentives && (
+                <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} exit={{opacity:0, height:0}} className="overflow-hidden mb-6">
+                  <div className="border border-[var(--b2)] rounded-md px-4 py-3 flex flex-row items-center justify-between gap-4 w-full">
+                    <span className="text-sm font-medium text-[var(--mu2)]">
+                      {language === 'ru' ? 'Сэкономьте добавив инсентивы' : 'Save by adding incentives'}
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => setIsIncentivesModalOpen(true)}
+                      className="px-4 py-2 bg-[var(--s2)] hover:bg-[var(--b2)] rounded-full text-[10px] font-bold text-[var(--w)] uppercase tracking-widest transition-colors flex items-center gap-2"
+                    >
+                      <ClipboardList size={14} /> {language === 'ru' ? 'МЕНЕДЖЕР СКИДОК' : 'ADD INCENTIVES'}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+              </AnimatePresence>
+            </>
+          )}
+
+          {/* Price Layout Autobandit Style */}
+          <div className="flex flex-col mt-4 pt-4 border-t border-[var(--b2)]/50">
+            <h3 className="text-[11px] font-bold tracking-widest text-[var(--mu2)] uppercase mb-4 flex items-center gap-2">
+              <span className="text-[var(--lime)]">$</span> {calcType === 'lease' ? (language === 'ru' ? 'ВЗЯТЬ В ЛИЗИНГ' : 'LEASE IT NOW') : (language === 'ru' ? 'ОФОРМИТЬ КРЕДИТ' : 'FINANCE IT NOW')}
+            </h3>
+
+            <div className="flex flex-col md:flex-row md:items-end justify-between w-full">
+               <div className="flex flex-col items-start gap-1">
+                 <div className="flex flex-row md:flex-col items-center md:items-start gap-2">
+                    <div className="flex items-center gap-1.5 text-sm text-[var(--mu2)] mb-1 cursor-pointer hover:text-[var(--w)] transition-colors" onClick={() => setIsTransparencyOpen(true)}>
+                      {language === 'ru' ? 'Ежемесячный платеж' : 'Monthly payment'}
+                      <HelpCircle size={14} />
+                    </div>
+                    {deal?.lender && (
+                      <div className="hidden md:flex items-center gap-1.5 text-xs text-[var(--mu2)] opacity-80 mt-2">
+                        <Building2 size={14} />
+                        {deal.lender}
+                      </div>
+                    )}
+                 </div>
+               </div>
+
+               <div className="flex flex-col items-end mt-2 md:mt-0">
+                  <div className="flex items-end gap-1">
+                    <span className={cn(
+                        "text-5xl md:text-6xl font-display tracking-tight text-[var(--w)] leading-none",
+                        isCalculating ? "opacity-30" : "opacity-100",
+                        quoteStatus === 'NO_PROGRAMS' ? "text-[var(--mu2)]" : ""
+                      )}>
+                        {quoteStatus === 'NO_PROGRAMS' && !currentCar?.displayPayment ? '--' : fmt(calculatedPayment)}
+                    </span>
+                    <span className="text-[13px] font-bold text-[var(--w)] mb-1.5 ml-1">
+                      {language === 'ru' ? 'в мес.' : 'per month'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex flex-col items-end gap-2 mt-2">
+                    <div className="text-[13px] text-[var(--mu2)] group cursor-pointer" onClick={() => setIsTransparencyOpen(true)}>
+                      <span>(+<strong>{fmt(down)}</strong> {language === 'ru' ? 'при подписании' : 'due at signing'})</span>
+                    </div>
+                    {/* Explicit Price Transparency Button */}
+                    <button 
+                      type="button"
+                      onClick={() => setIsTransparencyOpen(true)}
+                      className="text-[11px] font-bold uppercase tracking-widest text-[#00E58F] hover:text-[#00D484] flex items-center gap-1.5 transition-colors underline decoration-dashed underline-offset-4"
+                    >
+                      <HelpCircle size={12} />
+                      {language === 'ru' ? 'ПРОЗРАЧНОСТЬ ЦЕНЫ' : 'PRICE TRANSPARENCY'}
+                    </button>
+                  </div>
+               </div>
+            </div>
+            
+            {deal?.lender && (
+              <div className="md:hidden flex items-center gap-1.5 text-xs text-[var(--mu2)] opacity-80 mt-4">
+                <Building2 size={14} />
+                {deal.lender}
              </div>
+            )}
           </div>
         </div>
-      </div>
 
-        <div className={cn("space-y-4","")}>
-          <TradeInEstimator onEquityCalculated={setTradeInEquity} />
+          {/* CTA */}
+          {!isCalibrator && !hideCTA && (
+            <div className="w-full mt-6 flex justify-center">
+               <button 
+                  onClick={() => currentCar && onProceed?.({ 
+                    ...currentCar, payment: calculatedPayment, type: calcType, down, term: `${term} mo`, tier, mileage, source: isCustomCar ? 'custom_calculator' : 'catalog_deal'
+                  })}
+                  disabled={isCalculating}
+                  className={cn("w-full md:w-[320px] h-12 md:h-14 font-display font-bold text-[13px] md:text-[14px] tracking-widest uppercase rounded-lg transition-all flex items-center justify-center gap-2",
+                    isCalculating 
+                    ? "bg-[var(--b2)] text-[var(--mu2)] cursor-not-allowed" 
+                    : "bg-[#00E58F] hover:bg-[#00D484] text-black shadow-[0_0_15px_rgba(0,229,143,0.3)] hover:shadow-[0_0_25px_rgba(0,229,143,0.4)] border border-[#00E58F]/50"
+                  )}
+               >
+                  {isCustomCar ? (language === 'ru' ? 'ОТПРАВИТЬ ЗАЯВКУ' : 'SUBMIT REQUEST') : (language === 'ru' ? 'РЕЗЕРВ' : 'RESERVE')}
+                  <ChevronRight size={16} />
+               </button>
+            </div>
+          )}
+        </div>
 
+        <div className="space-y-4">
           <div className="p-4 sm:p-6 space-y-4">
             {/* Incentives Extra Details - Competitor Style */}
             {!isStandalone && (
@@ -828,7 +823,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     >
                       <span className="flex items-center gap-2 text-[var(--w)]">
                         <Info size={12} />
-                        {translations[language].calc.incentiveModal.edit}
+                        {language === 'ru' ? 'МЕНЕДЖЕР СКИДОК' : 'EDIT INCENTIVES'}
                       </span>
                     </button>
                   </div>
@@ -879,18 +874,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
               )}
             </div>
           )}
-
-            {/* Incentive Modal */}
-            <IncentivesModal
-              isOpen={isIncentivesModalOpen}
-              onClose={() => setIsIncentivesModalOpen(false)}
-              deal={{ ...currentCar, availableIncentives: effectiveIncentives }}
-              selectedIncentives={selectedIncentives}
-              toggleIncentive={toggleIncentive}
-              isFirstTimeBuyer={isFirstTimeBuyer}
-              quoteResult={quoteData}
-              role={role}
-            />
 
             {isMobile && wizardStep === 1 && (
               <div className="flex gap-2 mt-4">
@@ -1054,10 +1037,14 @@ export const Calculator: React.FC<CalculatorProps> = ({
           down,
           tradeInEquity,
           type: calcType,
+          payment: calculatedPayment,
+          displayPayment: calculatedPayment,
           rv: currentCar?.rv36 || currentCar?.rv || 0.55,
           mf: currentCar?.mf || 0.002,
           apr: currentCar?.baseAPR || currentCar?.apr || 4.9,
-          rebates: totalIncentives
+          rebates: totalIncentives,
+          availableIncentives: effectiveIncentives,
+          selectedIncentives
         } : null}
         mileage={mileage}
         quoteResult={quoteData}

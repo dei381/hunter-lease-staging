@@ -85,8 +85,9 @@ export const DealsPage = () => {
       down: debouncedDownPayment.toString(),
       mileage: selectedMileage,
       displayMode: displayMode,
-      limit: '50' // Limit to 50 deals as requested to improve performance
+      limit: '500' // Increased limit so nothing is deleted
     });
+
 
     Promise.allSettled([
       fetchWithCache(`/api/deals?${params.toString()}`),
@@ -223,9 +224,9 @@ export const DealsPage = () => {
         savings: Math.max(0, msrp - price),
         image,
         dealer: item.dealer?.name,
-        vdp_url: item.vdp_url,
-        dealer_website: item.dealer?.website,
-        window_sticker_url: item.build?.window_sticker_url,
+        vdp_url: (item as any).vdp_url,
+        dealer_website: (item as any).dealer?.website,
+        window_sticker_url: (item as any).build?.window_sticker_url,
         type: 'marketcheck',
         status: 'active',
         hot: false,
@@ -333,7 +334,7 @@ export const DealsPage = () => {
     });
   }, [processedDeals, debouncedSearchQuery, debouncedMaxPayment, selectedMake, selectedModel, selectedTrim, selectedClass, isFirstTimeBuyer, hasCosigner, selectedQuickFilter, selectedBodyStyle, selectedFuelType, selectedDriveType, selectedSeats, sortBy]);
 
-  const displayedDeals = useMemo(() => filteredDeals.slice(0, 55), [filteredDeals]);
+  const displayedDeals = useMemo(() => filteredDeals, [filteredDeals]);
 
   useEffect(() => {
     console.log('DealsPage Debug:', {
@@ -400,8 +401,8 @@ export const DealsPage = () => {
                   Параметры поиска
                 </h3>
 
-                {/* Main Payment Settings */}
-                <div className="space-y-4 pb-6 border-b border-[var(--b2)]">
+                <div className="space-y-4 pb-6">
+                  {/* Quick Filters */}
                   <div className="space-y-3">
                     <label className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">Type</label>
                     <div className="bg-[var(--s2)] p-1 rounded-lg flex border border-[var(--b2)]">
@@ -426,6 +427,59 @@ export const DealsPage = () => {
                       <option value="t4">{t.tier4}</option>
                     </select>
                   </div>
+                  
+                  {/* Make Filter */}
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.make}</h4>
+                    <select 
+                      value={selectedMake}
+                      onChange={(e) => {
+                        setSelectedMake(e.target.value);
+                        setSelectedModel('All');
+                        setSelectedTrim('All');
+                      }}
+                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
+                    >
+                      {makes.map((make, idx) => (
+                        <option key={`${make}-${idx}`} value={make}>{make === 'All' ? t.allMakes : make}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Model Filter */}
+                  {selectedMake !== 'All' && (
+                    <div className="space-y-3">
+                      <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.model}</h4>
+                      <select 
+                        value={selectedModel}
+                        onChange={(e) => {
+                          setSelectedModel(e.target.value);
+                          setSelectedTrim('All');
+                        }}
+                        className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
+                      >
+                        {availableModels.map((model, idx) => (
+                          <option key={`${model}-${idx}`} value={model}>{model === 'All' ? t.all : model}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Trim Filter */}
+                  {selectedMake !== 'All' && selectedModel !== 'All' && (
+                    <div className="space-y-3">
+                      <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.trim}</h4>
+                      <select 
+                        value={selectedTrim}
+                        onChange={(e) => setSelectedTrim(e.target.value)}
+                        className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
+                      >
+                        {availableTrims.map((trim, idx) => (
+                          <option key={`${trim}-${idx}`} value={trim}>{trim === 'All' ? t.all : trim}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div className="space-y-3">
                     <label className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.term}</label>
@@ -512,60 +566,8 @@ export const DealsPage = () => {
                       </button>
                     ))}
                   </div>
+
                 </div>
-
-                {/* Make Filter */}
-                <div className="space-y-3">
-                  <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.make}</h4>
-                  <select 
-                    value={selectedMake}
-                    onChange={(e) => {
-                      setSelectedMake(e.target.value);
-                      setSelectedModel('All');
-                      setSelectedTrim('All');
-                    }}
-                    className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
-                  >
-                    {makes.map((make, idx) => (
-                      <option key={`${make}-${idx}`} value={make}>{make === 'All' ? t.allMakes : make}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Model Filter */}
-                {selectedMake !== 'All' && (
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.model}</h4>
-                    <select 
-                      value={selectedModel}
-                      onChange={(e) => {
-                        setSelectedModel(e.target.value);
-                        setSelectedTrim('All');
-                      }}
-                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
-                    >
-                      {availableModels.map((model, idx) => (
-                        <option key={`${model}-${idx}`} value={model}>{model === 'All' ? t.all : model}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Trim Filter */}
-                {selectedMake !== 'All' && selectedModel !== 'All' && (
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.trim}</h4>
-                    <select 
-                      value={selectedTrim}
-                      onChange={(e) => setSelectedTrim(e.target.value)}
-                      className="w-full bg-[var(--s2)] border border-[var(--b2)] rounded-xl py-3 px-4 text-sm font-bold text-[var(--w)] outline-none focus:border-[var(--lime)] transition-all appearance-none cursor-pointer"
-                    >
-                      {availableTrims.map((trim, idx) => (
-                        <option key={`${trim}-${idx}`} value={trim}>{trim === 'All' ? t.all : trim}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
 
                 {/* Advanced Filters Expander */}
                 <div className="pt-4 border-t border-[var(--b2)]">
@@ -735,7 +737,7 @@ export const DealsPage = () => {
                 <div className="flex items-center gap-4 flex-wrap">
                   <h2 className="text-xl font-display tracking-tight">
                     <span className="text-[var(--w)]">
-                      {mcTotalCount > 0 ? mcTotalCount.toLocaleString() : (filteredDeals.length >= 55 ? '55+' : filteredDeals.length)}
+                      {mcTotalCount > 0 ? (mcTotalCount + filteredDeals.length).toLocaleString() : filteredDeals.length}
                     </span> <span className="text-[var(--mu2)]">{t.verifiedDeals}</span>
                   </h2>
                   <div className="flex items-center gap-2">
@@ -948,42 +950,6 @@ export const DealsPage = () => {
                           >
                             View Deal
                           </button>
-                          
-                          {/* Secondary CTAs */}
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCardClick(deal); // Features fallback just opens deal for now
-                              }}
-                              className="flex-1 h-10 rounded-xl flex items-center justify-center transition-colors border border-[var(--b2)] text-[var(--mu2)] hover:border-[var(--mu)] text-[10px] font-bold uppercase tracking-widest hover:text-[var(--w)]"
-                            >
-                              Features
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleDeal(deal);
-                              }}
-                              className={`flex-1 h-10 rounded-xl flex items-center justify-center transition-colors border text-[10px] font-bold uppercase tracking-widest gap-1.5 ${
-                                isSaved(deal.id) 
-                                  ? 'bg-[var(--s2)] text-[var(--w)] border-[var(--lime)]' 
-                                  : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
-                              }`}
-                            >
-                              {isSaved(deal.id) ? (
-                                <>
-                                  <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-[var(--lime)]"><path d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                  Added
-                                </>
-                              ) : (
-                                <>
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 opacity-70"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                                  Save
-                                </>
-                              )}
-                            </button>
-                          </div>
                         </div>
                       </div>
                   </motion.div>

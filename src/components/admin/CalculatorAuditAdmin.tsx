@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, Search, AlertTriangle, CheckCircle2, Copy, FileJson, ChevronDown } from 'lucide-react';
+import { Calculator, Search, AlertTriangle, CheckCircle2, Copy, FileJson, ChevronDown, RotateCcw } from 'lucide-react';
 import { getAuthToken } from '../../utils/auth';
 import { toast } from 'react-hot-toast';
 import { motion } from 'motion/react';
 import { useCarData } from '../../hooks/useCarData';
+import { OEMReverseEngineer } from './OEMReverseEngineer';
 
 export function CalculatorAuditAdmin() {
+  const [activeTab, setActiveTab] = useState<'AUDIT' | 'OEM_REVERSE'>('OEM_REVERSE');
   const [makes, setMakes] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]);
   const [trims, setTrims] = useState<any[]>([]);
@@ -122,19 +124,42 @@ export function CalculatorAuditAdmin() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-display">Calculator Audit & Debug</h2>
-          <p className="text-[var(--text-secondary)]">Verify and debug lease payment calculations step-by-step.</p>
+          <h2 className="text-2xl font-display">Calculator Audit & OEM Baseline Tool</h2>
+          <p className="text-[var(--text-secondary)]">Verify and debug lease payment calculations or extract OEM baselines.</p>
         </div>
-        <button onClick={copyTrace} disabled={!trace} className="flex items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:border-[var(--lime)] transition-colors disabled:opacity-50">
-          <Copy className="w-4 h-4" />
-          Copy Trace
-        </button>
+        <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl">
+          <button 
+            onClick={() => setActiveTab('AUDIT')} 
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'AUDIT' ? 'bg-white shadow-sm text-indigo-900' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            Lease Engine Trace
+          </button>
+          <button 
+            onClick={() => setActiveTab('OEM_REVERSE')} 
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'OEM_REVERSE' ? 'bg-white shadow-sm text-indigo-900' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            OEM Reverse-Engineer
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {activeTab === 'OEM_REVERSE' ? (
+        <OEMReverseEngineer />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6">
-            <h3 className="text-lg font-medium mb-4">Input Parameters</h3>
+            <h3 className="text-lg font-medium mb-4 flex justify-between items-center">
+              <span>Input Parameters</span>
+              <button 
+                onClick={copyTrace} 
+                disabled={!trace} 
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-[var(--bg)] border border-[var(--border)] rounded hover:border-[var(--lime)] disabled:opacity-50 transition-colors"
+                title="Copy full trace JSON"
+              >
+                <Copy className="w-3 h-3" /> Copy Trace
+              </button>
+            </h3>
             {makes.length === 0 ? (
               <div className="flex items-center justify-center p-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--lime)]"></div>
@@ -491,7 +516,8 @@ export function CalculatorAuditAdmin() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

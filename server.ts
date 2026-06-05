@@ -4128,145 +4128,14 @@ const mapDealsForFrontend = (
   settings: any,
   queryParams: any
 ) => {
-  const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier } = queryParams;
-  const { makeMap: carDbMakeMap, modelMap: carDbModelMap, trimMap: carDbTrimMap } = cachedMaps;
   const { map: carPhotosMap } = cachedPhotos;
+  const { makeMap: carDbMakeMap, modelMap: carDbModelMap, trimMap: carDbTrimMap } = cachedMaps;
 
-  const acqFeeCents = (settings.acquisitionFee || 650) * 100;
-  const docFeeCents = (settings.docFee || 85) * 100;
-  const dmvFeeCents = (settings.dmvFee || 400) * 100;
-  const brokerFeeCents = (settings.brokerFee || 595) * 100;
-  const taxRate = (settings.taxRateDefault || 8.875) / 100;
+  const processedDeals = DealEngineFacade.mapCatalogDeals(dealsToProcess, cachedMaps, settings, queryParams);
 
-  return dealsToProcess.map(({ deal, data }) => {
-    const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
-    const manufacturerRebate = data.manufacturerRebate?.isGlobal ? (data.manufacturerRebate.value || 0) : 0;
-    const totalGlobalSavings = hunterDiscount + manufacturerRebate;
-
-    let msrp = getVal(data.msrp);
-    let mf = getVal(data.moneyFactor || data.mf, 0.002);
-    let rv = getVal(data.residualValue || data.rv, 0.5);
-    let leaseCash = getVal(data.leaseCash || data.rebates, 0);
-    let term = queryTerm ? parseInt(queryTerm as string, 10) : getVal(data.term, 36);
-    let down = queryDown ? parseInt(queryDown as string, 10) : getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000); // This is total DAS
-    let savings = getVal(data.savings, 0);
-    let discount = getVal(data.discount, 0);
-    let rebates = getVal(data.rebates, 0);
-    let apr = getVal(data.apr, 4.9);
-
-    // Use totalGlobalSavings if it's greater than 0, otherwise fallback to existing savings logic
-    const effectiveSavings = totalGlobalSavings > 0 ? totalGlobalSavings : savings;
-    let type = data.type || 'lease';
-
-    let usedTiersData = false;
-    // AUTOMATIC UPDATE: Check CAR_DB for latest data
-    if (data.make && data.model && data.trim) {
-      const makeKey = data.make.toLowerCase();
-      const modelKey = `${makeKey}-${data.model.toLowerCase()}`;
-      const trimKey = `${modelKey}-${data.trim.toLowerCase()}`;
-      
-      const makeObj = carDbMakeMap.get(makeKey);
-      if (makeObj) {
-        const modelObj = carDbModelMap.get(modelKey);
-        if (modelObj) {
-          const trimObj = carDbTrimMap.get(trimKey);
-          if (trimObj) {
-            // Use latest data from catalog
-            msrp = Number(trimObj.msrp) || msrp;
-            mf = trimObj.mf !== undefined && String(trimObj.mf) !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && String(modelObj.mf) !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && String(makeObj.baseMF) !== "" ? Number(makeObj.baseMF) : (mf !== undefined && String(mf) !== "" ? Number(mf) : 0.002)));
-            rv = trimObj.rv36 !== undefined && String(trimObj.rv36) !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && String(modelObj.rv36) !== "" ? Number(modelObj.rv36) : (rv !== undefined && String(rv) !== "" ? Number(rv) : 0.55));
-            leaseCash = trimObj.leaseCash !== undefined && String(trimObj.leaseCash) !== "" ? Number(trimObj.leaseCash) : (leaseCash !== undefined && String(leaseCash) !== "" ? Number(leaseCash) : 0);
-            apr = trimObj.baseAPR !== undefined && String(trimObj.baseAPR) !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && String(modelObj.baseAPR) !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && String(makeObj.baseAPR) !== "" ? Number(makeObj.baseAPR) : (apr !== undefined && String(apr) !== "" ? Number(apr) : 4.9)));
-
-            if (queryTier) {
-              const tierId = queryTier as string;
-              const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
-              
-              if (makeTier || modelObj.tiersData?.[tierId] || trimObj.tiersData?.[tierId]) {
-                const fallbackMakeTier = makeTier || { mfAdd: 0, aprAdd: 0 };
-                const modelTier = modelObj.tiersData?.[tierId] || fallbackMakeTier;
-                const trimTier = trimObj.tiersData?.[tierId];
-
-                if (trimTier) {
-                  mf = trimTier.mf !== undefined && trimTier.mf !== "" ? Number(trimTier.mf) : mf;
-                  rv = trimTier.rv36 !== undefined && trimTier.rv36 !== "" ? Number(trimTier.rv36) : rv;
-                  leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
-                  apr = trimTier.baseAPR !== undefined && trimTier.baseAPR !== "" ? Number(trimTier.baseAPR) : apr;
-                } else {
-                  mf = mf + (Number(modelTier.mfAdd) || 0);
-                  apr = apr + (Number(modelTier.aprAdd) || 0);
-                }
-                
-                // Attach the resolved tier data to the object so the frontend can use it
-                if (!data.tiersData) data.tiersData = {};
-                data.tiersData[tierId] = {
-                  mf: mf,
-                  rv36: rv,
-                  baseAPR: apr,
-                  leaseCash: leaseCash
-                };
-                usedTiersData = true;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Apply query adjustments
-    if (queryMileage) {
-      if (queryMileage === '12k') rv -= 0.01;
-      else if (queryMileage === '15k') rv -= 0.03;
-      else if (queryMileage === '20k') rv -= 0.05;
-      else if (queryMileage === '7.5k') rv += 0.01;
-    }
-
-    if (queryTier && !usedTiersData) {
-      if (queryTier === 't2') mf *= 1.1;
-      else if (queryTier === 't3') mf *= 1.2;
-      else if (queryTier === 't4') mf *= 1.35;
-      else if (queryTier === 't5') mf *= 1.5;
-      else if (queryTier === 't6') mf *= 1.7;
-    }
-
-    // Re-calculate payment based on new DAS logic
-    let payment = 0;
-    let financePayment = 0;
-    
-    const lease = PureMathEngine.calculateLease({
-      msrpCents: msrp * 100,
-      sellingPriceCents: (msrp - effectiveSavings - leaseCash - rebates - discount) * 100,
-      residualValuePercent: rv > 1 ? rv / 100 : rv,
-      moneyFactor: mf,
-      term,
-      downPaymentCents: down * 100,
-      acqFeeCents: acqFeeCents,
-      docFeeCents: docFeeCents,
-      dmvFeeCents: dmvFeeCents,
-      brokerFeeCents: brokerFeeCents,
-      taxRate: taxRate
-    });
-    payment = lease.finalPaymentCents / 100;
-
-    if (queryTier && !usedTiersData) {
-      if (queryTier === 't2') apr += 1.0;
-      else if (queryTier === 't3') apr += 2.5;
-      else if (queryTier === 't4') apr += 4.5;
-      else if (queryTier === 't5') apr += 7.0;
-      else if (queryTier === 't6') apr += 10.0;
-    }
-
-    const finance = PureMathEngine.calculateFinance({
-      sellingPriceCents: (msrp - effectiveSavings - (totalGlobalSavings || rebates) - discount) * 100,
-      apr,
-      term,
-      downPaymentCents: down * 100,
-      docFeeCents: docFeeCents,
-      dmvFeeCents: dmvFeeCents,
-      brokerFeeCents: brokerFeeCents,
-      taxRate: taxRate
-    });
-    financePayment = finance.finalPaymentCents / 100;
+  return processedDeals.map(({ deal, data, computed }) => {
+    const { payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type } = computed;
+    const effectiveSavings = savings;
 
     // Handle RV percentage vs absolute
     let rvPercent = '0%';
@@ -4405,6 +4274,7 @@ const mapDealsForFrontend = (
       msrp: msrp,
       savings: effectiveSavings,
       dealer: data.dealer || 'Verified Dealer',
+      lender: deal.lender?.name || data.lender || 'Verified Dealer',
       region: data.region || 'California',
       intel: data.intel || '11-Key Lock Verified Deal. No hidden markups.',
       marketAvg: data.marketAvg || Math.round(payment * 1.15),

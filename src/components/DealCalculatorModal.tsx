@@ -109,7 +109,7 @@ export const DealCalculatorModal = ({
             type: calcType,
             term: debouncedTerm,
             downPaymentCents: debouncedDown * 100,
-            mileage: parseInt(debouncedMileage) * 1000,
+            mileage: debouncedMileage === '7.5k' ? 7500 : parseInt(debouncedMileage.replace('k', '000')),
             creditTier: debouncedTier,
             zipCode: '90210',
             msdCount: debouncedMsdCount,

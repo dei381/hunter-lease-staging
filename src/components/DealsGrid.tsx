@@ -121,7 +121,8 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
     return matchesSearch && matchesPayment && matchesClass && matchesFTB;
   });
 
-  const displayedDeals = limit ? filteredDeals.slice(0, limit) : filteredDeals;
+  const sortedDeals = [...filteredDeals].sort((a, b) => (a.displayPayment || 0) - (b.displayPayment || 0));
+  const displayedDeals = limit ? sortedDeals.slice(0, limit) : sortedDeals;
 
   return (
     <div className="space-y-8">

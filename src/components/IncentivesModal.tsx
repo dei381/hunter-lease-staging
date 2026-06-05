@@ -107,10 +107,9 @@ export const IncentivesModal: React.FC<IncentivesModalProps> = ({
   const basePayment = currentPayment + (totalSaved / term);
   const monthlySavings = basePayment - currentPayment;
 
-  if (!isOpen) return null;
-
   return createPortal(
     <AnimatePresence>
+      {isOpen && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0 }}
@@ -129,21 +128,34 @@ export const IncentivesModal: React.FC<IncentivesModalProps> = ({
           <div className="w-full md:w-3/5 p-6 md:p-8 overflow-y-auto max-h-[80vh]">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Lease Incentives and Discounts</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  {language === 'ru' ? 'Менеджер скидок' : 'Lease Incentives and Discounts'}
+                </h2>
                 <p className="text-sm text-gray-500">
-                  You can save money on your next deal by answering a couple questions that may qualify you for manufacturer incentives.
+                  {language === 'ru'
+                    ? 'Вы можете сэкономить на следующем предложении, ответив на пару вопросов, которые могут дать право на скидки от производителя.'
+                    : 'You can save money on your next deal by answering a couple questions that may qualify you for manufacturer incentives.'}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 mb-6">
-              <span className="text-sm font-medium text-gray-700">Do you want to update auto-selected rebates?</span>
+              <span className="text-sm font-medium text-gray-700">
+                {language === 'ru' ? 'Хотите обновить автоматически выбранные скидки?' : 'Do you want to update auto-selected rebates?'}
+              </span>
               <button className="text-gray-400 hover:text-gray-600 transition-colors">
                 <Settings size={16} />
               </button>
             </div>
 
             <div className="space-y-4">
+              {deal?.availableIncentives?.length === 0 && (
+                <div className="p-8 text-center bg-gray-50 m-6 rounded-xl border border-gray-100">
+                  <p className="text-gray-500">
+                    {language === 'ru' ? 'Для данного предложения не найдено применимых скидок.' : 'No applicable incentives found for this deal.'}
+                  </p>
+                </div>
+              )}
               {/* Auto Applied (Dealer Discounts) */}
               {autoApplied.map(inc => (
                 <div key={inc.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 bg-gray-50">
@@ -288,6 +300,7 @@ export const IncentivesModal: React.FC<IncentivesModalProps> = ({
           </div>
         </motion.div>
       </div>
+      )}
     </AnimatePresence>,
     document.body
   );

@@ -4,7 +4,7 @@ import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import { ScrollToTop } from './components/ScrollToTop';
 import { Helmet } from 'react-helmet-async';
 import { SEO } from './components/SEO';
-import { Calculator } from './components/Calculator';
+
 import { DealsGrid } from './components/DealsGrid';
 import { LeadStatus } from './components/LeadStatus';
 import { DepositModal } from './components/DepositModal';
@@ -19,6 +19,7 @@ import { LockModal } from './components/LockModal';
 import { VisitTracker } from './components/VisitTracker';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageWelcomeModal } from './components/LanguageWelcomeModal';
+import { ZipModal } from './components/ZipModal';
 import { Lead } from './types';
 import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2, Lock, FileCheck, ChevronRight } from 'lucide-react';
 import { useLanguageStore } from './store/languageStore';
@@ -363,14 +364,7 @@ function MainApp() {
                {language === 'ru' ? 'Каталог Авто' : 'Browse Catalog'}
                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
             </button>
-            <button 
-              onClick={() => scrollToSection('calc')} 
-              className="bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-sm uppercase tracking-widest px-10 py-5 rounded-2xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all group flex items-center justify-center gap-3 w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lime)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]"
-              aria-label={language === 'ru' ? 'Сделать свой запрос' : 'Create Custom Request'}
-            >
-               {language === 'ru' ? 'Свой Запрос' : 'Custom Request'}
-               <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform opacity-50 group-hover:opacity-100" aria-hidden="true" />
-            </button>
+
           </div>
 
 
@@ -390,22 +384,23 @@ function MainApp() {
                {language === 'ru' ? 'Смотреть все' : 'View All'} <ArrowRight size={12} />
              </Link>
           </div>
-          <div className="relative">
-             <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[var(--bg)] to-transparent z-10 pointer-events-none" />
-             <div className="max-h-[600px] overflow-hidden -mx-4 px-4 pb-8 relative" style={{ maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)' }}>
-               <DealsGrid limit={3} hideFilters={true} />
-             </div>
-             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
-                <button
-                  onClick={() => navigate('/deals')}
-                  className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest shadow-2xl hover:border-[var(--lime)] transition-all flex items-center gap-2 relative overflow-hidden group"
-                >
-                  <div className="absolute inset-0 bg-[var(--lime)]/10 translate-y-full group-hover:translate-y-0 transition-transform" />
-                  <span className="relative z-10">{language === 'ru' ? 'Смотреть весь каталог' : 'Browse Full Catalog'}</span>
-                </button>
-             </div>
+          
+          <div className="-mx-4 px-4 pb-8">
+            <DealsGrid limit={6} hideFilters={true} />
+          </div>
+          
+          <div className="flex justify-center mt-4">
+             <button
+               onClick={() => navigate('/deals')}
+               className="bg-[var(--s2)] border border-[var(--b2)] text-[var(--w)] px-8 py-3 rounded-xl text-xs font-bold uppercase tracking-widest shadow-2xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all flex items-center gap-2 group"
+             >
+               <span>{language === 'ru' ? 'Смотреть весь каталог' : 'Browse Full Catalog'}</span>
+               <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+             </button>
           </div>
         </div>
+
+
 
 
 
@@ -444,21 +439,7 @@ function MainApp() {
           </div>
         </div>
 
-        {/* Catalog right after Hero */}
-        <div id="market" className="mb-32">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12">
-            <div className="flex items-center gap-4 flex-1">
-              <h2 className="font-display text-4xl tracking-widest uppercase whitespace-nowrap">{t.market?.title || "Marketplace"}</h2>
-              <div className="flex-1 h-px bg-[var(--b2)]" />
-            </div>
-          </div>
-          <DealsGrid limit={6} />
-          <div className="mt-8 text-center flex justify-center">
-            <Link to="/deals" className="block bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-xs uppercase tracking-widest px-10 py-4 rounded-xl hover:border-[var(--lime)] hover:text-[var(--lime)] transition-all">
-              {t.market?.viewAll || "View All Deals"}
-            </Link>
-          </div>
-        </div>
+
 
         {/* Urgency Banner */}
         <div className="mb-16 bg-[var(--s1)] border border-[var(--lime)]/30 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 relative overflow-hidden">
@@ -474,8 +455,8 @@ function MainApp() {
               </div>
             </div>
           </div>
-          <button onClick={() => scrollToSection('calc')} className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors">
-            {language === 'ru' ? 'Зафиксировать ставку' : 'Lock Rate Now'}
+          <button onClick={() => scrollToSection('market')} className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors">
+            {language === 'ru' ? 'Смотреть каталог' : 'Browse Catalog'}
           </button>
         </div>
 
@@ -509,98 +490,71 @@ function MainApp() {
           </motion.div>
         </div>
 
-        <div id="calc" className="mb-32">
-          <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-6 mb-8">
-            <div>
-              <div className="flex items-center gap-4 mb-4">
-                <h2 className="font-display text-4xl tracking-widest uppercase">{t.calc.title}</h2>
-                <div className="flex-1 h-px bg-[var(--b2)] hidden md:block" />
-              </div>
-              <div className="max-w-3xl space-y-4">
-                <p className="text-lg text-[var(--w)] font-medium">
-                  {language === 'ru' 
-                    ? 'Идеальный калькулятор для получения квот среди всех дилеров в радиусе 50 миль.' 
-                    : 'The ideal calculator for getting quotes among all dealers within a 50-mile radius.'}
-                </p>
-                <p className="text-[var(--mu2)] leading-relaxed">
-                  {language === 'ru'
-                    ? 'Наш калькулятор считает платежи по честной цене MSRP, без скрытых наценок дилера (markups), без завышения кредитной ставки и без навязанных допов. Используйте его, чтобы сравнить текущие предложения от дилеров с реальной рыночной ценой. Если наши условия вам нравятся больше — отправьте заявку, и первый дилер, готовый выполнить эти условия, заберет сделку.'
-                    : 'Our calculator computes payments at honest MSRP, with no hidden dealer markups, no inflated money factors or APRs, and no forced add-ons. Use it to compare your current dealer offers with true market pricing. If you prefer our terms, submit a request, and the first dealer willing to meet these terms will win your deal.'}
-                </p>
-              </div>
-            </div>
-          </div>
-          <Calculator 
-            onProceed={(data) => {
-              setActiveSelection({
-                ...data,
-                source: 'custom_calculator'
-              });
-              setIsModalOpen(true);
-            }} 
-            mode="standalone" 
-          />
-        </div>
 
-        {/* How it works / Why us Consolidated */}
+
+        {/* Mission Section */}
         <div className="mb-32">
           <div className="flex items-center gap-4 mb-12">
             <h2 className="font-display text-4xl tracking-widest uppercase">{t.why.title}</h2>
             <div className="flex-1 h-px bg-[var(--b2)]" />
           </div>
-          <div className="grid lg:grid-cols-[1fr,1.5fr] gap-16">
-            <div className="space-y-8">
-              <p className="text-xl text-[var(--mu2)] leading-relaxed font-display">
-                {t.why.desc1}
-              </p>
-              <div className="grid gap-4">
-                {[
-                  { title: t.team.step1Title, desc: t.team.step1Desc },
-                  { title: t.team.step2Title, desc: t.team.step2Desc },
-                  { title: t.team.step3Title, desc: t.team.step3Desc }
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-4 p-4 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--lime)]/10 flex items-center justify-center text-[var(--lime)] font-display shrink-0">
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-widest text-[var(--w)] mb-1">{item.title}</div>
-                      <p className="text-[10px] text-[var(--mu2)] leading-relaxed">{item.desc}</p>
-                    </div>
+          <div className="space-y-8">
+            <p className="text-2xl text-[var(--w)] leading-relaxed font-display max-w-3xl">
+              {t.why.desc1}
+            </p>
+            <div className="grid sm:grid-cols-3 gap-6 pt-8">
+              {[
+                { title: t.team.step1Title, desc: t.team.step1Desc },
+                { title: t.team.step2Title, desc: t.team.step2Desc },
+                { title: t.team.step3Title, desc: t.team.step3Desc }
+              ].map((item, i) => (
+                <div key={i} className="flex flex-col gap-4 p-6 bg-[var(--s1)] border border-[var(--b2)] rounded-3xl">
+                  <div className="w-12 h-12 rounded-xl bg-[var(--lime)]/10 flex items-center justify-center text-[var(--lime)] font-display text-xl mb-2">
+                    {i + 1}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold uppercase tracking-widest text-[var(--w)] mb-2">{item.title}</div>
+                    <p className="text-xs text-[var(--mu2)] leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Banks Compete Section */}
+        <div className="mb-32">
+          <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 lg:p-12 relative overflow-hidden flex flex-col justify-between">
+            <div className="space-y-8 relative z-10">
+              <h3 className="font-display text-4xl leading-tight max-w-2xl">{t.why.desc2}</h3>
+              <div className="grid sm:grid-cols-3 gap-4">
+                {[t.why.bullet1, t.why.bullet2, t.why.bullet3].map((item, i) => (
+                  <div key={i} className="flex items-center gap-4 text-xs font-bold uppercase tracking-widest text-[var(--w)] bg-[var(--s2)] p-5 rounded-2xl border border-[var(--b2)]">
+                    <div className="w-2 h-2 rounded-full bg-[var(--lime)] shrink-0" />
+                    {item}
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-3xl p-8 relative overflow-hidden flex flex-col justify-between">
-              <div className="space-y-6 relative z-10">
-                <h3 className="font-display text-3xl leading-tight">{t.why.desc2}</h3>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {[t.why.bullet1, t.why.bullet2, t.why.bullet3].map((item, i) => (
-                    <div key={i} className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-[var(--w)] bg-[var(--s2)] p-4 rounded-xl border border-[var(--b2)]">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[var(--lime)]" />
-                      {item}
-                    </div>
-                  ))}
+            <div className="mt-16 pt-12 border-t border-[var(--b2)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8 relative z-10">
+              <div className="flex items-center gap-6">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--lime)] to-[var(--teal)] flex items-center justify-center shadow-lg shadow-[var(--lime)]/20">
+                  <ShieldCheck className="w-8 h-8 text-[#111]" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold uppercase tracking-widest">{t.stats.verifiedNetwork}</div>
+                  <div className="text-xs text-[var(--mu2)] uppercase font-bold tracking-widest mt-1">{t.stats.activeDealers}</div>
                 </div>
               </div>
-              <div className="mt-12 pt-12 border-t border-[var(--b2)] flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--lime)] to-[var(--teal)]" />
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-widest">{t.stats.verifiedNetwork}</div>
-                    <div className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest">{t.stats.activeDealers}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-display text-[var(--lime)]">{t.statsCount?.dealers || "217+"}</div>
-                  <div className="text-[8px] text-[var(--mu2)] uppercase font-bold tracking-widest">{t.stats.activeDealers}</div>
-                </div>
+              <div className="text-left sm:text-right">
+                <div className="text-5xl font-display text-[var(--lime)]">{t.statsCount?.dealers || "217+"}</div>
+                <div className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest mt-2">{t.stats.activeDealers}</div>
               </div>
-              <div className="absolute top-0 right-0 p-12 opacity-5">
-                <svg className="w-64 h-64 text-[var(--lime)]" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2L1 21h22L12 2zm0 3.45l8.27 14.3H3.73L12 5.45z"/>
-                </svg>
-              </div>
+            </div>
+            <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+              <svg className="w-96 h-96 text-[var(--lime)]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L1 21h22L12 2zm0 3.45l8.27 14.3H3.73L12 5.45z"/>
+              </svg>
             </div>
           </div>
         </div>
@@ -909,7 +863,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--w)] selection:bg-[var(--lime)] selection:text-black">
-      <BetaBanner />
       {/* Header */}
       <nav className="h-[var(--nh)] border-b border-[var(--b1)] flex items-center justify-between px-6 sticky top-0 bg-[var(--bg)]/90 backdrop-blur-xl z-50">
         <Link to="/" className="font-display text-xl tracking-widest cursor-pointer flex items-center gap-2 shrink-0">
@@ -1054,6 +1007,7 @@ export default function App() {
       <Toaster position="top-right" />
       <VisitTracker />
       <LanguageWelcomeModal />
+      <ZipModal />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Layout><MainApp /></Layout>} />
