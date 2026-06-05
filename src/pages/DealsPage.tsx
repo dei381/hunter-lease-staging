@@ -1011,56 +1011,8 @@ export const DealsPage = () => {
            </button>
         </div>
 
-        {/* Popular Searches / Quick Categories */}
-        <div className="mt-32 pt-16 border-t border-[var(--b2)]">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
-            
-            <div>
-              <h4 className="text-sm font-bold text-[var(--w)] mb-6 tracking-wide">Top Makes & Models</h4>
-              <ul className="space-y-4">
-                <li><button onClick={() => { setSelectedMake('Toyota'); setSelectedModel('All'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Toyota</button></li>
-                <li><button onClick={() => { setSelectedMake('Honda'); setSelectedModel('Civic'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Honda Civic</button></li>
-                <li><button onClick={() => { setSelectedMake('Jeep'); setSelectedModel('Grand Cherokee'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Jeep Grand Cherokee</button></li>
-                <li><button onClick={() => { setSelectedMake('Audi'); setSelectedModel('Q5'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Audi Q5</button></li>
-                <li><button onClick={() => { setSelectedMake('BMW'); setSelectedModel('X3'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease BMW X3</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-bold text-[var(--w)] mb-6 tracking-wide">Deals by Body Style</h4>
-              <ul className="space-y-4">
-                <li><button onClick={() => { setSelectedBodyStyle('SUV'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">SUV Lease Deals</button></li>
-                <li><button onClick={() => { setSelectedBodyStyle('Sedan'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Sedan Lease Deals</button></li>
-                <li><button onClick={() => { setSelectedBodyStyle('Truck'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Truck Lease Deals</button></li>
-                <li><button onClick={() => { setSelectedFuelType('Electric'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Electric Car (EV) Offers</button></li>
-                <li><button onClick={() => { setSelectedFuelType('Hybrid'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Hybrid Car Offers</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-bold text-[var(--w)] mb-6 tracking-wide">Deals Near You</h4>
-              <ul className="space-y-4">
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Los Angeles CA</button></li>
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Irvine CA</button></li>
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Beverly Hills CA</button></li>
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Santa Monica CA</button></li>
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Pasadena CA</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-bold text-[var(--w)] mb-6 tracking-wide">Popular Searches</h4>
-              <ul className="space-y-4">
-                <li><button onClick={() => { setMaxPayment(300); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Car lease deals under $300</button></li>
-                <li><button onClick={() => { setMaxPayment(500); setSelectedBodyStyle('SUV'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">SUV lease deals under $500</button></li>
-                <li><button onClick={() => { setDownPayment(0); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Zero down lease deals</button></li>
-                <li><button onClick={() => { setSelectedClass('Luxury'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Luxury car lease specials</button></li>
-                <li><button onClick={() => { setSelectedQuickFilter('threeRow'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">7-Seater family SUVs</button></li>
-              </ul>
-            </div>
-
-          </div>
-        </div>
+        {/* Popular Searches / Quick Categories - temporarily hidden */}
+        {/* <div className="mt-32 pt-16 border-t border-[var(--b2)]">...</div> */}
       </div>
     </div>
   );

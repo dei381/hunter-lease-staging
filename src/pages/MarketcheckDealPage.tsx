@@ -21,7 +21,7 @@ import {
   Zap, 
   Clock, 
   MapPin, 
-  CheckCircle2,
+  CheckCircle,
   AlertCircle,
   TrendingDown,
   DollarSign,
@@ -774,7 +774,7 @@ export const MarketcheckDealPage: React.FC = () => {
               <div className="mt-6 grid grid-cols-2 gap-4">
                 <div className="flex items-center gap-3 p-3 bg-[var(--s1)] rounded-xl border border-[var(--b2)]">
                   <div className="p-2 bg-[var(--lime)]/10 rounded-lg">
-                    <CheckCircle2 size={16} className="text-[var(--lime)]" />
+                    <CheckCircle size={16} className="text-[var(--lime)]" />
                   </div>
                   <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest leading-tight">
                     Price<br/>Verified

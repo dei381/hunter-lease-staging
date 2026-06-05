@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { auth } from '../firebase';
 
@@ -119,7 +119,7 @@ export const AcceptLeadModal: React.FC<AcceptLeadModalProps> = ({ isOpen, onClos
                   <div className="w-6 h-6 border-2 border-black/20 border-t-black rounded-full animate-spin" />
                 ) : (
                   <>
-                    <CheckCircle2 size={20} />
+                    <CheckCircle size={20} />
                     Accept & Reveal Contact
                   </>
                 )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Plus } from 'lucide-react';
+import { CheckCircle, Plus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function DealEditor({ deal, carDb, lenders, onSave, onCancel, t }: any) {
@@ -594,7 +594,7 @@ export function DealEditor({ deal, carDb, lenders, onSave, onCancel, t }: any) {
             disabled={isSaving}
             className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors flex items-center disabled:opacity-50"
           >
-            <CheckCircle2 className="w-4 h-4 mr-2" />
+            <CheckCircle className="w-4 h-4 mr-2" />
             {isSaving ? 'Saving...' : t.approvePublish}
           </button>
         </div>

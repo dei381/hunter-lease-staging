@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Car, CheckCircle2, Loader2, ChevronRight, RefreshCw } from 'lucide-react';
+import { Car, CheckCircle, Loader2, ChevronRight, RefreshCw } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -175,7 +175,7 @@ export const TradeInEstimator = ({ onEquityCalculated }: { onEquityCalculated: (
             className="bg-[var(--s1)] border border-[var(--lime)]/30 rounded-xl p-4"
           >
             <div className="flex items-center gap-2 text-[var(--lime)] mb-4">
-              <CheckCircle2 size={16} />
+              <CheckCircle size={16} />
               <span className="text-sm font-bold uppercase tracking-widest">
                 {language === 'ru' ? 'Оценка завершена' : 'Valuation Complete'}
               </span>

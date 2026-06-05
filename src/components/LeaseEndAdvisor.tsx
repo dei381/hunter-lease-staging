@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Car, Calculator, TrendingUp, AlertCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Car, Calculator, TrendingUp, AlertCircle, ArrowRight, CheckCircle } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -183,7 +183,7 @@ export const LeaseEndAdvisor: React.FC = () => {
                   <div className={`p-6 rounded-2xl border ${result.advice === 'sell' ? 'bg-[var(--grn)]/5 border-[var(--grn)]/20' : 'bg-[var(--s2)] border-[var(--b2)]'}`}>
                     <div className="flex items-start gap-4">
                       <div className={`p-2 rounded-lg ${result.advice === 'sell' ? 'bg-[var(--grn)]/20 text-[var(--grn)]' : 'bg-[var(--mu)]/20 text-[var(--mu)]'}`}>
-                        {result.advice === 'sell' ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                        {result.advice === 'sell' ? <CheckCircle className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
                       </div>
                       <div>
                         <h5 className="font-bold text-lg mb-1">

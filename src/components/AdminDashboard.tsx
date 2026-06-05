@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { DragDropUploader } from './DragDropUploader';
 import { DealEditor } from './DealEditor';
-import { Activity, Clock, CheckCircle2, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator, Target, Sparkles, Layout, Globe, BookText, Languages } from 'lucide-react';
+import { Activity, Clock, CheckCircle, AlertTriangle, FileText, ChevronRight, ChevronDown, Key, ExternalLink, Trash2, ArchiveRestore, Plus, Save, Database, Users, Settings, BarChart3, UserCheck, UserX, Mail, LogIn, ShieldCheck, Image as ImageIcon, Star, MessageSquare, List, PenTool, Tag, Layers, Building2, Ticket, LogOut, X, Edit3, Calculator, Target, Sparkles, Layout, Globe, BookText, Languages } from 'lucide-react';
 import { doc, getDoc, setDoc, collection, getDocs, orderBy, query, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -972,7 +972,7 @@ export function AdminDashboard() {
       case 'APPROVED':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> {t.approved}
+            <CheckCircle className="w-3 h-3 mr-1" /> {t.approved}
           </span>
         );
       case 'REJECTED':
@@ -1478,7 +1478,7 @@ export function AdminDashboard() {
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-2 bg-emerald-50 rounded-lg">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
                   </div>
                   <span className="text-xs font-medium text-slate-500">{t.live}</span>
                 </div>

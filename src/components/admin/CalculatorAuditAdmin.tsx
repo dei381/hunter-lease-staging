@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, Search, AlertTriangle, CheckCircle2, Copy, FileJson, ChevronDown, RotateCcw } from 'lucide-react';
+import { Calculator, Search, AlertTriangle, CheckCircle, Copy, FileJson, ChevronDown, RotateCcw } from 'lucide-react';
 import { getAuthToken } from '../../utils/auth';
 import { toast } from 'react-hot-toast';
 import { motion } from 'motion/react';
@@ -269,7 +269,7 @@ export function CalculatorAuditAdmin() {
                   <h3 className="text-lg font-medium mb-2 flex items-center justify-between">
                     <span>Comparison Result</span>
                     {Math.abs(trace.finalPayment - Number(expectedPayment)) < 1 ? (
-                      <span className="text-green-400 flex items-center gap-1"><CheckCircle2 className="w-5 h-5" /> Match</span>
+                      <span className="text-green-400 flex items-center gap-1"><CheckCircle className="w-5 h-5" /> Match</span>
                     ) : (
                       <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-5 h-5" /> Mismatch</span>
                     )}
@@ -343,7 +343,7 @@ export function CalculatorAuditAdmin() {
                 }`}>
                   <h3 className="text-lg font-medium mb-4 flex items-center justify-between">
                     <span className="flex items-center gap-2">
-                      {trace.status === 'TRUSTED' ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <AlertTriangle className="w-5 h-5 text-red-400" />}
+                      {trace.status === 'TRUSTED' ? <CheckCircle className="w-5 h-5 text-green-400" /> : <AlertTriangle className="w-5 h-5 text-red-400" />}
                       Integrity Checks
                     </span>
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -362,7 +362,7 @@ export function CalculatorAuditAdmin() {
                         'border-green-500'
                       }`}>
                         <div className="mt-0.5">
-                          {check.status === 'PASS' ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : 
+                          {check.status === 'PASS' ? <CheckCircle className="w-4 h-4 text-green-400" /> : 
                            check.status === 'WARN' ? <AlertTriangle className="w-4 h-4 text-yellow-400" /> : 
                            <AlertTriangle className="w-4 h-4 text-red-400" />}
                         </div>

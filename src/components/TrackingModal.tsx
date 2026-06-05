@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CheckCircle2, Clock, MessageSquare, ExternalLink, ShieldCheck, Truck, FileText, Building2 } from 'lucide-react';
+import { X, CheckCircle, Clock, MessageSquare, ExternalLink, ShieldCheck, Truck, FileText, Building2 } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -15,7 +15,7 @@ export const TrackingModal = ({ isOpen, onClose, leadData }: any) => {
     { id: 1, title: t.step1, desc: t.step1Desc, icon: ShieldCheck, status: 'completed' },
     { id: 2, title: t.step2, desc: t.step2Desc, icon: Building2, status: leadData.status === 'pending' ? 'current' : 'completed' },
     { id: 3, title: t.step3, desc: t.step3Desc, icon: FileText, status: leadData.status === 'pending' ? 'upcoming' : (leadData.acceptedBy ? 'completed' : 'current') },
-    { id: 4, title: t.step4, desc: t.step4Desc, icon: CheckCircle2, status: leadData.acceptedBy ? 'current' : 'upcoming' },
+    { id: 4, title: t.step4, desc: t.step4Desc, icon: CheckCircle, status: leadData.acceptedBy ? 'current' : 'upcoming' },
     { id: 5, title: t.step5, desc: t.step5Desc, icon: Truck, status: 'upcoming' },
   ];
 

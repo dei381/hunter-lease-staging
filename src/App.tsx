@@ -21,7 +21,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageWelcomeModal } from './components/LanguageWelcomeModal';
 import { ZipModal } from './components/ZipModal';
 import { Lead } from './types';
-import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle2, Lock, FileCheck, ChevronRight } from 'lucide-react';
+import { X, ShieldCheck, LogIn, LogOut, Menu, ArrowRight, CheckCircle, Lock, FileCheck, ChevronRight } from 'lucide-react';
 import { useLanguageStore } from './store/languageStore';
 import { useAuthStore } from './store/authStore';
 import { useFeedbackStore } from './store/feedbackStore';
@@ -386,7 +386,7 @@ function MainApp() {
           </div>
           
           <div className="-mx-4 px-4 pb-8">
-            <DealsGrid limit={6} hideFilters={true} />
+            <DealsGrid limit={3} hideFilters={true} />
           </div>
           
           <div className="flex justify-center mt-4">
@@ -536,21 +536,6 @@ function MainApp() {
                 ))}
               </div>
             </div>
-            <div className="mt-16 pt-12 border-t border-[var(--b2)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8 relative z-10">
-              <div className="flex items-center gap-6">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--lime)] to-[var(--teal)] flex items-center justify-center shadow-lg shadow-[var(--lime)]/20">
-                  <ShieldCheck className="w-8 h-8 text-[#111]" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold uppercase tracking-widest">{t.stats.verifiedNetwork}</div>
-                  <div className="text-xs text-[var(--mu2)] uppercase font-bold tracking-widest mt-1">{t.stats.activeDealers}</div>
-                </div>
-              </div>
-              <div className="text-left sm:text-right">
-                <div className="text-5xl font-display text-[var(--lime)]">{t.statsCount?.dealers || "217+"}</div>
-                <div className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest mt-2">{t.stats.activeDealers}</div>
-              </div>
-            </div>
             <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
               <svg className="w-96 h-96 text-[var(--lime)]" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2L1 21h22L12 2zm0 3.45l8.27 14.3H3.73L12 5.45z"/>
@@ -628,56 +613,8 @@ function MainApp() {
 
 
 
-        {/* Popular Searches / Quick Categories */}
-        <div className="mt-32 pt-16 border-t border-[var(--b2)] text-left px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
-            
-            <div>
-              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Top Makes & Models</h4>
-              <ul className="space-y-4">
-                <li><Link to="/deals?make=Toyota" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Toyota</Link></li>
-                <li><Link to="/deals?make=Honda&model=Civic" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Honda Civic</Link></li>
-                <li><Link to="/deals?make=Jeep&model=Grand+Cherokee" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Jeep Grand Cherokee</Link></li>
-                <li><Link to="/deals?make=Audi&model=Q5" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease Audi Q5</Link></li>
-                <li><Link to="/deals?make=BMW&model=X3" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease BMW X3</Link></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Deals by Body Style</h4>
-              <ul className="space-y-4">
-                <li><Link to="/deals?bodyStyle=SUV" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">SUV Lease Deals</Link></li>
-                <li><Link to="/deals?bodyStyle=Sedan" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Sedan Lease Deals</Link></li>
-                <li><Link to="/deals?bodyStyle=Truck" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Truck Lease Deals</Link></li>
-                <li><Link to="/deals?fuelType=Electric" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Electric Car (EV) Offers</Link></li>
-                <li><Link to="/deals?fuelType=Hybrid" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Hybrid Car Offers</Link></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Deals Near You</h4>
-              <ul className="space-y-4">
-                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Los Angeles CA</Link></li>
-                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Irvine CA</Link></li>
-                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Beverly Hills CA</Link></li>
-                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Santa Monica CA</Link></li>
-                <li><Link to="/deals" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Lease New Car in Pasadena CA</Link></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-[13px] font-bold text-[var(--w)] mb-6 tracking-wide uppercase">Popular Searches</h4>
-              <ul className="space-y-4">
-                <li><Link to="/deals?max=300" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Car lease deals under $300</Link></li>
-                <li><Link to="/deals?max=500&bodyStyle=SUV" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">SUV lease deals under $500</Link></li>
-                <li><Link to="/deals?down=0" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Zero down lease deals</Link></li>
-                <li><Link to="/deals?class=Luxury" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">Luxury car lease specials</Link></li>
-                <li><Link to="/deals?quick=threeRow" className="text-[13px] text-[var(--mu2)] hover:text-[var(--lime)] transition-colors underline-offset-4 hover:underline">7-Seater family SUVs</Link></li>
-              </ul>
-            </div>
-
-          </div>
-        </div>
+        {/* Popular Searches / Quick Categories - temporarily hidden */}
+        {/* <div className="mt-32 pt-16 border-t border-[var(--b2)] text-left px-8">...</div> */}
 
         <div className="mt-32 text-center space-y-8 flex flex-col items-center">
           <h2 className="font-display text-5xl md:text-6xl tracking-tight">{t.cta.title}</h2>

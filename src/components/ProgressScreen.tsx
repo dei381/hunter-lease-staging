@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, CheckCircle2, Search, Zap, ShieldCheck } from 'lucide-react';
+import { Loader2, CheckCircle, Search, Zap, ShieldCheck } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -16,7 +16,7 @@ export const ProgressScreen = ({ makeName, onComplete }: { makeName: any, onComp
     { id: 1, text: `Analyzing ${dealerCount} ${safeMakeName} dealer offers...`, icon: Search },
     { id: 2, text: "Comparing financing programs...", icon: Zap },
     { id: 3, text: "Checking for hidden fees...", icon: ShieldCheck },
-    { id: 4, text: "Calculating final payment...", icon: CheckCircle2 }
+    { id: 4, text: "Calculating final payment...", icon: CheckCircle }
   ];
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export const ProgressScreen = ({ makeName, onComplete }: { makeName: any, onComp
                   isActive ? 'bg-[var(--lime)]/20 text-[var(--lime)]' : 
                   'bg-[var(--s2)] text-[var(--mu2)]'
                 }`}>
-                  {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                  {isCompleted ? <CheckCircle className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                 </div>
                 <div className={`text-sm font-bold uppercase tracking-widest transition-colors duration-500 ${
                   isCompleted ? 'text-[var(--w)]' : 

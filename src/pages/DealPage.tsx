@@ -15,7 +15,7 @@ import { CaseStudies } from '../components/CaseStudies';
 import { TrustSection } from '../components/TrustSection';
 import { DealerReviews } from '../components/DealerReviews';
 import { ImageGallery } from '../components/ImageGallery';
-import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon, CheckCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 import { CompareBar } from '../components/CompareBar';
@@ -632,7 +632,7 @@ export const DealPage = () => {
                     </div>
                   </div>
                   <div className="p-4 rounded-2xl bg-[var(--b1)] border border-[var(--b2)] flex gap-4 items-start">
-                    <CheckCircle2 className="text-[#00E58F] shrink-0 mt-0.5" size={20} />
+                    <CheckCircle className="text-[#00E58F] shrink-0 mt-0.5" size={20} />
                     <div>
                       <h4 className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Никаких наценок' : 'No Hidden Markups'}</h4>
                       <p className="text-xs text-[var(--mu2)] mt-1">{language === 'ru' ? 'Честная цена без дилерских накруток (No Markups).' : 'Honest pricing with no dealer markups.'}</p>

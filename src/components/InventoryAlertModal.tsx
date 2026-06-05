@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, X, CheckCircle2, Mail, Car } from 'lucide-react';
+import { Bell, X, CheckCircle, Mail, Car } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { db } from '../firebase';
@@ -81,7 +81,7 @@ export const InventoryAlertModal: React.FC<InventoryAlertModalProps> = ({ isOpen
             {isSubmitted ? (
               <div className="text-center py-8">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--grn)]/10 text-[var(--grn)] mb-6">
-                  <CheckCircle2 className="w-8 h-8" />
+                  <CheckCircle className="w-8 h-8" />
                 </div>
                 <h3 className="text-2xl font-bold mb-2">Awesome!</h3>
                 <p className="text-[var(--mu2)]">{t.success}</p>

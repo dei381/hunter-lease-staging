@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle, ChevronDown, ChevronUp, Zap, Clock, ShieldCheck, Info, TrendingDown, Eye, X, CheckCircle2, AlertCircle, Building2, ClipboardList, ZoomIn, ChevronRight, Tag, Award, ThumbsUp } from 'lucide-react';
+import { HelpCircle, ChevronDown, ChevronUp, Zap, Clock, ShieldCheck, Info, TrendingDown, Eye, X, CheckCircle, AlertCircle, Building2, ClipboardList, ZoomIn, ChevronRight, Tag, Award, ThumbsUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';

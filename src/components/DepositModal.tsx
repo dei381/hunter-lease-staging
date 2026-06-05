@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CheckCircle2, ChevronRight, ShieldCheck, Car, FileText, CreditCard, Info, AlertCircle, Zap, Lock, Crown } from 'lucide-react';
+import { X, CheckCircle, ChevronRight, ShieldCheck, Car, FileText, CreditCard, Info, AlertCircle, Zap, Lock, Crown } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useAuthStore } from '../store/authStore';
 import { translations } from '../translations';
@@ -291,7 +291,7 @@ export const DepositModal = ({
                   <div className="p-4 bg-[var(--s1)]/50 rounded-xl border border-[var(--b2)]">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${clientInfo.tcpaConsent && clientInfo.termsConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
-                        {clientInfo.tcpaConsent && clientInfo.termsConsent && <CheckCircle2 size={14} className="text-black" />}
+                        {clientInfo.tcpaConsent && clientInfo.termsConsent && <CheckCircle size={14} className="text-black" />}
                       </div>
                       <span className="text-[10px] text-[var(--mu2)] leading-relaxed">
                         {language === 'ru' 
@@ -336,7 +336,7 @@ export const DepositModal = ({
                 <div className="space-y-6 mb-8 max-w-md">
                   <label className="flex items-center gap-4 p-6 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl cursor-pointer group hover:border-[var(--lime)] transition-all">
                     <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${tradeIn.hasTradeIn ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
-                      {tradeIn.hasTradeIn && <CheckCircle2 size={16} className="text-black" />}
+                      {tradeIn.hasTradeIn && <CheckCircle size={16} className="text-black" />}
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold uppercase tracking-widest mb-1">{t.hasTradeIn}</div>
@@ -428,7 +428,7 @@ export const DepositModal = ({
                             <div className="text-[10px] text-[var(--mu2)]">{method.desc}</div>
                           </div>
                           <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${payMethod === method.id ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
-                            {payMethod === method.id && <CheckCircle2 size={12} className="text-black" />}
+                            {payMethod === method.id && <CheckCircle size={12} className="text-black" />}
                           </div>
                         </button>
                       ))}
@@ -452,7 +452,7 @@ export const DepositModal = ({
                   <div className="p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isConfirmed ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
-                        {isConfirmed && <CheckCircle2 size={14} className="text-black" />}
+                        {isConfirmed && <CheckCircle size={14} className="text-black" />}
                       </div>
                       <span className="text-[10px] text-[var(--mu2)] leading-relaxed font-medium">
                         {t.confirmTerms}{" "}
@@ -788,7 +788,7 @@ export const DepositModal = ({
                               onClick={() => setPolicyAccepted(!policyAccepted)}
                               className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${policyAccepted ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}
                             >
-                              {policyAccepted && <CheckCircle2 size={14} className="text-black" />}
+                              {policyAccepted && <CheckCircle size={14} className="text-black" />}
                             </div>
                             <label className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer" onClick={() => setPolicyAccepted(!policyAccepted)}>
                               {translations[language].calc.policyAgreement}
@@ -848,7 +848,7 @@ export const DepositModal = ({
                               onClick={() => setConsentAccepted(!consentAccepted)}
                               className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${consentAccepted ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}
                             >
-                              {consentAccepted && <CheckCircle2 size={14} className="text-black" />}
+                              {consentAccepted && <CheckCircle size={14} className="text-black" />}
                             </div>
                             <label className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer" onClick={() => setConsentAccepted(!consentAccepted)}>
                               {translations[language].calc.policyAgreement}
@@ -898,19 +898,19 @@ export const DepositModal = ({
                         <div className="space-y-4 text-left">
                           <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 0 ? 'opacity-100' : 'opacity-30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 0 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
-                              {waitingStatus > 0 && <CheckCircle2 size={12} />}
+                              {waitingStatus > 0 && <CheckCircle size={12} />}
                             </div>
                             <span className="text-sm font-medium">{t.waitingStatus0}</span>
                           </div>
                           <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 1 ? 'opacity-100' : 'opacity-30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 1 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
-                              {waitingStatus > 1 && <CheckCircle2 size={12} />}
+                              {waitingStatus > 1 && <CheckCircle size={12} />}
                             </div>
                             <span className="text-sm font-medium">{t.waitingStatus1}</span>
                           </div>
                           <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 2 ? 'opacity-100' : 'opacity-30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 2 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
-                              {waitingStatus > 2 && <CheckCircle2 size={12} />}
+                              {waitingStatus > 2 && <CheckCircle size={12} />}
                             </div>
                             <span className="text-sm font-medium">{t.waitingStatus2}</span>
                           </div>
@@ -919,7 +919,7 @@ export const DepositModal = ({
                     ) : (
                       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full">
                         <div className="w-20 h-20 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mx-auto mb-8">
-                          <CheckCircle2 size={40} className="text-[var(--lime)]" />
+                          <CheckCircle size={40} className="text-[var(--lime)]" />
                         </div>
                         <h2 className="font-display text-4xl mb-4">{ct.successTitle}</h2>
                         <p className="text-[var(--mu2)] text-sm mb-8 max-w-md mx-auto leading-relaxed">
@@ -975,7 +975,7 @@ export const DepositModal = ({
                 className="flex-1 relative z-10 flex flex-col items-center justify-center text-center py-12"
               >
                 <div className="w-24 h-24 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mb-8">
-                  <CheckCircle2 size={48} className="text-[var(--lime)]" />
+                  <CheckCircle size={48} className="text-[var(--lime)]" />
                 </div>
                 <h2 className="font-display text-4xl mb-6">{language === 'ru' ? 'Заявка отправлена!' : 'Request Submitted!'}</h2>
                 <p className="text-[var(--mu2)] text-lg leading-relaxed max-w-md mx-auto mb-10">
@@ -1041,7 +1041,7 @@ export const DepositModal = ({
               <div className="grid grid-cols-1 gap-2">
                 {lockKeys.map((key, i) => (
                   <div key={i} className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-wider text-[var(--mu2)]">
-                    <CheckCircle2 size={10} className="text-[var(--grn)]" />
+                    <CheckCircle size={10} className="text-[var(--grn)]" />
                     {key}
                   </div>
                 ))}

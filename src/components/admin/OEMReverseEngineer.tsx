@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calculator, AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Calculator, AlertTriangle, ArrowRight, CheckCircle } from 'lucide-react';
 
 export function OEMReverseEngineer() {
   const [msrp, setMsrp] = useState(37268);
@@ -104,7 +104,7 @@ export function OEMReverseEngineer() {
         <div className="space-y-6">
           <div className="bg-[var(--lime)]/10 border border-[var(--lime)]/20 rounded-xl p-6">
              <h3 className="text-lg font-medium text-[var(--lime)] mb-4 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5" />
+              <CheckCircle className="w-5 h-5" />
               Extracted Deal Baseline
             </h3>
             

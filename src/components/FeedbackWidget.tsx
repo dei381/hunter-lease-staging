@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageSquare, X, Send, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
+import { MessageSquare, X, Send, CheckCircle, AlertCircle, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
@@ -127,7 +127,7 @@ export const FeedbackWidget = () => {
             {status === 'success' ? (
               <div className="p-12 text-center space-y-4">
                 <div className="w-16 h-16 bg-[var(--lime)]/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="text-[var(--lime)]" size={32} />
+                  <CheckCircle className="text-[var(--lime)]" size={32} />
                 </div>
                 <div className="space-y-2">
                   <h3 className="text-xl font-display uppercase">{t.successTitle}</h3>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Zap } from 'lucide-react';
+import { CheckCircle, Zap } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -46,7 +46,7 @@ export const RecentActivity = () => {
           <div className="text-xs font-bold text-[var(--w)]">{deal.name} {t.from} {deal.city}</div>
           <div className="text-[11px] text-[var(--mu2)]">{deal.car}</div>
           <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[var(--b1)]">
-            <CheckCircle2 className="w-3 h-3 text-[var(--lime)]" />
+            <CheckCircle className="w-3 h-3 text-[var(--lime)]" />
             <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest">
               {t.saved} ${deal.savings.toLocaleString()}
             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Save, Search, Filter, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Save, Search, Filter, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { getAuthToken } from '../utils/auth';
 
 export const BulkEditAdmin = () => {
@@ -112,7 +112,7 @@ export const BulkEditAdmin = () => {
           <div className="flex items-center space-x-4">
             {message && (
               <div className={`flex items-center space-x-2 text-sm font-medium ${message.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                {message.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                {message.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 <span>{message.text}</span>
               </div>
             )}

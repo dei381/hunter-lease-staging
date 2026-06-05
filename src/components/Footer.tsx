@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Instagram, Twitter, Facebook, Mail, Phone, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Instagram, Twitter, Facebook, Mail, Phone, CheckCircle, AlertCircle } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
@@ -141,7 +141,7 @@ export const Footer = () => {
                 {status === 'loading' ? (
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : status === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle className="w-4 h-4" />
                 ) : status === 'error' ? (
                   <AlertCircle className="w-4 h-4" />
                 ) : (
