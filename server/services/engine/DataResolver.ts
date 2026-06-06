@@ -315,6 +315,10 @@ export class DataResolver {
 
     // Add V2 Lease/Finance Programs
     if (context.quoteType === 'LEASE') {
+      // Per-tier programs are stored with internalLenderTier 't1'..'t6'. We read the
+      // exact tier the customer requested (real buy-rate per tier from the lender grid)
+      // and fall back to the base tier ('t1'/'Tier 1'/'Tier 1+') for legacy data.
+      const requestedTier = context.creditTier || 't1';
       const leaseProgs = await prisma.leaseProgram.findMany({
         where: {
           isActive: true,
@@ -322,14 +326,26 @@ export class DataResolver {
           make: { equals: vehicle.make, mode: 'insensitive' },
           term: context.term,
           mileage: 10000,
-          internalLenderTier: 'Tier 1',
+          internalLenderTier: { in: [requestedTier, 't1', 'Tier 1', 'Tier 1+'] },
           model: { in: possibleModels.map(m => m) }
         },
         include: { lender: true }
       });
       // Try to find matching trims, or 'ALL'
       const matchedLeaseProgs = leaseProgs.filter(p => p.trim === 'ALL' || possibleTrims.includes(p.trim));
+      // For each lender+model+trim, prefer the exact requested-tier row over the base tier.
+      const byKey = new Map<string, any>();
       for (const p of matchedLeaseProgs) {
+        const key = `${p.lenderId}|${p.model}|${p.trim}`;
+        const existing = byKey.get(key);
+        const isExact = p.internalLenderTier === requestedTier;
+        if (!existing) {
+          byKey.set(key, p);
+        } else if (isExact && existing.internalLenderTier !== requestedTier) {
+          byKey.set(key, p);
+        }
+      }
+      for (const p of byKey.values()) {
         bankPrograms.push({
           id: p.id,
           batchId: activeBatch.id,
@@ -344,7 +360,9 @@ export class DataResolver {
           mf: Number(p.buyRateMf),
           rv: Number(p.residualPercentage) / 100,
           apr: null,
-          lender: p.lender
+          lender: p.lender,
+          // When true, mf already reflects the customer's tier — skip the generic tier markup.
+          _exactTier: p.internalLenderTier === requestedTier
         } as any);
       }
     } else {

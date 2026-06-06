@@ -1,10 +1,12 @@
 export class ModifierEngine {
   static applyMileageAdjustment(rv: number, mileage?: number): number {
+    // Residual is adjusted relative to the 10k/yr base (as a % of MSRP).
+    // Client spec: 7.5k = +1%, 12k = -1.5%, 15k = -4% of MSRP.
     let adjustedRv = rv;
-    if (mileage === 12000) adjustedRv -= 0.02;
-    else if (mileage === 15000) adjustedRv -= 0.03;
+    if (mileage === 7500) adjustedRv += 0.01;
+    else if (mileage === 12000) adjustedRv -= 0.015;
+    else if (mileage === 15000) adjustedRv -= 0.04;
     else if (mileage === 20000) adjustedRv -= 0.05;
-    else if (mileage === 7500) adjustedRv += 0.01;
     return adjustedRv;
   }
 

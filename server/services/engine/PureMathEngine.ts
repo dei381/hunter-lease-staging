@@ -47,13 +47,16 @@ export class PureMathEngine {
       acqFeeCents, docFeeCents, dmvFeeCents, brokerFeeCents
     } = params;
 
-    const S = sellingPriceCents + acqFeeCents;
+    // Acquisition fee is collected upfront (in Due-At-Signing), NOT capitalized into
+    // the monthly. This matches how lenders advertise the monthly payment (depreciation
+    // + rent charge only), so our quotes line up with published grids.
+    const S = sellingPriceCents;
     const R = residualValueCents;
     const N = term;
     const M = moneyFactor;
     const t = taxRate;
     const I_t = taxableIncentivesCents;
-    const Fu = docFeeCents + dmvFeeCents + brokerFeeCents;
+    const Fu = acqFeeCents + docFeeCents + dmvFeeCents + brokerFeeCents;
     const Te = tradeInEquityCents;
     const DAS = targetDASCents;
 
@@ -76,12 +79,14 @@ export class PureMathEngine {
       term, downPaymentCents, acqFeeCents, docFeeCents, dmvFeeCents, brokerFeeCents, taxRate
     } = params;
 
-    const capitalizedFeesCents = acqFeeCents;
-    const upfrontFeesCents = docFeeCents + dmvFeeCents + brokerFeeCents;
+    // Acquisition fee is collected upfront (DAS), not capitalized into the monthly,
+    // to match how lenders advertise lease payments (depreciation + rent only).
+    const capitalizedFeesCents = 0;
+    const upfrontFeesCents = acqFeeCents + docFeeCents + dmvFeeCents + brokerFeeCents;
     const totalFeesCents = capitalizedFeesCents + upfrontFeesCents;
-    
+
     const residualValueCents = Math.round(msrpCents * residualValuePercent);
-    
+
     // Cap cost is selling price + capitalized fees - down payment (cash + trade)
     const capCostCents = sellingPriceCents + capitalizedFeesCents - downPaymentCents;
     

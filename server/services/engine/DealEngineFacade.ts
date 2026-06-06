@@ -172,10 +172,15 @@ export class DealEngineFacade {
       if (context.quoteType === 'LEASE') {
         appliedRvPercent = ModifierEngine.applyMileageAdjustment(appliedRvPercent, context.mileage);
       }
-      
-      const tierAdjusted = ModifierEngine.applyTierAdjustment(appliedMf, appliedApr, context.creditTier);
-      appliedMf = tierAdjusted.mf;
-      appliedApr = tierAdjusted.apr;
+
+      // Skip the generic tier markup when the program already carries the customer's
+      // exact tier rate (per-tier lease grid). Otherwise derive the tier rate from the
+      // base buy-rate using the standard tier model.
+      if (!(program as any)._exactTier) {
+        const tierAdjusted = ModifierEngine.applyTierAdjustment(appliedMf, appliedApr, context.creditTier);
+        appliedMf = tierAdjusted.mf;
+        appliedApr = tierAdjusted.apr;
+      }
 
       const modifiers = { mf: appliedMf, apr: appliedApr, rv: appliedRvPercent };
 
@@ -436,6 +441,39 @@ export class DealEngineFacade {
     };
 
     return dealsToProcess.map(({ deal, data }) => {
+      // Grid-authoritative lookup: if the deal carries a published lease grid (real
+      // lender desk per term × tier), show that exact payment so cards match the source
+      // (e.g. autobandit) precisely. Falls back to the computed path below if absent.
+      if (data.grid && typeof data.grid === 'object') {
+        const defaultTerm = data.defaultTerm || 36;
+        const tKey = String(queryTerm ? parseInt(queryTerm as string, 10) : defaultTerm);
+        const tierKey = (queryTier as string) || 't1';
+        const termCell = data.grid[tKey] || data.grid[String(defaultTerm)] || {};
+        const cell = termCell[tierKey] || termCell['t1'];
+        if (cell && cell.payment) {
+          const gMsrp = Number(cell.msrp) || getVal(data.msrp);
+          return {
+            deal,
+            data,
+            computed: {
+              payment: Number(cell.payment),
+              financePayment: Number(cell.financePayment) || 0,
+              msrp: gMsrp,
+              mf: Number(cell.mf) || 0,
+              rv: Number(cell.rv) || 0,
+              leaseCash: Number(cell.incentive) || 0,
+              term: parseInt(tKey, 10),
+              down: Number(cell.dueAtSigning) || getVal(data.down, 0),
+              savings: (Number(cell.dealerDiscount) || 0) + (Number(cell.incentive) || 0),
+              discount: Number(cell.dealerDiscount) || 0,
+              rebates: Number(cell.incentive) || 0,
+              apr: Number(cell.apr) || 0,
+              type: 'lease'
+            }
+          };
+        }
+      }
+
       const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
       const manufacturerRebate = data.manufacturerRebate?.isGlobal ? (data.manufacturerRebate.value || 0) : 0;
       const totalGlobalSavings = hunterDiscount + manufacturerRebate;
@@ -507,10 +545,10 @@ export class DealEngineFacade {
       }
 
       if (queryMileage) {
-        if (queryMileage === '12k' || queryMileage === '12000') rv -= 0.02;
-        else if (queryMileage === '15k' || queryMileage === '15000') rv -= 0.03;
+        if (queryMileage === '7.5k' || queryMileage === '7500') rv += 0.01;
+        else if (queryMileage === '12k' || queryMileage === '12000') rv -= 0.015;
+        else if (queryMileage === '15k' || queryMileage === '15000') rv -= 0.04;
         else if (queryMileage === '20k' || queryMileage === '20000') rv -= 0.05;
-        else if (queryMileage === '7.5k' || queryMileage === '7500') rv += 0.01;
       }
 
       if (queryTier && !usedTiersData) {
