@@ -25,6 +25,51 @@ export interface FinanceMathParams {
 }
 
 export class PureMathEngine {
+  static calculateLeaseCCRFromDAS(params: {
+    msrpCents: number;
+    sellingPriceCents: number;
+    residualValueCents: number;
+    moneyFactor: number;
+    term: number;
+    targetDASCents: number;
+    tradeInEquityCents: number;
+    taxRate: number;
+    taxableIncentivesCents: number;
+    acqFeeCents: number;
+    docFeeCents: number;
+    dmvFeeCents: number;
+    brokerFeeCents: number;
+  }): number {
+    const {
+      sellingPriceCents, residualValueCents, moneyFactor, term,
+      targetDASCents, tradeInEquityCents, taxRate, 
+      taxableIncentivesCents,
+      acqFeeCents, docFeeCents, dmvFeeCents, brokerFeeCents
+    } = params;
+
+    const S = sellingPriceCents + acqFeeCents;
+    const R = residualValueCents;
+    const N = term;
+    const M = moneyFactor;
+    const t = taxRate;
+    const I_t = taxableIncentivesCents;
+    const Fu = docFeeCents + dmvFeeCents + brokerFeeCents;
+    const Te = tradeInEquityCents;
+    const DAS = targetDASCents;
+
+    const k = 1 / N + M;
+    const B0 = (S - R) / N + (S + R) * M;
+    const P0 = B0 * (1 + t);
+
+    // D_approx denotes Cash Down + Trade Equity
+    let D_approx = (DAS + Te - P0 - Fu + k * (1 + t) * I_t - I_t * t) / ((1 + t) * (1 - k));
+    if (D_approx + I_t < 0) {
+      D_approx = (DAS + Te - P0 - Fu + k * (1 + t) * I_t) / (1 - k * (1 + t));
+    }
+
+    return Math.max(0, Math.round(D_approx - Te));
+  }
+
   static calculateLease(params: LeaseMathParams) {
     const {
       msrpCents, sellingPriceCents, residualValuePercent, moneyFactor,
@@ -76,7 +121,7 @@ export class PureMathEngine {
     // In finance, taxes are usually calculated on the selling price upfront and rolled into the loan
     // In California, manufacturer rebates are taxable, so we add them back to the selling price for tax calculation
     const upfrontTaxCents = (sellingPriceCents + (totalIncentivesCents || 0)) * taxRate;
-    const principalCents = sellingPriceCents + totalFeesCents + upfrontTaxCents - downPaymentCents;
+    const principalCents = sellingPriceCents + totalFeesCents + upfrontTaxCents - downPaymentCents - (totalIncentivesCents || 0);
     const monthlyRate = (apr / 100) / 12;
 
     let finalPaymentCents = 0;

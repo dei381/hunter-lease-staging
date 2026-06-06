@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, QrCode, CheckCircle2 } from 'lucide-react';
+import { X, ShieldCheck, QrCode, CheckCircle } from 'lucide-react';
 
 interface VIPCertificateModalProps {
   isOpen: boolean;
@@ -45,15 +45,15 @@ export const VIPCertificateModal: React.FC<VIPCertificateModalProps> = ({ isOpen
               
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-[var(--lime)] shrink-0 mt-0.5" />
+                  <CheckCircle className="w-5 h-5 text-[var(--lime)] shrink-0 mt-0.5" />
                   <p className="text-sm">Your dealer is assigned by HunterLease and has accepted your terms.</p>
                 </div>
                 <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-[var(--lime)] shrink-0 mt-0.5" />
+                  <CheckCircle className="w-5 h-5 text-[var(--lime)] shrink-0 mt-0.5" />
                   <p className="text-sm">Your financial terms and monthly payment are locked.</p>
                 </div>
                 <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-[var(--lime)] shrink-0 mt-0.5" />
+                  <CheckCircle className="w-5 h-5 text-[var(--lime)] shrink-0 mt-0.5" />
                   <p className="text-sm font-bold text-white">You are NOT required to purchase any dealer add-ons or financial products.</p>
                 </div>
               </div>

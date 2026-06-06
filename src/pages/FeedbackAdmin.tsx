@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Calendar, User, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { MessageSquare, Calendar, User, Trash2, CheckCircle, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { getAuthToken } from '../utils/auth';
 
@@ -122,7 +122,7 @@ export const FeedbackAdmin = () => {
                   className="p-2 bg-[var(--s2)] rounded-lg text-[var(--mu2)] hover:text-green-400 transition-colors"
                   title="Mark as Resolved"
                 >
-                  <CheckCircle2 className="w-5 h-5" />
+                  <CheckCircle className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={() => handleStatusUpdate(item.id, 'in-progress')}

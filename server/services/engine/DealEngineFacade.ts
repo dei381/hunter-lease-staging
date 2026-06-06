@@ -6,7 +6,7 @@ import { PureMathEngine } from './PureMathEngine';
 import { Formatter } from './Formatter';
 import { FinancialData, CalcMode } from '../../../src/types/engine';
 import prisma from '../../lib/db';
-import { getTaxRateByZip, hasTaxRateByZip } from '../../utils/taxRates';
+import { getTaxRateByZip } from '../../utils/taxRates';
 
 export class DealEngineFacade {
   static async calculateForConsumer(rawBody: any): Promise<PaymentBreakdown> {
@@ -26,23 +26,12 @@ export class DealEngineFacade {
     markups?: { mf_markup?: number; rv_markup?: number; apr_markup?: number; hidden_fees?: number; };
   }> {
     // 1. Check if we have the minimum required fields
-    const defaultField = { value: 0, provenance_status: 'unresolved' };
-    if (!data.salePrice) data.salePrice = { value: (data.msrp?.value || 0) - (data.hunterDiscount?.value || 0), provenance_status: 'calculated' };
-    if (!data.moneyFactor) data.moneyFactor = { value: 0, provenance_status: 'unresolved' };
-    if (!data.residualValue) data.residualValue = { value: 0, provenance_status: 'unresolved' };
-    if (!data.term) data.term = { value: 36, provenance_status: 'default' };
-    if (!data.acquisitionFee) data.acquisitionFee = { value: 0, provenance_status: 'default' };
-    if (!data.rebates) data.rebates = { value: 0, provenance_status: 'default' };
-    if (!data.docFee) data.docFee = { value: 0, provenance_status: 'default' };
-    if (!data.dmvFee) data.dmvFee = { value: 0, provenance_status: 'default' };
-    if (!data.taxMonthly) data.taxMonthly = { value: 0, provenance_status: 'default' };
-
-    if (data.msrp?.provenance_status === 'unresolved' || data.salePrice?.provenance_status === 'unresolved') {
+    if (data.msrp.provenance_status === 'unresolved' || data.salePrice.provenance_status === 'unresolved') {
       return { mode: 'ESTIMATE', calculatedPayment: 0, delta: 0 };
     }
 
-    const hasEstimatedFees = data.docFee?.provenance_status === 'estimated_from_rule' || data.dmvFee?.provenance_status === 'estimated_from_rule';
-    const hasEstimatedTaxes = data.taxMonthly?.provenance_status === 'estimated_from_rule';
+    const hasEstimatedFees = data.docFee.provenance_status === 'estimated_from_rule' || data.dmvFee.provenance_status === 'estimated_from_rule';
+    const hasEstimatedTaxes = data.taxMonthly.provenance_status === 'estimated_from_rule';
 
     let hasVerifiedRates = false;
     let markups: { mf_markup?: number; rv_markup?: number; apr_markup?: number; hidden_fees?: number; } = {};
@@ -57,8 +46,8 @@ export class DealEngineFacade {
           if (trim) {
             const baseMf = trim.mf || 0;
             const baseRv = trim.rv36 || 0;
-            const dealerMf = data.moneyFactor?.value || 0;
-            const dealerRv = data.residualValue?.value || 0;
+            const dealerMf = data.moneyFactor.value || 0;
+            const dealerRv = data.residualValue.value || 0;
             
             if (dealerMf > 0 && baseMf > 0) {
               if (dealerMf > baseMf + 0.00010) {
@@ -78,8 +67,8 @@ export class DealEngineFacade {
               }
             }
             
-            if (data.moneyFactor?.provenance_status === 'matched_from_verified_program' && 
-                data.residualValue?.provenance_status === 'matched_from_verified_program') {
+            if (data.moneyFactor.provenance_status === 'matched_from_verified_program' && 
+                data.residualValue.provenance_status === 'matched_from_verified_program') {
               hasVerifiedRates = true;
             }
           }
@@ -91,12 +80,12 @@ export class DealEngineFacade {
     const msrp = data.msrp.value || 0;
     const hunterDiscount = data.hunterDiscount?.value || 0;
     const manufacturerRebate = data.manufacturerRebate?.value || 0;
-    const salePrice = data.salePrice?.value || (msrp - hunterDiscount);
-    const rvPercent = data.residualValue?.value || 0.5;
-    let mf = data.moneyFactor?.value || 0.002;
-    const term = data.term?.value || 36;
-    const acqFee = data.acquisitionFee?.value || 0;
-    const rebates = (data.rebates?.value || 0) + manufacturerRebate;
+    const salePrice = data.salePrice.value || (msrp - hunterDiscount);
+    const rvPercent = data.residualValue.value || 0.5;
+    let mf = data.moneyFactor.value || 0.002;
+    const term = data.term.value || 36;
+    const acqFee = data.acquisitionFee.value || 0;
+    const rebates = (data.rebates.value || 0) + manufacturerRebate;
 
     const residualValueCents = rvPercent > 1 ? rvPercent * 100 : msrp * rvPercent * 100;
 
@@ -112,11 +101,11 @@ export class DealEngineFacade {
         docFeeCents: 0,
         dmvFeeCents: 0,
         brokerFeeCents: 0,
-        taxRate: data.taxMonthly?.value || 0
+        taxRate: data.taxMonthly.value || 0
       });
 
       const totalPayment = mathResult.finalPaymentCents / 100;
-      const dealerPayment = data.monthlyPayment?.value || 0;
+      const dealerPayment = data.monthlyPayment.value || 0;
       const delta = Math.abs(totalPayment - dealerPayment);
 
       let mode: CalcMode = 'ESTIMATE';
@@ -148,11 +137,10 @@ export class DealEngineFacade {
     const taxableIncentivesCents = incentivesData.taxableRebateCents || 0;
     const nonTaxableIncentivesCents = incentivesData.nonTaxableRebateCents || 0;
 
-    // Dynamic CA DMV Fee: ~0.65% of MSRP + $150 base fees
-    settings.dmvFeeCents = Math.round(vehicle.msrpCents * 0.0065) + 15000;
+    // Dynamic CA DMV Fee: ~0.65% of MSRP + $200 (added $50 buffer)
+    settings.dmvFeeCents = Math.round(vehicle.msrpCents * 0.0065) + 20000;
 
     // Dynamic Tax Rate by ZIP
-    const hasExplicitZipTaxRate = hasTaxRateByZip(context.zipCode || '');
     settings.taxRate = getTaxRateByZip(context.zipCode || '');
 
     if (programs.length === 0) {
@@ -218,28 +206,21 @@ export class DealEngineFacade {
           formattedResult = Formatter.formatFinance(context, mathResult, resolvedData, modifiers);
         } else {
           // LEASE: Algebraic calculation of Cash Down from target DAS
-          const S = sellingPriceCents + settings.acqFeeCents;
-          const R = Math.round(vehicle.msrpCents * appliedRvPercent);
-          const N = context.term;
-          const M = appliedMf;
-          const t = settings.taxRate;
-          const I_t = taxableIncentivesCents;
-          const I_n = nonTaxableIncentivesCents;
-          const I = I_t + I_n;
-          const Fu = settings.docFeeCents + settings.dmvFeeCents + settings.brokerFeeCents;
-          const Te = context.tradeInEquityCents;
-          const DAS = targetDasCents;
-
-          const k = 1 / N + M;
-          const B0 = (S - R) / N + (S + R) * M;
-          const P0 = B0 * (1 + t);
-
-          let D_approx = (DAS + Te - P0 - Fu + k * (1 + t) * I - I_t * t) / ((1 + t) * (1 - k));
-          if (D_approx + I_t < 0) {
-            D_approx = (DAS + Te - P0 - Fu + k * (1 + t) * I) / (1 - k * (1 + t));
-          }
-
-          const baseCashDown = Math.round(D_approx - Te);
+          const baseCashDown = PureMathEngine.calculateLeaseCCRFromDAS({
+            msrpCents: vehicle.msrpCents,
+            sellingPriceCents,
+            residualValueCents: Math.round(vehicle.msrpCents * appliedRvPercent),
+            moneyFactor: appliedMf,
+            term: context.term,
+            targetDASCents: targetDasCents,
+            tradeInEquityCents: context.tradeInEquityCents,
+            taxRate: settings.taxRate,
+            taxableIncentivesCents,
+            acqFeeCents: settings.acqFeeCents,
+            docFeeCents: settings.docFeeCents,
+            dmvFeeCents: settings.dmvFeeCents,
+            brokerFeeCents: settings.brokerFeeCents
+          });
           
           let bestDiff = Infinity;
           let bestC = baseCashDown;
@@ -247,7 +228,7 @@ export class DealEngineFacade {
           // Test a small window around our algebraic guess to account for rounding cascades
           for (let offset = -100; offset <= 100; offset++) {
             const testCashDown = baseCashDown + offset;
-            const testDownPayment = testCashDown + Te + taxableIncentivesCents;
+            const testDownPayment = testCashDown + context.tradeInEquityCents + taxableIncentivesCents;
             const testContext = { ...context, downPaymentCents: testCashDown };
             
             try {
@@ -357,10 +338,10 @@ export class DealEngineFacade {
     // Populate options - group by lender and pick the best one for each
     const lenderBestResults = new Map<string, typeof allResults[0]>();
     for (const r of allResults) {
-      const lenderKey = r.sourceMetadata.lenderId || r.sourceMetadata.lenderName || 'Unknown';
-      const existing = lenderBestResults.get(lenderKey);
+      const lenderName = r.sourceMetadata.lenderName || 'Unknown';
+      const existing = lenderBestResults.get(lenderName);
       if (!existing || r.monthlyPaymentCents < existing.monthlyPaymentCents) {
-        lenderBestResults.set(lenderKey, r);
+        lenderBestResults.set(lenderName, r);
       }
     }
 
@@ -373,10 +354,6 @@ export class DealEngineFacade {
 
     if (vehicle.availableIncentives) {
       bestResult.availableIncentives = vehicle.availableIncentives;
-    }
-
-    if (context.zipCode && !hasExplicitZipTaxRate) {
-      bestResult.warnings.push(`APPROXIMATE_TAX_RATE:${context.zipCode}`);
     }
 
     // Save QuoteSnapshot
@@ -425,5 +402,197 @@ export class DealEngineFacade {
       tco: { totalCostCents: 0, monthlyAverageCents: 0 },
       sourceMetadata: { lenderId: null, lenderName: 'Unknown', lenderType: 'Unknown', msrpSource: 'DB', ratesSource: 'BANK_PROGRAM' }
     };
+  }
+
+  static mapCatalogDeals(
+    dealsToProcess: any[],
+    cachedMaps: any,
+    settings: any,
+    queryParams: any
+  ) {
+    const { term: queryTerm, down: queryDown, mileage: queryMileage, tier: queryTier } = queryParams;
+    const { makeMap: carDbMakeMap, modelMap: carDbModelMap, trimMap: carDbTrimMap } = cachedMaps;
+
+    const acqFeeCents = (settings.acquisitionFee ?? 650) * 100;
+    const docFeeCents = (settings.docFee ?? 85) * 100;
+    const dmvFeeCents = (settings.dmvFee ?? 400) * 100;
+    const brokerFeeCents = (settings.brokerFee ?? 0) * 100;
+    const taxRate = (settings.taxRateDefault || 8.875) / 100;
+
+    let getVal = (v: any, def = 0) => {
+      if (v === undefined || v === null) return def;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const parsed = parseFloat(v.replace(/[^0-9.-]+/g, ""));
+        return isNaN(parsed) ? def : parsed;
+      }
+      if (typeof v === 'object') {
+        if (v.value !== undefined && v.value !== null) {
+          const parsed = typeof v.value === 'string' ? parseFloat(v.value.replace(/[^0-9.-]+/g, "")) : Number(v.value);
+          return isNaN(parsed) ? def : parsed;
+        }
+      }
+      return def;
+    };
+
+    return dealsToProcess.map(({ deal, data }) => {
+      const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
+      const manufacturerRebate = data.manufacturerRebate?.isGlobal ? (data.manufacturerRebate.value || 0) : 0;
+      const totalGlobalSavings = hunterDiscount + manufacturerRebate;
+
+      let msrp = getVal(data.msrp);
+      let mf = getVal(data.moneyFactor || data.mf, 0.002);
+      let rv = getVal(data.residualValue || data.rv, 0.5);
+      let leaseCash = getVal(data.leaseCash || data.rebates, 0);
+      let term = queryTerm ? parseInt(queryTerm as string, 10) : getVal(data.term, 36);
+      let down = queryDown ? parseInt(queryDown as string, 10) : getVal(data.down !== undefined ? data.down : data.dueAtSigning, 3000);
+      let savings = getVal(data.savings, 0);
+      let discount = getVal(data.dealerDiscount || data.discount, 0);
+      
+      let incentivesSum = Array.isArray(data.incentives) ? data.incentives.reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) : 0;
+      let rebates = getVal(data.rebates, 0) + incentivesSum;
+      
+      let apr = getVal(data.apr, 4.9);
+
+      const effectiveDiscount = totalGlobalSavings > 0 ? hunterDiscount : savings;
+      
+      let type = data.type || 'lease';
+
+      let usedTiersData = false;
+      if (data.make && data.model && data.trim) {
+        const makeKey = data.make.toLowerCase();
+        const modelKey = `${makeKey}-${data.model.toLowerCase()}`;
+        const trimKey = `${modelKey}-${data.trim.toLowerCase()}`;
+        
+        const makeObj = carDbMakeMap.get(makeKey);
+        if (makeObj) {
+          const modelObj = carDbModelMap.get(modelKey);
+          if (modelObj) {
+            const trimObj = carDbTrimMap.get(trimKey);
+            if (trimObj) {
+              msrp = Number(trimObj.msrp) || msrp;
+              mf = trimObj.mf !== undefined && String(trimObj.mf) !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && String(modelObj.mf) !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && String(makeObj.baseMF) !== "" ? Number(makeObj.baseMF) : (mf !== undefined && String(mf) !== "" ? Number(mf) : 0.002)));
+              rv = trimObj.rv36 !== undefined && String(trimObj.rv36) !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && String(modelObj.rv36) !== "" ? Number(modelObj.rv36) : (rv !== undefined && String(rv) !== "" ? Number(rv) : 0.55));
+              leaseCash = trimObj.leaseCash !== undefined && String(trimObj.leaseCash) !== "" ? Number(trimObj.leaseCash) : (leaseCash !== undefined && String(leaseCash) !== "" ? Number(leaseCash) : 0);
+              apr = trimObj.baseAPR !== undefined && String(trimObj.baseAPR) !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && String(modelObj.baseAPR) !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && String(makeObj.baseAPR) !== "" ? Number(makeObj.baseAPR) : (apr !== undefined && String(apr) !== "" ? Number(apr) : 4.9)));
+
+              if (queryTier) {
+                const tierId = queryTier as string;
+                const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
+                
+                if (makeTier || modelObj.tiersData?.[tierId] || trimObj.tiersData?.[tierId]) {
+                  const fallbackMakeTier = makeTier || { mfAdd: 0, aprAdd: 0 };
+                  const modelTier = modelObj.tiersData?.[tierId] || fallbackMakeTier;
+                  const trimTier = trimObj.tiersData?.[tierId];
+
+                  if (trimTier) {
+                    mf = trimTier.mf !== undefined && trimTier.mf !== "" ? Number(trimTier.mf) : mf;
+                    rv = trimTier.rv36 !== undefined && trimTier.rv36 !== "" ? Number(trimTier.rv36) : rv;
+                    leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
+                    apr = trimTier.baseAPR !== undefined && trimTier.baseAPR !== "" ? Number(trimTier.baseAPR) : apr;
+                  } else {
+                    const adjusted = ModifierEngine.applyTierAdjustment(mf, apr, tierId);
+                    mf = adjusted.mf;
+                    apr = adjusted.apr;
+                  }
+                  
+                  if (!data.tiersData) data.tiersData = {};
+                  data.tiersData[tierId] = { mf, rv36: rv, baseAPR: apr, leaseCash };
+                  usedTiersData = true;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (queryMileage) {
+        if (queryMileage === '12k' || queryMileage === '12000') rv -= 0.02;
+        else if (queryMileage === '15k' || queryMileage === '15000') rv -= 0.03;
+        else if (queryMileage === '20k' || queryMileage === '20000') rv -= 0.05;
+        else if (queryMileage === '7.5k' || queryMileage === '7500') rv += 0.01;
+      }
+
+      if (queryTier && !usedTiersData) {
+        const adjusted = ModifierEngine.applyTierAdjustment(mf, apr, queryTier);
+        mf = adjusted.mf;
+      }
+
+      let payment = 0;
+      let financePayment = 0;
+      const dealTaxRate = data.taxMonthly && typeof data.taxMonthly === 'number' ? data.taxMonthly : taxRate;
+
+      let leaseDASCents = down * 100;
+      let leaseCCR = leaseDASCents; 
+
+      if (data.monthlyPayment?.provenance_status === 'manual') {
+        payment = data.monthlyPayment.value || 0;
+        leaseCCR = (data.downPayment?.value || 3000) * 100;
+        down = leaseCCR / 100;
+        if (type === 'finance') {
+          financePayment = payment;
+        }
+      } else {
+        const sellingPriceCents = (msrp - effectiveDiscount - discount) * 100;
+        const residualValueCents = rv > 1 ? rv * 100 : Math.round(msrp * rv * 100);
+        const taxableIncentivesCents = (Math.max(leaseCash, manufacturerRebate) + rebates) * 100;
+
+        leaseCCR = PureMathEngine.calculateLeaseCCRFromDAS({
+          msrpCents: msrp * 100,
+          sellingPriceCents,
+          residualValueCents,
+          moneyFactor: mf,
+          term,
+          targetDASCents: leaseDASCents,
+          tradeInEquityCents: 0,
+          taxRate: dealTaxRate,
+          taxableIncentivesCents,
+          acqFeeCents,
+          docFeeCents,
+          dmvFeeCents,
+          brokerFeeCents
+        });
+
+        const lease = PureMathEngine.calculateLease({
+          msrpCents: msrp * 100,
+          sellingPriceCents,
+          residualValuePercent: rv > 1 ? rv / msrp : rv,
+          moneyFactor: mf,
+          term,
+          downPaymentCents: leaseCCR + taxableIncentivesCents,
+          acqFeeCents,
+          docFeeCents,
+          dmvFeeCents,
+          brokerFeeCents,
+          taxRate: dealTaxRate
+        });
+        payment = lease.finalPaymentCents / 100;
+        
+        if (queryTier && !usedTiersData) {
+          const adjusted = ModifierEngine.applyTierAdjustment(0, apr, queryTier);
+          apr = adjusted.apr;
+        }
+
+        const finance = PureMathEngine.calculateFinance({
+          sellingPriceCents: (msrp - effectiveDiscount - discount) * 100,
+          totalIncentivesCents: (Math.max(leaseCash, manufacturerRebate) + rebates) * 100,
+          apr,
+          term,
+          downPaymentCents: down * 100,
+          docFeeCents,
+          dmvFeeCents,
+          brokerFeeCents,
+          taxRate: dealTaxRate
+        });
+        financePayment = finance.finalPaymentCents / 100;
+      }
+
+      return {
+        deal, data,
+        computed: {
+          payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type
+        }
+      };
+    });
   }
 }

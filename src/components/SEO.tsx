@@ -1,5 +1,6 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useLanguageStore } from '../store/languageStore';
 
 interface SEOProps {
   title?: string;
@@ -18,6 +19,7 @@ export const SEO: React.FC<SEOProps> = ({
   ogImage = 'https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&q=80&w=1200',
   schema,
 }) => {
+  const { language } = useLanguageStore();
   const siteUrl = window.location.origin;
   const url = canonicalUrl ? `${siteUrl}${canonicalUrl}` : siteUrl;
 
@@ -40,7 +42,7 @@ export const SEO: React.FC<SEOProps> = ({
   const schemas = schema ? (Array.isArray(schema) ? [defaultSchema, ...schema] : [defaultSchema, schema]) : [defaultSchema];
 
   return (
-    <Helmet>
+    <Helmet htmlAttributes={{ lang: language }}>
       <title>{title}</title>
       <meta name="description" content={description} />
       <meta name="keywords" content={keywords} />

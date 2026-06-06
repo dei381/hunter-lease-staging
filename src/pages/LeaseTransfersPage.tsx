@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { SEO } from '../components/SEO';
 import { Search, Filter, ShieldCheck, MapPin, Calendar, Gauge, DollarSign, ArrowRight, Plus } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { cn } from '../utils/cn';
@@ -126,6 +127,10 @@ export const LeaseTransfersPage = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] pt-8 pb-24">
+      <SEO 
+        title={`${t.title} | Hunter Lease`}
+        description={t.subtitle} 
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header Section */}

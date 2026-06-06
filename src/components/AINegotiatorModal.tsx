@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bot, Link as LinkIcon, Copy, Check, Sparkles, ChevronRight, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { X, Bot, Link as LinkIcon, Copy, Check, Sparkles, ChevronRight, MessageSquare, CheckCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
 import { GoogleGenAI } from '@google/genai';
@@ -233,7 +233,7 @@ The language of the script should be English.`,
                 className="space-y-6"
               >
                 <div className="flex items-center gap-2 text-[var(--lime)]">
-                  <CheckCircle2 size={20} />
+                  <CheckCircle size={20} />
                   <span className="text-sm font-bold uppercase tracking-widest">{t.resultTitle}</span>
                 </div>
 

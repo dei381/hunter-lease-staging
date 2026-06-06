@@ -20,6 +20,13 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
   const tcalc = translations[language].calc;
   const [photos, setPhotos] = useState<CarPhoto[]>(initialPhotos || []);
 
+  const currentPayment = Number(deal.displayPayment) || Number(deal.payment) || 0;
+  const totalIncentives = (deal.availableIncentives || []).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+  const msrpObj = Number(deal.msrp) || 0;
+  const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
+  const savingsPctObj = msrpObj > 0 ? badgeTotalSavings / msrpObj : 0;
+  const leaseValueRatio = msrpObj > 0 ? currentPayment / msrpObj : 0;
+
   useEffect(() => {
     if (!initialPhotos) {
       fetchWithCache('/api/car-photos')
@@ -48,7 +55,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
         {deal.image || getCarImage(photos, deal.make, deal.model, deal.year) ? (
           <img 
             src={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} 
-            alt={`${deal.make} ${deal.model}`} 
+            alt={`${deal.year || ''} ${deal.make} ${deal.model} Lease Deal`} 
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
             referrerPolicy="no-referrer" 
             loading="lazy"
@@ -99,12 +106,29 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
             )}>
               {deal.displayType === 'lease' ? t.lease : t.finance}
             </span>
-            {deal.hot && <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black">{tcalc.hotDeal}</span>}
-            {deal.savings && deal.msrp && (deal.savings / deal.msrp > 0.1) && (
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 backdrop-blur-md">
-                {tcalc.greatValue}
+            {savingsPctObj >= 0.06 && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[#00E58F] text-black">
+                {language === 'ru' ? 'Отличная скидка' : 'Great Price'}
               </span>
             )}
+            {savingsPctObj >= 0.03 && savingsPctObj < 0.06 && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-md">
+                {language === 'ru' ? 'Хорошая скидка' : 'Good Price'}
+              </span>
+            )}
+            {badgeTotalSavings > 0 && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] backdrop-blur-md">
+                {language === 'ru' ? `Ниже MSRP на ${fmt(badgeTotalSavings)}` : `Save ${fmt(badgeTotalSavings)}`}
+              </span>
+            )}
+            {deal.displayType === 'lease' && leaseValueRatio > 0 && leaseValueRatio <= 0.0125 && (
+              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase ${leaseValueRatio <= 0.010 ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 backdrop-blur-md'}`}>
+                {leaseValueRatio <= 0.010 
+                  ? (language === 'ru' ? 'Отличный лизинг' : 'Exceptional Lease') 
+                  : (language === 'ru' ? 'Хороший лизинг' : 'Good Lease')}
+              </span>
+            )}
+            {deal.hot && <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black">{tcalc.hotDeal}</span>}
             {deal.rv && (parseFloat(String(deal.rv).replace('%', '')) > 60 || parseFloat(String(deal.rv).replace('%', '')) > 0.6) && (
               <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-orange-500/20 text-orange-300 border border-orange-500/30 backdrop-blur-md">
                 {tcalc.fastSelling}

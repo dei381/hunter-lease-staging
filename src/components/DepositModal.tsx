@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CheckCircle2, ChevronRight, ShieldCheck, Car, FileText, CreditCard, Info, AlertCircle, Zap, Lock, Crown } from 'lucide-react';
+import { X, CheckCircle, ChevronRight, ShieldCheck, Car, FileText, CreditCard, Info, AlertCircle, Zap, Lock, Crown } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useAuthStore } from '../store/authStore';
 import { translations } from '../translations';
@@ -66,52 +66,26 @@ export const DepositModal = ({
   });
   const [isCreditAppSubmitting, setIsCreditAppSubmitting] = useState(false);
   const [isCreditAppSuccess, setIsCreditAppSuccess] = useState(false);
-  const [creditAppStep, setCreditAppStep] = useState(0);
+  const [creditAppStep, setCreditAppStep] = useState(1);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [consentAccepted, setConsentAccepted] = useState(false);
-  const [creditCheckConsent, setCreditCheckConsent] = useState(false);
-  const [creditCheckData, setCreditCheckData] = useState({ ssnLast4: '', dob: '', address: '', city: '', state: '', zip: '' });
-  const [creditCheckResult, setCreditCheckResult] = useState<any>(null);
-  const [creditCheckError, setCreditCheckError] = useState('');
-  const [isCreditCheckRunning, setIsCreditCheckRunning] = useState(false);
-  const wasOpenRef = useRef(false);
 
   // Reset step when modal opens
   useEffect(() => {
-    if (!isOpen) {
-      wasOpenRef.current = false;
-      return;
-    }
-
-    if (wasOpenRef.current) {
-      return;
-    }
-
-    wasOpenRef.current = true;
-
     if (isOpen) {
-      const shouldResumeExistingFlow = !!leadId && (step !== 1 || subStep !== 1 || creditAppStep > 0 || isCreditAppSuccess);
-      if (shouldResumeExistingFlow) {
-        return;
-      }
-
       if (leadId) {
         setStep(2);
       } else {
         setStep(1);
         setSubStep(1);
       }
-      setCreditAppStep(0);
+      setCreditAppStep(1);
       setPolicyAccepted(false);
       setConsentAccepted(false);
       setIsConfirmed(false);
       setIsCreditAppSuccess(false);
       setWaitingStatus(0);
       setShowQrCode(false);
-      setCreditCheckConsent(false);
-      setCreditCheckData({ ssnLast4: '', dob: '', address: '', city: '', state: '', zip: '' });
-      setCreditCheckResult(null);
-      setCreditCheckError('');
       setCreditAppData({
         firstName: clientInfo.name?.split(' ')[0] || '',
         lastName: clientInfo.name?.split(' ').slice(1).join(' ') || '',
@@ -136,7 +110,7 @@ export const DepositModal = ({
         signature: '',
       });
     }
-  }, [isOpen, clientInfo, leadId, step, subStep, creditAppStep, isCreditAppSuccess]);
+  }, [isOpen, clientInfo]);
 
   useEffect(() => {
     if (isCreditAppSuccess) {
@@ -157,48 +131,6 @@ export const DepositModal = ({
       } else {
         setStep(3); // Show success popup directly
       }
-    }
-  };
-
-  const handleCreditCheck = async () => {
-    if (!leadId || !creditCheckConsent) return;
-    setIsCreditCheckRunning(true);
-    setCreditCheckError('');
-    try {
-      const consentRes = await fetch('/api/credit/consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId, userId: user?.uid }),
-      });
-      const consentData = await consentRes.json();
-      if (!consentRes.ok) throw new Error(consentData.error || 'Failed to record consent');
-      const pullRes = await fetch('/api/credit/soft-pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creditCheckId: consentData.id,
-          applicant: {
-            firstName: clientInfo.name?.split(' ')[0] || '',
-            lastName: clientInfo.name?.split(' ').slice(1).join(' ') || '',
-            address: creditCheckData.address,
-            city: creditCheckData.city,
-            state: creditCheckData.state,
-            zipCode: creditCheckData.zip,
-            dateOfBirth: creditCheckData.dob,
-            ssn: creditCheckData.ssnLast4,
-          }
-        }),
-      });
-      const pullData = await pullRes.json();
-      if (!pullRes.ok) throw new Error(pullData.error || 'Failed to run credit check');
-      setCreditCheckResult(pullData);
-      toast.success('Credit check completed!');
-      setCreditAppStep(1);
-    } catch (err: any) {
-      setCreditCheckError(err.message || 'Credit check failed');
-      toast.error(err.message || 'Credit check failed');
-    } finally {
-      setIsCreditCheckRunning(false);
     }
   };
 
@@ -270,7 +202,7 @@ export const DepositModal = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={(leadId && !isCreditAppSuccess) ? undefined : onClose}
           className="fixed inset-0 bg-black/60 backdrop-blur-sm" 
         />
         
@@ -280,7 +212,9 @@ export const DepositModal = ({
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           className="bg-white border border-[var(--b2)] rounded-3xl w-full max-w-5xl relative z-10 shadow-2xl flex flex-col md:flex-row overflow-hidden"
         >
-        <button onClick={onClose} className="absolute top-6 right-6 text-[var(--mu)] hover:text-[var(--w)] z-50 bg-[var(--s1)] hover:bg-[var(--b2)] rounded-full p-2 transition-colors"><X size={20} /></button>
+        {!(leadId && !isCreditAppSuccess) && (
+          <button onClick={onClose} className="absolute top-6 right-6 text-[var(--mu)] hover:text-[var(--w)] z-50 bg-[var(--s1)] hover:bg-[var(--b2)] rounded-full p-2 transition-colors"><X size={20} /></button>
+        )}
         
         {/* Left Column: Wizard */}
         <div className="flex-1 p-4 md:p-12 flex flex-col relative overflow-hidden bg-white">
@@ -355,7 +289,7 @@ export const DepositModal = ({
                   <div className="p-4 bg-[var(--s1)]/50 rounded-xl border border-[var(--b2)]">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${clientInfo.tcpaConsent && clientInfo.termsConsent ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
-                        {clientInfo.tcpaConsent && clientInfo.termsConsent && <CheckCircle2 size={14} className="text-black" />}
+                        {clientInfo.tcpaConsent && clientInfo.termsConsent && <CheckCircle size={14} className="text-black" />}
                       </div>
                       <span className="text-[10px] text-[var(--mu2)] leading-relaxed">
                         {language === 'ru' 
@@ -400,7 +334,7 @@ export const DepositModal = ({
                 <div className="space-y-6 mb-8 max-w-md">
                   <label className="flex items-center gap-4 p-6 bg-[var(--s1)] border border-[var(--b2)] rounded-2xl cursor-pointer group hover:border-[var(--lime)] transition-all">
                     <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${tradeIn.hasTradeIn ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
-                      {tradeIn.hasTradeIn && <CheckCircle2 size={16} className="text-black" />}
+                      {tradeIn.hasTradeIn && <CheckCircle size={16} className="text-black" />}
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold uppercase tracking-widest mb-1">{t.hasTradeIn}</div>
@@ -492,7 +426,7 @@ export const DepositModal = ({
                             <div className="text-[10px] text-[var(--mu2)]">{method.desc}</div>
                           </div>
                           <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${payMethod === method.id ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}>
-                            {payMethod === method.id && <CheckCircle2 size={12} className="text-black" />}
+                            {payMethod === method.id && <CheckCircle size={12} className="text-black" />}
                           </div>
                         </button>
                       ))}
@@ -516,10 +450,13 @@ export const DepositModal = ({
                   <div className="p-4 bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isConfirmed ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white group-hover:border-[var(--lime)]'}`}>
-                        {isConfirmed && <CheckCircle2 size={14} className="text-black" />}
+                        {isConfirmed && <CheckCircle size={14} className="text-black" />}
                       </div>
                       <span className="text-[10px] text-[var(--mu2)] leading-relaxed font-medium">
-                        {t.confirmTerms}
+                        {t.confirmTerms}{" "}
+                        <a href="/refund-policy" target="_blank" rel="noopener noreferrer" className="text-[var(--lime)] hover:underline">
+                          {translations[language]?.legal?.refund || "Refund Policy"}
+                        </a>
                       </span>
                       <input type="checkbox" className="hidden" checked={isConfirmed} onChange={(e) => setIsConfirmed(e.target.checked)} />
                     </label>
@@ -574,17 +511,6 @@ export const DepositModal = ({
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(1);
-                    setSubStep(3);
-                  }}
-                  className="mb-4 text-[10px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--w)] transition-colors"
-                >
-                  {translations[language].calc.back}
-                </button>
-
                 <StripePaymentForm 
                   leadId={leadId || localStorage.getItem('leadId') || ''} 
                   amount={95}
@@ -602,51 +528,7 @@ export const DepositModal = ({
                 exit={{ opacity: 0, x: -20 }}
                 className="flex-1 relative z-10 overflow-y-auto max-h-[70vh] pr-4 custom-scrollbar"
               >
-                {!isCreditAppSuccess && creditAppStep === 0 && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="font-display text-3xl mb-2">Credit Pre-Check</h2>
-                      <p className="text-[var(--mu2)] text-sm">A soft pull helps us find you the best rates. No impact on your credit score.</p>
-                    </div>
-                    {!creditCheckResult ? (
-                      <div className="bg-[var(--s1)] border border-[var(--b2)] rounded-2xl p-6 space-y-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <ShieldCheck size={20} className="text-[var(--lime)]" />
-                          <span className="text-[10px] font-bold uppercase tracking-widest">700Credit Soft Pull</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input type="date" value={creditCheckData.dob} onChange={e => setCreditCheckData({...creditCheckData, dob: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="Date of Birth" />
-                          <input type="text" maxLength={4} value={creditCheckData.ssnLast4} onChange={e => setCreditCheckData({...creditCheckData, ssnLast4: e.target.value.replace(/\D/g,'').slice(0,4)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)] font-mono" placeholder="SSN last 4" />
-                        </div>
-                        <input type="text" value={creditCheckData.address} onChange={e => setCreditCheckData({...creditCheckData, address: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="Street Address" />
-                        <div className="grid grid-cols-3 gap-3">
-                          <input type="text" value={creditCheckData.city} onChange={e => setCreditCheckData({...creditCheckData, city: e.target.value})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="City" />
-                          <input type="text" maxLength={2} value={creditCheckData.state} onChange={e => setCreditCheckData({...creditCheckData, state: e.target.value.toUpperCase().slice(0,2)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="State" />
-                          <input type="text" maxLength={5} value={creditCheckData.zip} onChange={e => setCreditCheckData({...creditCheckData, zip: e.target.value.replace(/\D/g,'').slice(0,5)})} className="w-full bg-white border border-[var(--b2)] rounded-lg p-3 text-xs outline-none focus:border-[var(--lime)]" placeholder="ZIP" />
-                        </div>
-                        <label className="flex items-start gap-3 cursor-pointer">
-                          <input type="checkbox" checked={creditCheckConsent} onChange={e => setCreditCheckConsent(e.target.checked)} className="mt-1" />
-                          <span className="text-[9px] text-[var(--mu2)] leading-relaxed">I authorize Hunter Lease to obtain my credit report via a soft inquiry. This will NOT affect my credit score.</span>
-                        </label>
-                        {creditCheckError && <p className="text-red-500 text-xs">{creditCheckError}</p>}
-                        <button type="button" onClick={handleCreditCheck} disabled={!creditCheckConsent || !creditCheckData.ssnLast4 || !creditCheckData.dob || isCreditCheckRunning} className="w-full bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-black transition-all disabled:opacity-40 flex items-center justify-center gap-2">
-                          {isCreditCheckRunning ? 'Running...' : 'Check My Credit'} <ShieldCheck size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-2xl p-6 text-center">
-                        <ShieldCheck size={28} className="text-[var(--lime)] mx-auto mb-3" />
-                        <div className="text-2xl font-display text-[var(--lime)] mb-1">{creditCheckResult.creditBand || creditCheckResult.tier || 'Approved'}</div>
-                        <p className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-4">{creditCheckResult.scoreRange || 'Soft Pull Complete'}</p>
-                      </div>
-                    )}
-                    <button type="button" onClick={() => setCreditAppStep(1)} className="w-full bg-[var(--s1)] border border-[var(--b2)] text-[var(--w)] font-bold text-[10px] uppercase tracking-widest py-4 rounded-xl hover:bg-white transition-all">
-                      {creditCheckResult ? 'Continue to Full Application →' : 'Skip & Continue →'}
-                    </button>
-                  </div>
-                )}
-
-                {!isCreditAppSuccess && creditAppStep > 0 ? (
+                {!isCreditAppSuccess ? (
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     
@@ -904,7 +786,7 @@ export const DepositModal = ({
                               onClick={() => setPolicyAccepted(!policyAccepted)}
                               className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${policyAccepted ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}
                             >
-                              {policyAccepted && <CheckCircle2 size={14} className="text-black" />}
+                              {policyAccepted && <CheckCircle size={14} className="text-black" />}
                             </div>
                             <label className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer" onClick={() => setPolicyAccepted(!policyAccepted)}>
                               {translations[language].calc.policyAgreement}
@@ -964,7 +846,7 @@ export const DepositModal = ({
                               onClick={() => setConsentAccepted(!consentAccepted)}
                               className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${consentAccepted ? 'bg-[var(--lime)] border-[var(--lime)]' : 'border-[var(--b3)] bg-white'}`}
                             >
-                              {consentAccepted && <CheckCircle2 size={14} className="text-black" />}
+                              {consentAccepted && <CheckCircle size={14} className="text-black" />}
                             </div>
                             <label className="text-[9px] text-[var(--mu2)] leading-relaxed italic cursor-pointer" onClick={() => setConsentAccepted(!consentAccepted)}>
                               {translations[language].calc.policyAgreement}
@@ -1014,19 +896,19 @@ export const DepositModal = ({
                         <div className="space-y-4 text-left">
                           <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 0 ? 'opacity-100' : 'opacity-30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 0 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
-                              {waitingStatus > 0 && <CheckCircle2 size={12} />}
+                              {waitingStatus > 0 && <CheckCircle size={12} />}
                             </div>
                             <span className="text-sm font-medium">{t.waitingStatus0}</span>
                           </div>
                           <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 1 ? 'opacity-100' : 'opacity-30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 1 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
-                              {waitingStatus > 1 && <CheckCircle2 size={12} />}
+                              {waitingStatus > 1 && <CheckCircle size={12} />}
                             </div>
                             <span className="text-sm font-medium">{t.waitingStatus1}</span>
                           </div>
                           <div className={`flex items-center gap-3 transition-opacity duration-500 ${waitingStatus >= 2 ? 'opacity-100' : 'opacity-30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${waitingStatus > 2 ? 'bg-[var(--lime)] text-black' : 'bg-[var(--s1)] border border-[var(--b2)]'}`}>
-                              {waitingStatus > 2 && <CheckCircle2 size={12} />}
+                              {waitingStatus > 2 && <CheckCircle size={12} />}
                             </div>
                             <span className="text-sm font-medium">{t.waitingStatus2}</span>
                           </div>
@@ -1035,7 +917,7 @@ export const DepositModal = ({
                     ) : (
                       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full">
                         <div className="w-20 h-20 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mx-auto mb-8">
-                          <CheckCircle2 size={40} className="text-[var(--lime)]" />
+                          <CheckCircle size={40} className="text-[var(--lime)]" />
                         </div>
                         <h2 className="font-display text-4xl mb-4">{ct.successTitle}</h2>
                         <p className="text-[var(--mu2)] text-sm mb-8 max-w-md mx-auto leading-relaxed">
@@ -1091,7 +973,7 @@ export const DepositModal = ({
                 className="flex-1 relative z-10 flex flex-col items-center justify-center text-center py-12"
               >
                 <div className="w-24 h-24 bg-[var(--lime)]/20 rounded-full flex items-center justify-center mb-8">
-                  <CheckCircle2 size={48} className="text-[var(--lime)]" />
+                  <CheckCircle size={48} className="text-[var(--lime)]" />
                 </div>
                 <h2 className="font-display text-4xl mb-6">{language === 'ru' ? 'Заявка отправлена!' : 'Request Submitted!'}</h2>
                 <p className="text-[var(--mu2)] text-lg leading-relaxed max-w-md mx-auto mb-10">
@@ -1157,7 +1039,7 @@ export const DepositModal = ({
               <div className="grid grid-cols-1 gap-2">
                 {lockKeys.map((key, i) => (
                   <div key={i} className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-wider text-[var(--mu2)]">
-                    <CheckCircle2 size={10} className="text-[var(--grn)]" />
+                    <CheckCircle size={10} className="text-[var(--grn)]" />
                     {key}
                   </div>
                 ))}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Instagram, Twitter, Facebook, Mail, Phone, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Instagram, Twitter, Facebook, Mail, Phone, CheckCircle, AlertCircle } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
@@ -141,7 +141,7 @@ export const Footer = () => {
                 {status === 'loading' ? (
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : status === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle className="w-4 h-4" />
                 ) : status === 'error' ? (
                   <AlertCircle className="w-4 h-4" />
                 ) : (
@@ -166,6 +166,7 @@ export const Footer = () => {
         <div className="flex flex-wrap justify-center md:justify-end gap-8 text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">
           <Link to="/privacy" className="hover:text-[var(--lime)] transition-colors">{t.legal.privacy}</Link>
           <Link to="/terms" className="hover:text-[var(--lime)] transition-colors">{t.legal.terms}</Link>
+          <Link to="/refund-policy" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Возврат / Refund Policy' : 'Refund Policy'}</Link>
           <Link to="/legal-disclosure" className="hover:text-[var(--lime)] transition-colors">{t.legal.broker}</Link>
           <Link to="/accessibility" className="hover:text-[var(--lime)] transition-colors">{t.legal.accessibility}</Link>
           <span className="text-[var(--mu2)]">{t.footer.licensedBroker}</span>

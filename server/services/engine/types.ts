@@ -10,6 +10,8 @@ export const QuoteContextSchema = z.object({
   model: z.string().optional(),
   trim: z.string().optional(),
   year: z.number().optional(),
+  msrp: z.number().optional(),
+  msrpCents: z.number().optional(),
 
   downPaymentCents: z.number().int().min(0).default(0),
   tradeInEquityCents: z.number().int().default(0),

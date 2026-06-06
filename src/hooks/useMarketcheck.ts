@@ -33,7 +33,7 @@ export interface MarketcheckListing {
   engine?: string;
 }
 
-export const useMarketcheck = (params?: { make?: string, model?: string }) => {
+export const useMarketcheck = (params?: { make?: string, model?: string, trim?: string }) => {
   const [mcInventory, setMcInventory] = useState<MarketcheckListing[]>([]);
   const [mcTotalCount, setMcTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,6 +46,7 @@ export const useMarketcheck = (params?: { make?: string, model?: string }) => {
         let url = '/api/marketcheck/search?rows=50';
         if (params?.make && params.make !== 'All') url += `&make=${encodeURIComponent(params.make)}`;
         if (params?.model && params.model !== 'All') url += `&model=${encodeURIComponent(params.model)}`;
+        if (params?.trim && params.trim !== 'All') url += `&trim=${encodeURIComponent(params.trim)}`;
 
         const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch');

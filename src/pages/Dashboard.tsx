@@ -5,7 +5,7 @@ import { auth } from '../firebase';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { translations } from '../translations';
-import { Car, Calendar, Clock, CheckCircle2, ChevronRight, Bell, CreditCard, Heart, List } from 'lucide-react';
+import { Car, Calendar, Clock, CheckCircle, ChevronRight, Bell, CreditCard, Heart, List } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CreditConsentModal } from '../components/CreditConsentModal';
 import { ReportDealerModal } from '../components/ReportDealerModal';

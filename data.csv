@@ -1,0 +1,73 @@
+id,make,model,trim,year,term,mileage,residual_percentage,money_factor,apr,msrp,selling_price,acquisition_fee,registration_fee,doc_fee,monthly_payment,due_at_signing,lender,zip_code,region,effective_month,deal_id,source_url
+226,Acura,Integra,Base (CVT) CVT,2026,36,10000,75,0.00181,4.3440,34595,34595,595,498,85,503,1283,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574993,https://autobandit.com/deals/574993
+230,Acura,Integra,Type S Manual,2026,48,10000,75,0.00305,7.3200,55295,55295,595,699,85,798,2230,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574897,https://autobandit.com/deals/574897
+227,Acura,Integra,w/A-Spec Package CVT,2026,36,10000,50,0.00181,4.3440,37845,35952.75,595,573,85,513,1387,American Honda Finance Corp.,91204,"Los Angeles, CA",2026-06,327461,https://autobandit.com/deals/327461
+228,Acura,Integra,w/A-Spec Technology Package CVT,2026,36,10000,50,0.00181,4.3440,40395,38375.25,595,589,85,559,1450,American Honda Finance Corp.,91204,"Los Angeles, CA",2026-06,246321,https://autobandit.com/deals/246321
+229,Acura,Integra,w/A-Spec Technology Package Manual,2026,36,10000,75,0.00181,4.3440,41635,41635,595,611,85,628,1522,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,575000,https://autobandit.com/deals/575000
+374,Acura,MDX,Base FWD,2026,48,10000,75,0.00173,4.1520,53250,53250,595,686,85,736,1419,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,597778,https://autobandit.com/deals/597778
+212,Acura,MDX,Base SH-AWD,2026,48,10000,75,0.00173,4.1520,56050,56050,595,705,85,774,1438,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574894,https://autobandit.com/deals/574894
+218,Acura,MDX,Type S w/Advance Package SH-AWD,2026,48,10000,50,0.00173,4.1520,77800,73910,595,853,85,1087,2692,American Honda Finance Corp.,91204,"Los Angeles, CA",2026-06,327464,https://autobandit.com/deals/327464
+217,Acura,MDX,w/A-Spec Advance Package SH-AWD,2026,48,10000,50,0.00173,4.1520,70850,67307.5,595,810,85,990,1561,American Honda Finance Corp.,91204,"Los Angeles, CA",2026-06,234239,https://autobandit.com/deals/234239
+214,Acura,MDX,w/A-Spec Package SH-AWD,2026,48,10000,50,0.00173,4.1520,64350,61132.5,595,770,85,859,1521,American Honda Finance Corp.,91204,"Los Angeles, CA",2026-06,234258,https://autobandit.com/deals/234258
+216,Acura,MDX,w/Advance Package SH-AWD,2026,48,10000,50,0.00173,4.1520,68850,65407.5,595,799,85,962,1550,American Honda Finance Corp.,91204,"Los Angeles, CA",2026-06,234238,https://autobandit.com/deals/234238
+213,Acura,MDX,w/Technology Package FWD,2026,48,10000,75,0.00173,4.1520,58550,58550,595,720,85,833,1453,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574909,https://autobandit.com/deals/574909
+215,Acura,MDX,w/Technology Package SH-AWD,2026,48,10000,75,0.00173,4.1520,60750,60750,595,768,85,864,1501,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574913,https://autobandit.com/deals/574913
+219,Acura,RDX,Base SH-AWD,2026,36,10000,75,0.00147,3.5280,46550,46550,595,642,85,662,2037,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574905,https://autobandit.com/deals/574905
+223,Acura,RDX,w/A-Spec Advance Package SH-AWD,2026,36,10000,75,0.00147,3.5280,56300,56300,595,706,85,849,2287,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574915,https://autobandit.com/deals/574915
+221,Acura,RDX,w/A-Spec Package SH-AWD,2026,36,10000,75,0.00147,3.5280,52150,52150,595,679,85,771,2183,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,574930,https://autobandit.com/deals/574930
+222,Acura,RDX,w/Advance Package SH-AWD,2026,36,10000,75,0.00147,3.5280,54300,54300,595,693,85,818,2244,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,597777,https://autobandit.com/deals/597777
+220,Acura,RDX,w/Technology Package SH-AWD,2026,36,10000,75,0.00147,3.5280,49150,49150,595,659,85,713,2105,American Honda Finance Corp.,92782,"Los Angeles, CA",2026-06,604837,https://autobandit.com/deals/604837
+225,Acura,TLX,w/A-Spec Package SH-AWD,2025,48,10000,75,0.00305,7.3200,52195,52195,595,679,85,920,2345,American Honda Finance Corp.,91401,"Los Angeles, CA",2026-06,554692,https://autobandit.com/deals/554692
+224,Acura,TLX,w/Technology Package FWD,2025,48,10000,75,0.00305,7.3200,47195,47195,595,646,85,813,2206,American Honda Finance Corp.,91401,"Los Angeles, CA",2026-06,554679,https://autobandit.com/deals/554679
+255,Honda,CR-V,EX 2WD,2026,36,10000,50,0.00237,5.6880,34600,33562,1095,492,85,370,2166,Teachers Federal Credit Union,90249,"Los Angeles, CA",2026-06,522814,https://autobandit.com/deals/522814
+257,Honda,CR-V,EX AWD,2026,36,10000,25,0.00237,5.6880,36100,35017,1095,568,85,375,2244,Teachers Federal Credit Union,90503,"Los Angeles, CA",2026-06,502322,https://autobandit.com/deals/502322
+258,Honda,CR-V,EX-L 2WD,2026,36,10000,50,0.00237,5.6880,36850,35744.5,1095,572,85,394,2270,Teachers Federal Credit Union,90755,"Los Angeles, CA",2026-06,521529,https://autobandit.com/deals/521529
+259,Honda,CR-V,EX-L AWD,2026,36,10000,50,0.00237,5.6880,38350,37199.5,1095,581,85,399,2284,Teachers Federal Credit Union,90703,"Los Angeles, CA",2026-06,345337,https://autobandit.com/deals/345337
+256,Honda,CR-V,LX 2WD,2026,39,10000,75,0.00237,5.6880,32455,31481.35,1095,479,85,374,2160,Teachers Federal Credit Union,90232,"Los Angeles, CA",2026-06,507723,https://autobandit.com/deals/507723
+394,Honda,CR-V,LX AWD,2026,36,10000,75,0.00233,5.5920,33870,32853.9,995,488,85,370,2054,RIZE C.U.,90232,"Los Angeles, CA",2026-06,346358,https://autobandit.com/deals/346358
+262,Honda,HR-V,EX-L 2WD CVT,2026,36,10000,50,0.00237,5.6880,31800,30846,1095,475,85,331,2110,Teachers Federal Credit Union,90249,"Los Angeles, CA",2026-06,499052,https://autobandit.com/deals/499052
+260,Honda,HR-V,LX 2WD CVT,2026,36,10000,50,0.00237,5.6880,27950,27111.5,1095,450,85,307,2061,Teachers Federal Credit Union,90249,"Los Angeles, CA",2026-06,522820,https://autobandit.com/deals/522820
+264,Honda,HR-V,LX AWD CVT,2026,36,10000,50,0.00192,4.6080,29150,28275.5,595,458,85,378,1588,American Honda Finance Corp.,90703,"Los Angeles, CA",2026-06,298313,https://autobandit.com/deals/298313
+261,Honda,HR-V,Sport 2WD CVT,2026,36,10000,50,0.00237,5.6880,29750,28857.5,1095,462,85,318,2084,Teachers Federal Credit Union,90703,"Los Angeles, CA",2026-06,505246,https://autobandit.com/deals/505246
+263,Honda,HR-V,Sport AWD CVT,2026,36,10000,50,0.00237,5.6880,31250,30312.5,1095,471,85,334,2109,Teachers Federal Credit Union,90755,"Los Angeles, CA",2026-06,360633,https://autobandit.com/deals/360633
+286,Honda,Odyssey,EX-L Auto,2026,36,10000,50,0.00237,5.6880,44290,42961.3,1095,619,85,511,2434,Teachers Federal Credit Union,90745,"Los Angeles, CA",2026-06,446327,https://autobandit.com/deals/446327
+289,Honda,Odyssey,Elite Auto,2026,39,10000,25,0.00233,5.5920,53190,51594.3,995,675,85,662,2527,RIZE C.U.,90503,"Los Angeles, CA",2026-06,346280,https://autobandit.com/deals/346280
+287,Honda,Odyssey,Sport-L Auto,2026,36,10000,75,0.00237,5.6880,45845,44469.65,1095,629,85,556,2492,Teachers Federal Credit Union,90232,"Los Angeles, CA",2026-06,532025,https://autobandit.com/deals/532025
+288,Honda,Odyssey,Touring Auto,2026,36,10000,50,0.00237,5.6880,48990,47520.3,1095,649,85,607,2559,Teachers Federal Credit Union,90745,"Los Angeles, CA",2026-06,360935,https://autobandit.com/deals/360935
+274,Honda,Passport,RTL AWD,2026,36,10000,25,0.00237,5.6880,44710,43368.7,1095,620,85,570,2503,Teachers Federal Credit Union,93551,"Los Angeles, CA",2026-06,463087,https://autobandit.com/deals/463087
+275,Honda,Passport,RTL Towing AWD,2026,36,10000,25,0.00237,5.6880,47600,46172,1095,640,85,601,2542,Teachers Federal Credit Union,90503,"Los Angeles, CA",2026-06,459210,https://autobandit.com/deals/459210
+276,Honda,Passport,TrailSport AWD,2026,48,10000,50,0.00233,5.5920,50600,49082,995,659,85,667,2519,RIZE C.U.,90249,"Los Angeles, CA",2026-06,533272,https://autobandit.com/deals/533272
+277,Honda,Passport,TrailSport Blackout AWD,2026,36,10000,75,0.00226,5.4240,51775,50221.75,595,669,85,719,2171,American Honda Finance Corp.,92555,"Los Angeles, CA",2026-06,326177,https://autobandit.com/deals/326177
+278,Honda,Passport,TrailSport Elite AWD,2026,36,10000,50,0.00237,5.6880,54145,52520.65,1095,681,85,746,2731,Teachers Federal Credit Union,90703,"Los Angeles, CA",2026-06,431662,https://autobandit.com/deals/431662
+279,Honda,Passport,TrailSport Elite Blackout AWD,2026,36,10000,50,0.00237,5.6880,55345,53684.65,1095,689,85,763,2756,Teachers Federal Credit Union,90249,"Los Angeles, CA",2026-06,506647,https://autobandit.com/deals/506647
+273,Honda,Pilot,Black Edition AWD,2026,48,10000,50,0.00233,5.5920,57145,55430.65,995,701,85,741,2636,RIZE C.U.,90249,"Los Angeles, CA",2026-06,533271,https://autobandit.com/deals/533271
+267,Honda,Pilot,EX-L 2WD,2026,39,10000,50,0.00233,5.5920,46190,44804.3,995,632,85,564,2389,RIZE C.U.,90249,"Los Angeles, CA",2026-06,522825,https://autobandit.com/deals/522825
+268,Honda,Pilot,EX-L AWD,2026,39,10000,50,0.00233,5.5920,48090,46647.3,995,644,85,587,2424,RIZE C.U.,90703,"Los Angeles, CA",2026-06,493299,https://autobandit.com/deals/493299
+272,Honda,Pilot,Elite AWD,2026,39,10000,25,0.00233,5.5920,58135,56390.95,995,706,85,723,2620,RIZE C.U.,90503,"Los Angeles, CA",2026-06,360946,https://autobandit.com/deals/360946
+265,Honda,Pilot,Sport 2WD,2026,39,10000,25,0.00233,5.5920,43690,42379.3,995,614,85,514,2330,RIZE C.U.,93551,"Los Angeles, CA",2026-06,519016,https://autobandit.com/deals/519016
+266,Honda,Pilot,Sport AWD,2026,39,10000,25,0.00233,5.5920,47045,45633.65,995,637,85,561,2389,RIZE C.U.,90503,"Los Angeles, CA",2026-06,532633,https://autobandit.com/deals/532633
+270,Honda,Pilot,Touring AWD,2026,39,10000,50,0.00233,5.5920,53045,51453.65,995,675,85,661,2530,RIZE C.U.,90249,"Los Angeles, CA",2026-06,499056,https://autobandit.com/deals/499056
+271,Honda,Pilot,Touring S AWD,2026,48,10000,50,0.00233,5.5920,54245,52617.65,995,683,85,681,2558,RIZE C.U.,90249,"Los Angeles, CA",2026-06,466319,https://autobandit.com/deals/466319
+269,Honda,Pilot,TrailSport AWD,2026,39,10000,50,0.00233,5.5920,52090,50527.3,995,668,85,622,2484,RIZE C.U.,90249,"Los Angeles, CA",2026-06,515211,https://autobandit.com/deals/515211
+284,Honda,Ridgeline,Black Edition AWD,2026,48,10000,50,0.00233,5.5920,49565,48078.05,995,733,85,633,2559,RIZE C.U.,90249,"Los Angeles, CA",2026-06,396960,https://autobandit.com/deals/396960
+285,Honda,Ridgeline,Black Edition Two-Tone AWD,2026,48,10000,50,0.00233,5.5920,49845,48349.65,995,734,85,636,2564,RIZE C.U.,90249,"Los Angeles, CA",2026-06,522836,https://autobandit.com/deals/522836
+281,Honda,Ridgeline,RTL AWD,2026,36,10000,25,0.00142,3.4080,42545,41268.65,595,687,85,555,1998,American Honda Finance Corp.,93551,"Los Angeles, CA",2026-06,526549,https://autobandit.com/deals/526549
+280,Honda,Ridgeline,Sport AWD,2026,48,10000,50,0.00233,5.5920,42745,41462.65,995,690,85,537,2420,RIZE C.U.,90755,"Los Angeles, CA",2026-06,345307,https://autobandit.com/deals/345307
+282,Honda,Ridgeline,TrailSport AWD,2026,36,10000,75,0.00142,3.4080,47945,46506.65,595,722,85,592,2046,American Honda Finance Corp.,92626,"Los Angeles, CA",2026-06,409411,https://autobandit.com/deals/409411
+283,Honda,Ridgeline,TrailSport+ AWD,2026,36,10000,50,0.00142,3.4080,48690,47229.3,595,727,85,616,2095,American Honda Finance Corp.,90249,"Los Angeles, CA",2026-06,506653,https://autobandit.com/deals/506653
+564,Hyundai,Elantra,Limited IVT,2026,36,10000,75,0.00227,5.4480,28980,27675.9,650,454,85,362,1608,Hyundai Motor Finance,92647,"Los Angeles, CA",2026-06,261169,https://autobandit.com/deals/261169
+167,Hyundai,Elantra,SE IVT,2026,36,10000,50,0.00214,5.1360,24215,24215,650,366,85,337,1594,Hyundai Motor Finance,92677,"Los Angeles, CA",2026-06,370158,https://autobandit.com/deals/370158
+166,Hyundai,Elantra,SE Sedan,2026,36,10000,25,0.00214,5.1360,24110,24110,650,365,,334,1587,Hyundai Motor Finance,91748,"Los Angeles, CA",2026-06,573861,https://autobandit.com/deals/573861
+165,Hyundai,Elantra,SEL Sport IVT,2026,36,10000,50,0.00219,5.2560,25555,22898.937512359105,650,357,85,273,1469,Hyundai Motor Finance,90810,"Los Angeles, CA",2026-06,576966,https://autobandit.com/deals/576966
+168,Hyundai,Elantra,SEL Sport Premium IVT,2026,36,10000,75,0.00222,5.3280,26990,25775.45,650,441,85,335,1568,Hyundai Motor Finance,92647,"Los Angeles, CA",2026-06,261161,https://autobandit.com/deals/261161
+169,Hyundai,Elantra,SEL Sport Sedan,2026,36,10000,25,0.00219,5.2560,25420,25420,650,440,,358,1634,Hyundai Motor Finance,91748,"Los Angeles, CA",2026-06,573865,https://autobandit.com/deals/573865
+195,Hyundai,Elantra Hybrid,Blue Sedan,2026,36,10000,75,0.00218,5.2320,26935,26126.95,650,444,85,360,1610,Hyundai Motor Finance,91401,"Los Angeles, CA",2026-06,572437,https://autobandit.com/deals/572437
+198,Hyundai,Elantra Hybrid,Limited DCT,2025,48,10000,25,0.00282,6.7680,31655,31655,650,479,85,560,1857,Hyundai Motor Finance,93551,"Los Angeles, CA",2026-06,260524,https://autobandit.com/deals/260524
+197,Hyundai,Elantra Hybrid,Limited Sedan,2026,48,10000,75,0.00263,6.3120,31775,31775,650,482,85,459,1740,Hyundai Motor Finance,92504,"Los Angeles, CA",2026-06,349412,https://autobandit.com/deals/349412
+196,Hyundai,Elantra Hybrid,SEL Sport Sedan,2026,36,10000,75,0.00225,5.4000,29335,28014.925,650,457,85,374,1623,Hyundai Motor Finance,92647,"Los Angeles, CA",2026-06,261183,https://autobandit.com/deals/261183
+190,Hyundai,Kona,SE AWD,2026,36,10000,75,0.00222,5.3280,28900,28900,650,464,85,379,1861,Hyundai Motor Finance,92504,"Los Angeles, CA",2026-06,343787,https://autobandit.com/deals/343787
+189,Hyundai,Kona,SE FWD,2026,24,10000,75,0.00187,4.4880,27575,26747.75,650,448,85,316,1863,Hyundai Motor Finance,91401,"Los Angeles, CA",2026-06,546341,https://autobandit.com/deals/546341
+191,Hyundai,Kona,SEL Premium FWD,2026,36,10000,75,0.00224,5.3760,30745,29822.65,650,468,85,391,1861,Hyundai Motor Finance,91401,"Los Angeles, CA",2026-06,546350,https://autobandit.com/deals/546350
+593,Hyundai,Kona,SEL Sport AWD,2026,36,10000,75,0.00227,5.4480,30470,30470,650,474,85,406,1855,Hyundai Motor Finance,92504,"Los Angeles, CA",2026-06,343817,https://autobandit.com/deals/343817
+590,Hyundai,Kona,SEL Sport FWD,2026,36,10000,75,0.00215,5.1600,28275,27002.625,650,450,85,330,1746,Hyundai Motor Finance,92806,"Los Angeles, CA",2026-06,260802,https://autobandit.com/deals/260802
+588,Hyundai,Palisade,Limited FWD,2026,39,10000,75,0.00226,5.4240,51405,49091.775,650,659,85,594,2181,Hyundai Motor Finance,92806,"Los Angeles, CA",2026-06,261075,https://autobandit.com/deals/261075

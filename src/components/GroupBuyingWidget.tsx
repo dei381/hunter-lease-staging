@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingDown, CheckCircle2, Zap } from 'lucide-react';
+import { Users, TrendingDown, CheckCircle, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
@@ -117,7 +117,7 @@ export const GroupBuyingWidget = ({ make, model }: GroupBuyingWidgetProps) => {
                 : "bg-[var(--w)] text-black hover:bg-[var(--lime)]"
             )}
           >
-            {joined ? <CheckCircle2 size={14} /> : <Zap size={14} />}
+            {joined ? <CheckCircle size={14} /> : <Zap size={14} />}
             {joined ? t.joinedBtn : t.joinBtn}
           </button>
           

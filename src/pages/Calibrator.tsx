@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldAlert, User, Car, CreditCard, Briefcase, 
-  CheckCircle2, AlertTriangle, MessageSquare, Copy, Save,
+  CheckCircle, AlertTriangle, MessageSquare, Copy, Save,
   ChevronRight, ChevronDown, Info, Calculator as CalcIcon, FileText
 } from 'lucide-react';
 import { db } from '../firebase';

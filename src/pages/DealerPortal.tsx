@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { useAuthStore } from '../store/authStore';
 import { auth } from '../firebase';
-import { Car, Clock, CheckCircle2, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
+import { Car, Clock, CheckCircle, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
 import { CounterOfferModal } from '../components/CounterOfferModal';
 import { AcceptLeadModal } from '../components/AcceptLeadModal';
 
@@ -183,7 +183,7 @@ export const DealerPortal = () => {
                               }}
                               className="flex items-center justify-center gap-2 bg-[var(--lime)] text-black font-bold uppercase tracking-widest px-6 py-3 rounded-xl hover:bg-[var(--lime2)] transition-colors"
                             >
-                              <CheckCircle2 size={18} /> Accept
+                              <CheckCircle size={18} /> Accept
                             </button>
                             <button 
                               onClick={() => handleAction(lead.id, 'reject')}
@@ -203,7 +203,7 @@ export const DealerPortal = () => {
                           </>
                         ) : (
                           <div className={`flex items-center justify-center gap-2 font-bold uppercase tracking-widest px-6 py-3 rounded-xl border ${lead.status === 'accepted' ? 'border-[var(--lime)] text-[var(--lime)]' : 'border-red-500 text-red-500'}`}>
-                            {lead.status === 'accepted' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                            {lead.status === 'accepted' ? <CheckCircle size={18} /> : <XCircle size={18} />}
                             {lead.status}
                           </div>
                         )}

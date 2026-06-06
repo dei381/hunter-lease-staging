@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, XCircle, FileText } from 'lucide-react';
+import { CheckCircle, XCircle, FileText } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -77,7 +77,7 @@ export const CaseStudies = () => {
                     {t.ourOffer}
                   </div>
                   <div className="flex items-center gap-2 mb-4 text-[var(--lime)]">
-                    <CheckCircle2 size={18} />
+                    <CheckCircle size={18} />
                     <span className="text-xs font-bold uppercase tracking-widest">Hunter.Lease</span>
                   </div>
                   <div className="space-y-4">

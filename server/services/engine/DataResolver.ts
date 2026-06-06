@@ -61,8 +61,10 @@ export class DataResolver {
             };
             isMarketcheck = true;
           }
-        } catch (e) {
-          console.error("Failed to fetch vehicle from Firestore", e);
+        } catch (e: any) {
+          if (e.code !== 5 && !e.message?.includes('NOT_FOUND')) {
+            console.error("Failed to fetch vehicle from Firestore", e);
+          }
         }
       }
     }
@@ -114,28 +116,34 @@ export class DataResolver {
               model: modelObj.name,
               trim: carDbTrim?.name || context.trim || '',
               year: context.year ? Number(context.year) : new Date().getFullYear(),
-              msrpCents: Math.round(Number(carDbTrim?.msrp) || 0) * 100
+              msrpCents: Math.round(Number(carDbTrim?.msrp) || Number(context.msrp) || 0) * 100
             };
           }
         }
       }
     }
 
-    const msrpCents = context.adminOverrides?.msrpCents || context.marketcheckData?.msrpCents || vehicle?.msrpCents || 0;
+    const msrpCents = context.adminOverrides?.msrpCents || context.marketcheckData?.msrpCents || vehicle?.msrpCents || Math.round(Number(context.msrp) || 0) * 100 || 0;
     const make = vehicle?.make || context.make || 'Unknown';
     const model = vehicle?.model || context.model || 'Unknown';
     const trim = vehicle?.trim || context.trim || 'Unknown';
     const year = Number(vehicle?.year) || Number(context.year) || new Date().getFullYear();
 
     // If we only have marketcheck data and no vehicle object, create a dummy one
-    if (!vehicle && context.marketcheckData?.msrpCents) {
-      vehicle = {
-        make,
-        model,
-        trim,
-        year,
-        msrpCents: context.marketcheckData.msrpCents
-      };
+    if (!vehicle && msrpCents > 0) {
+      if (!vehicle) {
+        vehicle = {
+          make,
+          model,
+          trim,
+          year,
+          msrpCents
+        };
+      } else {
+        vehicle.msrpCents = msrpCents;
+      }
+    } else if (vehicle) {
+      vehicle.msrpCents = vehicle.msrpCents || msrpCents;
     }
 
     // 3. Fetch incentives
@@ -175,10 +183,8 @@ export class DataResolver {
       id: inc.id,
       name: inc.name,
       amount: inc.amountCents / 100,
-      amountCents: inc.amountCents,
-      type: inc.type === 'conditional' ? 'special' : 'manufacturer',
-      isDefault: inc.type !== 'conditional',
-      dealApplicability: inc.dealApplicability,
+      type: inc.type === 'OEM_CASH' ? 'manufacturer' : 'special',
+      isDefault: inc.type === 'OEM_CASH',
       expiresAt: inc.effectiveTo ? inc.effectiveTo.toISOString() : undefined,
       stackable: inc.stackable,
       isTaxableCa: inc.isTaxableCa,
@@ -204,8 +210,12 @@ export class DataResolver {
           }));
           formattedIncentives = [...formattedIncentives, ...mcFormatted];
         }
-      } catch (e) {
-        console.error("Failed to fetch incentives from Firestore", e);
+      } catch (e: any) {
+        if (e?.code === 5 || e?.message?.includes('NOT_FOUND')) {
+           // Ignore NOT_FOUND errors for mc_incentives as the db itself might not be fully initialized or doc drops
+        } else {
+           console.error("Failed to fetch incentives from Firestore", e);
+        }
       }
     }
 
@@ -302,6 +312,73 @@ export class DataResolver {
     });
 
     console.log(`Found ${bankPrograms.length} bank programs`);
+
+    // Add V2 Lease/Finance Programs
+    if (context.quoteType === 'LEASE') {
+      const leaseProgs = await prisma.leaseProgram.findMany({
+        where: {
+          isActive: true,
+          status: 'PUBLISHED',
+          make: { equals: vehicle.make, mode: 'insensitive' },
+          term: context.term,
+          mileage: 10000,
+          internalLenderTier: 'Tier 1',
+          model: { in: possibleModels.map(m => m) }
+        },
+        include: { lender: true }
+      });
+      // Try to find matching trims, or 'ALL'
+      const matchedLeaseProgs = leaseProgs.filter(p => p.trim === 'ALL' || possibleTrims.includes(p.trim));
+      for (const p of matchedLeaseProgs) {
+        bankPrograms.push({
+          id: p.id,
+          batchId: activeBatch.id,
+          lenderId: p.lenderId,
+          programType: 'LEASE',
+          make: p.make,
+          model: p.model,
+          trim: p.trim,
+          year: p.year,
+          term: p.term,
+          mileage: p.mileage,
+          mf: Number(p.buyRateMf),
+          rv: Number(p.residualPercentage) / 100,
+          apr: null,
+          lender: p.lender
+        } as any);
+      }
+    } else {
+      const financeProgs = await prisma.financeProgram.findMany({
+        where: {
+          isActive: true,
+          status: 'PUBLISHED',
+          make: { equals: vehicle.make, mode: 'insensitive' },
+          term: context.term,
+          internalLenderTier: 'Tier 1',
+          model: { in: possibleModels.map(m => m) }
+        },
+        include: { lender: true }
+      });
+      const matchedFinanceProgs = financeProgs.filter(p => p.trim === 'ALL' || possibleTrims.includes(p.trim));
+      for (const p of matchedFinanceProgs) {
+        bankPrograms.push({
+          id: p.id,
+          batchId: activeBatch.id,
+          lenderId: p.lenderId,
+          programType: 'FINANCE',
+          make: p.make,
+          model: p.model,
+          trim: p.trim,
+          year: p.year,
+          term: p.term,
+          mileage: null,
+          mf: null,
+          rv: null,
+          apr: Number(p.buyRateApr),
+          lender: p.lender
+        } as any);
+      }
+    }
     
     // Group programs by lender to pick the best match per lender
     const programsByLender = bankPrograms.reduce((acc, p) => {
@@ -380,68 +457,58 @@ export class DataResolver {
     bankPrograms = finalPrograms;
 
     if (bankPrograms.length === 0) {
-      console.log('No bank programs found, attempting VehicleTrim fallback for:', {
-        make: vehicle.make, model: vehicle.model, trim: vehicle.trim
+      console.log('NO PROGRAMS FOUND in DB. Attempting to fallback to carDb...', {
+        make: vehicle.make,
+        model: vehicle.model,
+        trim: vehicle.trim
       });
-
-      // Fallback: use baseMF/baseAPR/rv36 from VehicleTrim (set via brand admin global settings)
-      const trimRecord = await prisma.vehicleTrim.findFirst({
-        where: {
-          isActive: true,
-          name: { equals: vehicle.trim, mode: 'insensitive' },
-          model: {
-            isActive: true,
-            name: { equals: vehicle.model, mode: 'insensitive' },
-            make: {
-              isActive: true,
-              name: { equals: vehicle.make, mode: 'insensitive' }
-            }
-          }
-        }
-      });
-
-      // If no exact trim match, try any trim for this make/model to get brand-level defaults
-      const fallbackTrim = trimRecord || await prisma.vehicleTrim.findFirst({
-        where: {
-          isActive: true,
-          baseMF: { gt: 0 },
-          model: {
-            isActive: true,
-            name: { equals: vehicle.model, mode: 'insensitive' },
-            make: {
-              isActive: true,
-              name: { equals: vehicle.make, mode: 'insensitive' }
-            }
-          }
-        }
-      });
-
-      const fallbackMF = fallbackTrim?.baseMF || 0;
-      const fallbackAPR = fallbackTrim?.baseAPR || 0;
-      const fallbackRV = fallbackTrim?.rv36 || 0;
-
-      if (fallbackMF > 0 || fallbackAPR > 0) {
-        console.log(`Using VehicleTrim fallback: mf=${fallbackMF}, apr=${fallbackAPR}, rv=${fallbackRV}`);
-        return [{
-          id: 'trim-fallback',
-          lenderId: null,
-          lender: null,
-          mf: fallbackMF || null,
-          apr: fallbackAPR || null,
-          rv: fallbackRV > 0 ? fallbackRV : 0.55,
-          rebates: 0,
-          programType: context.quoteType,
-          make: vehicle.make,
-          model: vehicle.model,
-          trim: vehicle.trim || null,
-          year: vehicle.year,
-          term: context.term,
-          mileage: context.mileage || 10000,
-          batchId: null,
-          batch: null
-        } as any];
+      if (!carDbCache || Date.now() - carDbCacheTime > CAR_DB_CACHE_TTL) {
+        carDbCache = await getCarDb();
+        carDbCacheTime = Date.now();
       }
+      if (carDbCache) {
+        const makeObj = carDbCache.makes?.find((m: any) => m.name.toLowerCase() === vehicle.make.toLowerCase());
+        if (makeObj) {
+          const modelObj = makeObj.models?.find((m: any) => m.name.toLowerCase() === vehicle.model.toLowerCase());
+          if (modelObj) {
+            const exactMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase() === vehicle.trim.toLowerCase());
+            const wordMatch = modelObj.trims?.find((t: any) => new RegExp(`\\b${vehicle.trim}\\b`, 'i').test(t.name));
+            const partialMatch = modelObj.trims?.find((t: any) => t.name.toLowerCase().includes(vehicle.trim.toLowerCase()));
+            const trimObj = exactMatch || wordMatch || partialMatch;
 
+            let fallbackMf = trimObj?.mf !== undefined && trimObj?.mf !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && modelObj.mf !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && makeObj.baseMF !== "" ? Number(makeObj.baseMF) : 0.002));
+            let fallbackRv = trimObj?.rv36 !== undefined && trimObj?.rv36 !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && modelObj.rv36 !== "" ? Number(modelObj.rv36) : 0.55);
+            let fallbackApr = trimObj?.baseAPR !== undefined && trimObj?.baseAPR !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && modelObj.baseAPR !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && makeObj.baseAPR !== "" ? Number(makeObj.baseAPR) : 4.9));
+
+            // Adjust rv based on term (rough approximation since carDB mostly has rv36)
+            if (context.term === 24) fallbackRv += 0.06;
+            if (context.term === 39) fallbackRv -= 0.02;
+            if (context.term === 42) fallbackRv -= 0.04;
+            if (context.term === 48) fallbackRv -= 0.07;
+            if (context.term === 60) fallbackRv -= 0.15;
+            
+            bankPrograms.push({
+              id: 'cardb-fallback',
+              batchId: activeBatch.id,
+              lenderId: 'CAPTIVE',
+              programType: context.quoteType,
+              make: vehicle.make,
+              model: vehicle.model,
+              trim: vehicle.trim,
+              year: vehicle.year,
+              term: context.term,
+              mileage: 10000,
+              mf: fallbackMf,
+              rv: fallbackRv,
+              apr: fallbackApr,
+              lender: { name: makeObj.name + ' Financial', lenderType: 'CAPTIVE', eligibilityRules: [] }
+            } as any);
+          }
+        }
+      }
+    }
+
+    if (bankPrograms.length === 0) {
       console.log('NO PROGRAMS FOUND. Debug info:', {
         batchId: activeBatch.id,
         programType: context.quoteType,

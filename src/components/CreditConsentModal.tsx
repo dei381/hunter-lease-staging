@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, FileText, CheckCircle2 } from 'lucide-react';
+import { X, ShieldCheck, FileText, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
 interface CreditConsentModalProps {

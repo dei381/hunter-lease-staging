@@ -15,7 +15,7 @@ import { CaseStudies } from '../components/CaseStudies';
 import { TrustSection } from '../components/TrustSection';
 import { DealerReviews } from '../components/DealerReviews';
 import { ImageGallery } from '../components/ImageGallery';
-import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon } from 'lucide-react';
+import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon, CheckCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 import { CompareBar } from '../components/CompareBar';
@@ -68,6 +68,7 @@ export const DealPage = () => {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [leadId, setLeadId] = useState<string | null>(null);
+  const [isMobileCalcOpen, setIsMobileCalcOpen] = useState(false);
 
   const enrichedDeal = deal;
 
@@ -306,83 +307,57 @@ export const DealPage = () => {
         schema={productSchema}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
-        <div className="flex flex-col gap-2">
-          {/* Compact Header Area */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 py-1">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 mb-1">
-                <Breadcrumbs make={deal.make} model={deal.model} />
-              </div>
-              <h1 className="font-display text-4xl md:text-5xl leading-none tracking-tight uppercase">
-                {deal.make} <span className="text-[var(--mu2)]">{deal.model}</span>
-              </h1>
-              <div className="flex items-center gap-4 text-[var(--mu2)]">
-                <span className="font-mono text-[10px] tracking-widest">{deal.year} {td.modelYear}</span>
-                <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                <span className="font-mono text-[10px] tracking-widest">{deal.trim || td.premiumPlus}</span>
-                <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                <div className="flex items-center gap-1.5 relative group cursor-help bg-[var(--lime)]/10 border border-[var(--lime)]/30 px-2 py-0.5 rounded-full">
-                  <ShieldCheck size={12} className="text-[var(--lime)]" />
-                  <span className="font-mono text-[10px] font-bold tracking-widest text-[var(--lime)]">{td.passedAudit}</span>
-                  <div className="absolute top-full left-0 mt-2 w-64 p-3 bg-[var(--s2)] border border-[var(--b2)] rounded-xl text-[10px] text-[var(--mu2)] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
-                    {t.lock?.key2Desc || "Mathematically guaranteed: the dealer cannot add hidden fees."}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsAlertOpen(true)}
-                className="px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 border bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
-              >
-                <Bell size={12} className="text-[var(--lime)]" />
-                {language === 'ru' ? 'Следить за ценой' : 'Price Alert'}
-              </button>
-              <button
-                onClick={() => {
-                  if (isInCompare(deal.id.toString())) {
-                    removeFromCompare(deal.id.toString());
-                  } else {
-                    addToCompare(deal);
-                  }
-                }}
-                title={isInCompare(deal.id.toString()) ? (language === 'ru' ? 'Удалить из сравнения' : 'Remove from compare') : (language === 'ru' ? 'Добавить в сравнение' : 'Add to compare')}
-                className={`p-2 rounded-xl transition-colors flex items-center justify-center border ${
-                  isInCompare(deal.id.toString()) 
-                    ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
-                    : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
-                }`}
-              >
-                <Heart size={16} className={isInCompare(deal.id.toString()) ? "fill-current" : ""} />
-              </button>
-            </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-3">
+          {/* Top Breadcrumbs / Utilities Bar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[var(--b2)]/50 pb-2 pt-2">
+             <div className="flex items-center gap-2">
+               <Breadcrumbs make={deal.make} model={deal.model} />
+             </div>
+             <div className="flex items-center gap-4">
+               {/* Discount Chip */}
+               {deal.savings && deal.msrp && (
+                 <div className="flex items-center gap-1.5 text-[11px] font-bold bg-[var(--b1)] px-3 py-1.5 rounded-full border border-[var(--b2)] font-mono">
+                   <div className="w-2 h-2 rounded-full bg-[var(--lime)]" />
+                   {Math.round((deal.savings / deal.msrp) * 100)}% off MSRP
+                 </div>
+               )}
+               {/* Utilities */}
+               <div className="flex items-center gap-2">
+                 <button
+                    onClick={() => setIsAlertOpen(true)}
+                    className="p-2 sm:px-4 sm:py-2 rounded-full sm:rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border bg-[var(--s2)] text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
+                 >
+                   <Bell size={14} className="text-[var(--lime)]" />
+                   <span className="hidden sm:inline">{language === 'ru' ? 'Следить за ценой' : 'Price Alert'}</span>
+                 </button>
+                 <button
+                    onClick={() => {
+                      if (isInCompare(deal.id.toString())) {
+                        removeFromCompare(deal.id.toString());
+                      } else {
+                        addToCompare(deal);
+                      }
+                    }}
+                    className={`p-2 sm:px-4 sm:py-2 rounded-full sm:rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border ${
+                      isInCompare(deal.id.toString()) 
+                        ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
+                        : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
+                    }`}
+                 >
+                   <Heart size={14} className={isInCompare(deal.id.toString()) ? "fill-current" : ""} />
+                   <span className="hidden sm:inline">{language === 'ru' ? 'СОХРАНИТЬ' : 'SAVE'}</span>
+                 </button>
+               </div>
+             </div>
           </div>
 
-          {/* Sticky Navigation - More Compact */}
-          <div className="sticky top-[var(--nh)] z-40 bg-[var(--bg)]/90 backdrop-blur-md border-b border-[var(--b2)] py-1.5 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <nav className="flex items-center gap-4 overflow-x-auto no-scrollbar">
-              {[
-                { id: 'gallery', label: language === 'ru' ? 'Галерея' : 'Gallery' },
-                { id: 'specs', label: language === 'ru' ? 'Характеристики' : 'Specs' },
-                { id: 'calculator', label: language === 'ru' ? 'Калькулятор' : 'Calculator' },
-                { id: 'process', label: language === 'ru' ? 'Процесс' : 'Process' }
-              ].map(item => (
-                <a 
-                  key={item.id} 
-                  href={`#${item.id}`}
-                  className="text-[9px] font-bold uppercase tracking-widest text-[var(--mu2)] hover:text-[var(--lime)] whitespace-nowrap transition-colors"
-                >
-                  {item.label}
-                </a>
-              ))}
-            </nav>
-          </div>
+
 
           {/* Main Content Grid */}
-          <div className="flex flex-col-reverse lg:grid lg:grid-cols-12 gap-8 relative items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 relative items-start">
             {/* Left Column: Gallery & Technical Specs */}
-            <div className="lg:col-span-7 space-y-8">
+            <div className="lg:col-span-7 space-y-6 order-2 lg:order-1">
               <motion.div
                 id="gallery"
                 initial={{ opacity: 0, y: 20 }}
@@ -642,11 +617,84 @@ export const DealPage = () => {
                   </AnimatePresence>
                 </div>
               </div>
+
+              {/* Trust Elements */}
+              <div className="mt-8 space-y-4">
+                <h3 className="font-display text-lg text-[var(--w)]">
+                  {language === 'ru' ? 'Что включено в сделку' : 'What\'s included'}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-[var(--b1)] border border-[var(--b2)] flex gap-4 items-start">
+                    <ShieldCheck className="text-[#00E58F] shrink-0 mt-0.5" size={20} />
+                    <div>
+                      <h4 className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Гарантия производителя' : 'Manufacturer Warranty'}</h4>
+                      <p className="text-xs text-[var(--mu2)] mt-1">{language === 'ru' ? 'Полное покрытие на срок лизинга. Без сюрпризов.' : 'Full coverage for the lease duration. No surprises.'}</p>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-[var(--b1)] border border-[var(--b2)] flex gap-4 items-start">
+                    <CheckCircle className="text-[#00E58F] shrink-0 mt-0.5" size={20} />
+                    <div>
+                      <h4 className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Никаких наценок' : 'No Hidden Markups'}</h4>
+                      <p className="text-xs text-[var(--mu2)] mt-1">{language === 'ru' ? 'Честная цена без дилерских накруток (No Markups).' : 'Honest pricing with no dealer markups.'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Right Column: Calculator */}
-            <div id="calculator" className="lg:col-span-5 relative scroll-mt-24">
-              <div className="sticky top-[calc(var(--nh)+3rem)] self-start z-30 space-y-6 pb-8">
+            {/* Mobile Sticky CTA */}
+            {!isMobileCalcOpen && (
+               <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg)] border-t border-[var(--b2)] p-4 lg:hidden pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col">
+                    <div className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest">{language === 'ru' ? 'СКОРРЕКТИРОВАТЬ' : 'ADJUST'}</div>
+                    <div className="text-xl font-display text-[var(--w)] font-mono">
+                      <span className="text-[var(--w)] font-sans text-sm">{language === 'ru' ? 'От ' : 'From '}</span>
+                      ${Math.round(selectedConfig?.payment || deal?.displayPayment || 0)}
+                      <span className="text-[var(--mu2)] font-sans text-sm">{language === 'ru' ? '/мес' : '/mo'}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsMobileCalcOpen(true)}
+                    className="flex-1 max-w-[200px] h-12 bg-[#00E58F] text-black font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-[#00D484] transition-colors"
+                  >
+                    {language === 'ru' ? 'ПОСТРОИТЬ СДЕЛКУ' : 'BUILD DEAL'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Mobile Backdrop */}
+            <AnimatePresence>
+              {isMobileCalcOpen && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm lg:hidden"
+                  onClick={() => setIsMobileCalcOpen(false)}
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Right Column: Calculator (Desktop) & Bottom Sheet (Mobile) */}
+            <div id="calculator" className={cn(
+              "relative scroll-mt-24 lg:col-span-5 lg:order-2 lg:block lg:static lg:bg-transparent lg:shadow-none lg:p-0 lg:overflow-visible",
+              isMobileCalcOpen ? "fixed inset-x-0 bottom-0 z-[110] bg-[var(--bg)] rounded-t-3xl border-t border-[var(--b2)] overflow-y-auto max-h-[90vh] pb-[env(safe-area-inset-bottom)] shadow-2xl flex flex-col" : "hidden order-1"
+            )}>
+              {/* Mobile Header for Sheet */}
+              {isMobileCalcOpen && (
+                <div className="sticky top-0 bg-[var(--bg)] z-40 p-4 border-b border-[var(--b2)] lg:hidden flex justify-between items-center rounded-t-3xl">
+                  <h3 className="font-display text-lg text-[var(--w)]">
+                    {language === 'ru' ? 'Параметры сделки' : 'Deal Parameters'}
+                  </h3>
+                  <button onClick={() => setIsMobileCalcOpen(false)} className="p-2 text-[var(--mu2)] hover:text-[var(--w)] bg-[var(--s2)] rounded-full transition-colors relative z-50">
+                    <X size={20} />
+                  </button>
+                </div>
+              )}
+
+              <div className="lg:sticky lg:top-[calc(var(--nh)+1.5rem)] self-start z-30 space-y-6 lg:pb-24 p-4 lg:p-0">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -733,46 +781,6 @@ export const DealPage = () => {
                           : `Current pricing for ${deal.model} is 12.4% below the market average over the last 6 months.`;
                       })()}
                     </p>
-                  </div>
-                </div>
-
-                {/* TCO Analysis */}
-                <div className="bg-[var(--s2)] border border-[var(--b2)] rounded-3xl p-8 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                      <ShieldCheck className="text-blue-500" size={20} />
-                    </div>
-                    <h3 className="font-display text-xl uppercase">{language === 'ru' ? 'Анализ TCO' : 'TCO Analysis'}</h3>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.monthlyAvg}</div>
-                        <div className="text-2xl font-display text-[var(--lime)]">
-                          ${Math.round((Number(deal.displayPayment) || 500) + (3000 / 36))}
-                        </div>
-                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ {t.calc.moShort}</div>
-                      </div>
-                      <div className="bg-[var(--b1)] p-4 rounded-2xl border border-[var(--b2)] space-y-1">
-                        <div className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{t.calc.totalTCO}</div>
-                        <div className="text-2xl font-display text-[var(--w)]">
-                          ${Math.round(((Number(deal.displayPayment) || 500) * 36) + 3000).toLocaleString()}
-                        </div>
-                        <div className="text-[8px] text-[var(--mu2)] uppercase tracking-widest">/ 36 {t.calc.moShort}</div>
-                      </div>
-                    </div>
-
-                    <div className="bg-[var(--b1)]/50 p-4 rounded-2xl border border-[var(--b2)]">
-                      <div className="flex items-start gap-3">
-                        <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
-                          {language === 'ru'
-                            ? 'Total Cost of Ownership (TCO) — это реальная стоимость владения, включающая все платежи и взносы, распределенные на весь срок аренды.'
-                            : 'Total Cost of Ownership (TCO) represents the true cost, including all payments and fees spread across the entire lease term.'}
-                        </p>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>

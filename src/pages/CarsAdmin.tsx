@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Edit2, Trash2, Save, X, ChevronDown, ChevronRight, RefreshCw, Terminal, Database, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, ChevronDown, ChevronRight, RefreshCw, Terminal, Database, Copy, Eye, EyeOff } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 import { getAuthToken } from '../utils/auth';
@@ -396,6 +396,16 @@ export const CarsAdmin = () => {
     toast.success(`Vehicle ${data.year} ${data.make} ${data.model} ${data.trim} added to catalog.`);
   };
 
+  const toggleMakeVisibility = (makeId: string, currentIsHidden: boolean) => {
+    const newDb = { ...carDb };
+    const make = newDb.makes.find((m: any) => m.id === makeId);
+    if (make) {
+      make.isHidden = !currentIsHidden;
+      saveCars(newDb);
+      toast.success(`${make.name} is now ${!currentIsHidden ? 'hidden' : 'visible'} on the marketplace.`);
+    }
+  };
+
   const addMake = () => {
     showPrompt(t.manufacturerNamePrompt, '', 'New Brand', (name) => {
       if (!name) return;
@@ -719,6 +729,14 @@ export const CarsAdmin = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button 
+                  onClick={(e) => { e.stopPropagation(); toggleMakeVisibility(make.id, !!make.isHidden); }} 
+                  className={`px-3 py-1 rounded-md text-sm font-bold flex items-center gap-2 transition-colors ${make.isHidden ? 'text-[var(--mu2)] hover:bg-[var(--bg)]' : 'text-[var(--lime)] hover:bg-[var(--lime)]/10'}`}
+                  title={make.isHidden ? "Currently hidden. Click to show on marketplace." : "Currently visible. Click to hide from marketplace."}
+                >
+                  {make.isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {make.isHidden ? 'Hidden' : 'Visible'}
+                </button>
+                <button 
                   onClick={(e) => { e.stopPropagation(); syncExternal(make.name); }} 
                   className="text-[var(--lime)] hover:bg-[var(--lime)]/10 px-3 py-1 rounded-md text-sm font-bold flex items-center gap-2 transition-colors"
                   disabled={isSyncing}
@@ -970,38 +988,7 @@ export const CarsAdmin = () => {
                                 <div key={`${trim.name}-${idx}`} className="bg-[var(--bg)] border border-[var(--b2)] rounded-lg p-4 space-y-4">
                                   <div className="flex justify-between items-center">
                                     <div className="flex flex-col">
-                                      <div className="flex items-center gap-2">
-                                        <h5 className="font-bold text-[var(--w)]">{trim.name}</h5>
-                                        {trim.trimId && (
-                                          <button
-                                            onClick={async (e) => {
-                                              e.stopPropagation();
-                                              try {
-                                                const token = await getAuthToken();
-                                                const res = await fetch(`/api/v2/catalog/${trim.trimId}/toggle`, {
-                                                  method: 'PATCH',
-                                                  headers: { Authorization: `Bearer ${token}` }
-                                                });
-                                                const data = await res.json();
-                                                if (res.ok) {
-                                                  trim._catalogActive = data.isActive;
-                                                  setCarDb({ ...carDb });
-                                                  toast.success(`Catalog: ${data.isActive ? 'Active' : 'Hidden'}`);
-                                                }
-                                              } catch (err) {
-                                                toast.error('Toggle failed');
-                                              }
-                                            }}
-                                            className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider transition-colors ${
-                                              trim._catalogActive === false
-                                                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                                                : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                                            }`}
-                                          >
-                                            {trim._catalogActive === false ? '⊘ Hidden' : '● Catalog'}
-                                          </button>
-                                        )}
-                                      </div>
+                                      <h5 className="font-bold text-[var(--w)]">{trim.name}</h5>
                                       {trim.lastUpdated && (
                                         <span className="text-[8px] text-[var(--mu2)] italic">
                                           Synced: {new Date(trim.lastUpdated).toLocaleString()}

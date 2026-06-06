@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
-import { Maximize2, Eye, Info, Camera, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Maximize2, Eye, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
+
+const CAR_IMAGES = [
+  'https://images.unsplash.com/photo-1707156172012-32049950669b?q=80&w=1000&auto=format&fit=crop', // Main Elantra-like
+  'https://images.unsplash.com/photo-1617469767053-d3b523a0b982?q=80&w=1000&auto=format&fit=crop', // Rear
+  'https://images.unsplash.com/photo-1590362891991-f776e933a690?q=80&w=1000&auto=format&fit=crop', // Side
+  'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?q=80&w=1000&auto=format&fit=crop', // Interior 1
+  'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?q=80&w=1000&auto=format&fit=crop', // Interior 2
+  'https://images.unsplash.com/photo-1603584173870-7f339f084ec1?q=80&w=1000&auto=format&fit=crop', // Wheel
+];
 
 interface ImageGalleryProps {
   mainImage?: string;
@@ -11,112 +20,41 @@ interface ImageGalleryProps {
   viewCount?: string;
   dealId?: string;
   isMarketcheck?: boolean;
-  vehicleName?: string;
 }
 
-export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId, isMarketcheck, vehicleName }) => {
+export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: propImages, viewCount, dealId, isMarketcheck }) => {
   const { language } = useLanguageStore();
   const t = translations[language];
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const hasRealImages = (propImages && propImages.length > 0) || !!mainImage;
-  const images = propImages && propImages.length > 0 ? propImages : (mainImage ? [mainImage] : []);
+  const images = propImages && propImages.length > 0 ? propImages : (mainImage ? [mainImage] : CAR_IMAGES);
   const hasMultipleImages = images.length > 1;
-
-  // No real photos — show placeholder
-  if (!hasRealImages) {
-    return (
-      <div className="flex flex-col gap-6">
-        <div className="relative aspect-[16/10] bg-gradient-to-br from-[var(--s2)] to-[var(--b1)] rounded-xl overflow-hidden border border-[var(--b2)] flex flex-col items-center justify-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-[var(--b1)] border border-[var(--b2)] flex items-center justify-center">
-            <Camera size={32} className="text-[var(--mu2)] opacity-40" />
-          </div>
-          {vehicleName && (
-            <p className="text-lg font-bold text-[var(--mu2)] opacity-60 tracking-wider uppercase">{vehicleName}</p>
-          )}
-          <p className="text-xs text-[var(--mu2)] opacity-40 uppercase tracking-widest">
-            {language === 'ru' ? 'Фото будут доступны в ближайшее время' : 'Photos coming soon'}
-          </p>
-        </div>
-        <div className="flex justify-between items-center px-1">
-          <p className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest flex items-center gap-2">
-            <Info size={10} />
-            {t.gallery.referenceOnly}
-          </p>
-          <p className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">REF: {dealId || '286877'}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const VISIBLE_THUMBS = 5;
-  const [thumbOffset, setThumbOffset] = useState(0);
-  const maxOffset = Math.max(0, images.length - VISIBLE_THUMBS);
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
-      {/* Thumbnails - Vertical on Desktop with up/down pagination */}
-      {hasMultipleImages && (() => {
-        const canScrollUp = thumbOffset > 0;
-        const canScrollDown = thumbOffset < maxOffset;
-        const items: ({ type: 'up' } | { type: 'down' } | { type: 'thumb'; index: number })[] = [];
-        for (let i = 0; i < VISIBLE_THUMBS && thumbOffset + i < images.length; i++) {
-          if (i === 0 && canScrollUp) {
-            items.push({ type: 'up' });
-          } else if (i === VISIBLE_THUMBS - 1 && canScrollDown) {
-            items.push({ type: 'down' });
-          } else {
-            items.push({ type: 'thumb', index: thumbOffset + i });
-          }
-        }
-        return (
-          <div className="hidden md:flex flex-col gap-3 w-24 shrink-0">
-            {items.map((item) => {
-              if (item.type === 'up') {
-                return (
-                  <button
-                    key="nav-up"
-                    onClick={() => setThumbOffset(o => Math.max(0, o - 1))}
-                    className="aspect-square rounded-xl border-2 border-[var(--b2)] bg-[var(--s2)] flex items-center justify-center text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
-                  >
-                    <ChevronUp size={22} />
-                  </button>
-                );
-              }
-              if (item.type === 'down') {
-                return (
-                  <button
-                    key="nav-down"
-                    onClick={() => setThumbOffset(o => Math.min(maxOffset, o + 1))}
-                    className="aspect-square rounded-xl border-2 border-[var(--b2)] bg-[var(--s2)] flex items-center justify-center text-[var(--mu2)] hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all"
-                  >
-                    <ChevronDown size={22} />
-                  </button>
-                );
-              }
-              const realIdx = item.index;
-              return (
-                <button
-                  key={realIdx}
-                  onClick={() => setActiveIndex(realIdx)}
-                  className={cn(
-                    "aspect-square rounded-xl overflow-hidden border-2 transition-all relative group",
-                    activeIndex === realIdx
-                      ? "border-[var(--lime)] shadow-[0_0_15px_rgba(163,230,53,0.3)]"
-                      : "border-white/5 opacity-40 hover:opacity-100 hover:border-white/20"
-                  )}
-                >
-                  <img src={images[realIdx]} alt={`Thumbnail ${realIdx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  <div className={cn(
-                    "absolute inset-0 bg-[var(--lime)]/10 transition-opacity",
-                    activeIndex === realIdx ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  )} />
-                </button>
-              );
-            })}
-          </div>
-        );
-      })()}
+      {/* Thumbnails - Vertical on Desktop */}
+      {hasMultipleImages && (
+        <div className="hidden md:flex flex-col gap-3 w-24 shrink-0 max-h-[500px] overflow-y-auto no-scrollbar scroll-smooth">
+          {images.map((img, idx) => (
+            <button
+              key={idx}
+              onClick={() => setActiveIndex(idx)}
+              className={cn(
+                "shrink-0 w-24 h-24 aspect-square rounded-xl overflow-hidden border-2 transition-all relative group",
+                activeIndex === idx 
+                  ? "border-[var(--lime)] shadow-[0_0_15px_rgba(163,230,53,0.3)]" 
+                  : "border-white/5 opacity-40 hover:opacity-100 hover:border-white/20"
+              )}
+            >
+              <img src={img} alt={`Thumbnail ${idx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <div className={cn(
+                "absolute inset-0 bg-[var(--lime)]/10 transition-opacity",
+                activeIndex === idx ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              )} />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col gap-6">
         {/* Main Image Container */}
@@ -147,31 +85,6 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ mainImage, images: p
           <button className="absolute bottom-4 right-4 p-2 bg-black/40 backdrop-blur-md border border-white/10 rounded-lg text-white hover:text-[var(--lime)] transition-colors">
             <Maximize2 size={18} />
           </button>
-
-          {/* Photo Counter */}
-          {hasMultipleImages && (
-            <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-[10px] font-bold text-white/80 tracking-wider">
-              {activeIndex + 1} / {images.length}
-            </div>
-          )}
-
-          {/* Prev/Next Arrows */}
-          {hasMultipleImages && (
-            <>
-              <button
-                onClick={() => setActiveIndex(i => i > 0 ? i - 1 : images.length - 1)}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-md border border-white/10 rounded-full text-white hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all opacity-0 group-hover:opacity-100"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <button
-                onClick={() => setActiveIndex(i => i < images.length - 1 ? i + 1 : 0)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-md border border-white/10 rounded-full text-white hover:text-[var(--lime)] hover:border-[var(--lime)] transition-all opacity-0 group-hover:opacity-100"
-              >
-                <ChevronRight size={20} />
-              </button>
-            </>
-          )}
         </div>
 
         {/* Thumbnails - Horizontal on Mobile */}

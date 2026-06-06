@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { X, ShieldCheck, CheckCircle } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
 
@@ -65,7 +65,7 @@ export const LockModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 {keys.map((key, i) => (
                   <div key={i} className="flex gap-4 group">
                     <div className="mt-1 shrink-0">
-                      <CheckCircle2 className="w-4 h-4 text-[var(--lime)] opacity-40 group-hover:opacity-100 transition-opacity" />
+                      <CheckCircle className="w-4 h-4 text-[var(--lime)] opacity-40 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-[var(--w)] mb-1 uppercase tracking-wider">{key.title}</h4>

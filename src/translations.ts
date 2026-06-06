@@ -25,7 +25,7 @@ export const translations = {
     quizCta: "Don't know which car to choose? Take our 30-second quiz to find the best lease deals for your lifestyle.",
     dealAuditorCta: "Already have an offer from a dealer? Upload it, and we will find hidden markups.",
     compareVerdict: "Hunter's Verdict",
-    successPopup: "Your application has been sent to a closed network of 217+ dealers. Average response time is 2 hours. We will send you an SMS when a dealer accepts your terms.",
+    successPopup: "Your application has been sent to a manager. Average response time is 2 hours. We will send you an SMS when a dealer accepts your terms.",
     reviewsText: "4.9/5 based on 1,200+ LA deals",
     statsCount: {
       dealers: "217+",
@@ -605,7 +605,7 @@ export const translations = {
     },
     why: {
       title: "How the Platform Works",
-      desc1: "Thanks to our network of 200+ dealers and partner banks, we make them compete for you. Our algorithm selects the exact bank (Captive or Non-Captive) that offers the best terms specifically for your Credit Score.",
+      desc1: "We work directly with the dealer on a wholesale model, allowing us to provide you the best terms by bypassing retail markups. Our algorithm selects the exact bank (Captive or Non-Captive) that offers the best terms specifically for your Credit Score.",
       desc2: "Banks and dealers compete for your credit profile.",
       bullet1: "We make them fight for you",
       bullet2: "Best rates for your exact score",
@@ -1172,7 +1172,7 @@ export const translations = {
       senderNameDesc:
         "Please provide the name as it appears on your card.",
       confirmTerms:
-        "I understand the $95 platform deposit is fully refundable if my requested terms cannot be met by the dealership.",
+        "I understand the $95 platform deposit is fully refundable if my requested terms cannot be met by the dealership. Once the dealer approves and accepts the terms, the deposit becomes non-refundable. I agree to the",
       processing: "PROCESSING...",
       havePaid: "SUBMIT DEPOSIT & REQUEST",
       secureTransaction: "Secure 256-bit Encryption",
@@ -1897,7 +1897,7 @@ export const translations = {
     quizCta: "Не знаете, какую машину выбрать? Пройдите наш 30-секундный квиз, чтобы найти лучшие предложения для вашего образа жизни.",
     dealAuditorCta: "Уже есть оффер от дилера? Загрузите его, и мы найдем скрытые наценки.",
     compareVerdict: "Вердикт Hunter's",
-    successPopup: "Ваша заявка отправлена в закрытую сеть из 217+ дилеров. Среднее время ответа — 2 часа. Мы пришлем вам SMS, когда дилер примет ваши условия.",
+    successPopup: "Ваша заявка отправлена нашему менеджеру. Среднее время ответа — 2 часа. Мы пришлем вам SMS, когда дилер примет ваши условия.",
     reviewsText: "4.9/5 на основе 1,200+ сделок в ЛА",
     statsCount: {
       dealers: "217+",
@@ -2483,7 +2483,7 @@ export const translations = {
     why: {
       title: "НАША МИССИЯ",
       desc1:
-        "Благодаря сети из 200+ дилеров и банков-партнеров, мы заставляем их конкурировать за вас. Наш алгоритм подбирает банк (Captive или Non-Captive), который дает лучшие условия именно под ваш Credit Score.",
+        "Мы работаем напрямую с дилером по оптовой модели, предоставляя лучшие условия без розничных наценок. Наш алгоритм подбирает банк (Captive или Non-Captive), который дает лучшие условия именно под ваш Credit Score.",
       desc2: "Банки и дилеры соревнуются за ваш кредитный профиль.",
       bullet1: "Мы заставляем их бороться за вас",
       bullet2: "Лучшие ставки под ваш рейтинг",
@@ -3050,7 +3050,7 @@ export const translations = {
       senderNameDesc:
         "Пожалуйста, укажите имя так, как оно написано на вашей карте.",
       confirmTerms:
-        "Я понимаю, что депозит платформы в размере $95 полностью возвращается, если мои запрошенные условия не могут быть выполнены дилерским центром.",
+        "Я понимаю, что депозит платформы в размере $95 полностью возвращается, если дилерский центр не может выполнить мои запрошенные условия. Как только дилер одобрит и примет заявку, депозит становится невозвратным. Я принимаю",
       processing: "ОБРАБОТКА...",
       havePaid: "ОТПРАВИТЬ ДЕПОЗИТ И ЗАЯВКУ",
       secureTransaction: "Надежное 256-битное шифрование",

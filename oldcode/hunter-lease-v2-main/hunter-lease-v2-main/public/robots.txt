@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://hunterlease.com/sitemap.xml

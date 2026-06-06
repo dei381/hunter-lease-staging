@@ -17,8 +17,8 @@
   --b3: #9CA3AF;
   
   --w: #000000;
-  --mu: #4B5563;
-  --mu2: #6B7280;
+  --mu: #374151;
+  --mu2: #4B5563;
   
   --primary: #002C5F;
   --accent: #E63946;
@@ -27,7 +27,7 @@
   --teal: #22c997;
   --grn: #22C55E;
   
-  --nh: 80px;
+  --nh: 64px;
 }
 
 @layer base {
@@ -78,4 +78,13 @@
 
 .animate-marquee {
   animation: marquee 30s linear infinite;
+}
+
+/* Hide scrollbar for elements with no-scrollbar class */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
