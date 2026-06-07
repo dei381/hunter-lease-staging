@@ -441,39 +441,9 @@ export class DealEngineFacade {
     };
 
     return dealsToProcess.map(({ deal, data }) => {
-      // Grid-authoritative lookup: if the deal carries a published lease grid (real
-      // lender desk per term × tier), show that exact payment so cards match the source
-      // (e.g. autobandit) precisely. Falls back to the computed path below if absent.
-      if (data.grid && typeof data.grid === 'object') {
-        const defaultTerm = data.defaultTerm || 36;
-        const tKey = String(queryTerm ? parseInt(queryTerm as string, 10) : defaultTerm);
-        const tierKey = (queryTier as string) || 't1';
-        const termCell = data.grid[tKey] || data.grid[String(defaultTerm)] || {};
-        const cell = termCell[tierKey] || termCell['t1'];
-        if (cell && cell.payment) {
-          const gMsrp = Number(cell.msrp) || getVal(data.msrp);
-          return {
-            deal,
-            data,
-            computed: {
-              payment: Number(cell.payment),
-              financePayment: Number(cell.financePayment) || 0,
-              msrp: gMsrp,
-              mf: Number(cell.mf) || 0,
-              rv: Number(cell.rv) || 0,
-              leaseCash: Number(cell.incentive) || 0,
-              term: parseInt(tKey, 10),
-              down: Number(cell.dueAtSigning) || getVal(data.down, 0),
-              savings: (Number(cell.dealerDiscount) || 0) + (Number(cell.incentive) || 0),
-              discount: Number(cell.dealerDiscount) || 0,
-              rebates: Number(cell.incentive) || 0,
-              apr: Number(cell.apr) || 0,
-              type: 'lease'
-            }
-          };
-        }
-      }
-
+      // NOTE: catalog cards are COMPUTED live from our rates (MF/RV) + our incentives
+      // for the requested term/tier/mileage — we deliberately do NOT show a pre-baked
+      // source payment. Dealer discounts come only from the admin discount manager.
       const hunterDiscount = data.hunterDiscount?.isGlobal ? (data.hunterDiscount.value || 0) : 0;
       const manufacturerRebate = data.manufacturerRebate?.isGlobal ? (data.manufacturerRebate.value || 0) : 0;
       const totalGlobalSavings = hunterDiscount + manufacturerRebate;

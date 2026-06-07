@@ -1193,17 +1193,31 @@ async function startServer() {
   // Bulk Edit Endpoints
   app.get("/api/admin/bulk/lease-programs", adminAuth, async (req, res) => {
     try {
-      const programs = await prisma.bankProgram.findMany({
-        where: { programType: 'LEASE', batch: { status: 'ACTIVE' } },
-        include: { lender: true },
-        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
-      });
-      const mapped = programs.map(p => ({
-        ...p,
-        buyRateMf: p.mf,
-        residualPercentage: p.rv,
-        internalLenderTier: 'Standard'
-      }));
+      // Include v2 LeaseProgram rows (our per-tier grid data) plus legacy BankProgram.
+      const [leaseProgs, programs] = await Promise.all([
+        prisma.leaseProgram.findMany({
+          where: { isActive: true },
+          include: { lender: true },
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
+        }),
+        prisma.bankProgram.findMany({
+          where: { programType: 'LEASE', batch: { status: 'ACTIVE' } },
+          include: { lender: true },
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
+        })
+      ]);
+      const mapped = [
+        ...leaseProgs.map(p => ({
+          id: p.id, batchId: 'v2', lenderId: p.lenderId, programType: 'LEASE',
+          make: p.make, model: p.model, trim: p.trim, year: p.year, term: p.term, mileage: p.mileage,
+          rv: Number(p.residualPercentage), mf: Number(p.buyRateMf), apr: 0, rebates: 0,
+          buyRateMf: Number(p.buyRateMf), residualPercentage: Number(p.residualPercentage),
+          internalLenderTier: p.internalLenderTier, lenderName: p.lender?.name, lender: p.lender, _src: 'lease'
+        })),
+        ...programs.map(p => ({
+          ...p, buyRateMf: p.mf, residualPercentage: p.rv, internalLenderTier: 'Standard', _src: 'bank'
+        }))
+      ];
       res.json(safeValidate(ProgramsResponseSchema, mapped, [], 'lease-programs'));
     } catch (error) {
       console.error("Failed to fetch lease programs:", error);
@@ -1214,16 +1228,20 @@ async function startServer() {
   app.put("/api/admin/bulk/lease-programs", adminAuth, express.json(), async (req, res) => {
     try {
       const { updates } = req.body;
-      const transactions = updates.map((u: any) => 
-        prisma.bankProgram.update({
-          where: { id: u.id },
-          data: { 
-            mf: parseFloat(u.buyRateMf), 
-            rv: parseFloat(u.residualPercentage) 
-          }
-        })
-      );
-      await prisma.$transaction(transactions);
+      // Route each update to the right table (v2 LeaseProgram first, legacy BankProgram fallback).
+      for (const u of updates) {
+        try {
+          await prisma.leaseProgram.update({
+            where: { id: u.id },
+            data: { buyRateMf: parseFloat(u.buyRateMf), residualPercentage: parseFloat(u.residualPercentage) }
+          });
+        } catch {
+          await prisma.bankProgram.update({
+            where: { id: u.id },
+            data: { mf: parseFloat(u.buyRateMf), rv: parseFloat(u.residualPercentage) }
+          });
+        }
+      }
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to update lease programs:", error);
@@ -1233,16 +1251,30 @@ async function startServer() {
 
   app.get("/api/admin/bulk/finance-programs", adminAuth, async (req, res) => {
     try {
-      const programs = await prisma.bankProgram.findMany({
-        where: { programType: 'FINANCE', batch: { status: 'ACTIVE' } },
-        include: { lender: true },
-        orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
-      });
-      const mapped = programs.map(p => ({
-        ...p,
-        buyRateApr: p.apr,
-        internalLenderTier: 'Standard'
-      }));
+      const [finProgs, programs] = await Promise.all([
+        prisma.financeProgram.findMany({
+          where: { isActive: true },
+          include: { lender: true },
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
+        }),
+        prisma.bankProgram.findMany({
+          where: { programType: 'FINANCE', batch: { status: 'ACTIVE' } },
+          include: { lender: true },
+          orderBy: [{ make: 'asc' }, { model: 'asc' }, { year: 'desc' }]
+        })
+      ]);
+      const mapped = [
+        ...finProgs.map(p => ({
+          id: p.id, batchId: 'v2', lenderId: p.lenderId, programType: 'FINANCE',
+          make: p.make, model: p.model, trim: p.trim, year: p.year, term: p.term, mileage: 0,
+          rv: 0, mf: 0, apr: Number(p.buyRateApr), rebates: 0,
+          buyRateApr: Number(p.buyRateApr), internalLenderTier: p.internalLenderTier,
+          lenderName: p.lender?.name, lender: p.lender, _src: 'finance'
+        })),
+        ...programs.map(p => ({
+          ...p, buyRateApr: p.apr, internalLenderTier: 'Standard', _src: 'bank'
+        }))
+      ];
       res.json(safeValidate(ProgramsResponseSchema, mapped, [], 'finance-programs'));
     } catch (error) {
       console.error("Failed to fetch finance programs:", error);
@@ -1253,13 +1285,19 @@ async function startServer() {
   app.put("/api/admin/bulk/finance-programs", adminAuth, express.json(), async (req, res) => {
     try {
       const { updates } = req.body;
-      const transactions = updates.map((u: any) => 
-        prisma.bankProgram.update({
-          where: { id: u.id },
-          data: { apr: parseFloat(u.buyRateApr) }
-        })
-      );
-      await prisma.$transaction(transactions);
+      for (const u of updates) {
+        try {
+          await prisma.financeProgram.update({
+            where: { id: u.id },
+            data: { buyRateApr: parseFloat(u.buyRateApr) }
+          });
+        } catch {
+          await prisma.bankProgram.update({
+            where: { id: u.id },
+            data: { apr: parseFloat(u.buyRateApr) }
+          });
+        }
+      }
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to update finance programs:", error);
@@ -1333,6 +1371,121 @@ async function startServer() {
     } catch (error) {
       console.error("Failed to delete dealer discount:", error);
       res.status(500).json({ error: "Failed to delete dealer discount" });
+    }
+  });
+
+  // --- Discount Manager: Dealer Adjustments (admin-managed dealer discounts) ---
+  app.get("/api/admin/dealer-adjustments", adminAuth, async (req, res) => {
+    try {
+      const items = await prisma.dealerAdjustment.findMany({ orderBy: [{ make: 'asc' }, { model: 'asc' }, { trim: 'asc' }] });
+      res.json(items);
+    } catch (error) {
+      console.error("Failed to fetch dealer adjustments:", error);
+      res.status(500).json({ error: "Failed to fetch dealer adjustments" });
+    }
+  });
+
+  app.post("/api/admin/dealer-adjustments", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { make, model, trim, amount, isActive, startsAt, endsAt, dealerPartnerId } = req.body;
+      const item = await prisma.dealerAdjustment.create({
+        data: {
+          make: make || null, model: model || null, trim: trim || null,
+          amount: parseInt(amount) || 0, isActive: isActive ?? true,
+          startsAt: startsAt ? new Date(startsAt) : new Date(),
+          endsAt: endsAt ? new Date(endsAt) : null,
+          dealerPartnerId: dealerPartnerId || null,
+        },
+      });
+      res.json(item);
+    } catch (error) {
+      console.error("Failed to create dealer adjustment:", error);
+      res.status(500).json({ error: "Failed to create dealer adjustment" });
+    }
+  });
+
+  app.put("/api/admin/dealer-adjustments/:id", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { make, model, trim, amount, isActive, startsAt, endsAt, dealerPartnerId } = req.body;
+      const data: any = {};
+      if (make !== undefined) data.make = make || null;
+      if (model !== undefined) data.model = model || null;
+      if (trim !== undefined) data.trim = trim || null;
+      if (amount !== undefined) data.amount = parseInt(amount) || 0;
+      if (isActive !== undefined) data.isActive = isActive;
+      if (startsAt !== undefined) data.startsAt = startsAt ? new Date(startsAt) : new Date();
+      if (endsAt !== undefined) data.endsAt = endsAt ? new Date(endsAt) : null;
+      if (dealerPartnerId !== undefined) data.dealerPartnerId = dealerPartnerId || null;
+      const item = await prisma.dealerAdjustment.update({ where: { id: req.params.id }, data });
+      res.json(item);
+    } catch (error) {
+      console.error("Failed to update dealer adjustment:", error);
+      res.status(500).json({ error: "Failed to update dealer adjustment" });
+    }
+  });
+
+  app.delete("/api/admin/dealer-adjustments/:id", adminAuth, async (req, res) => {
+    try {
+      await prisma.dealerAdjustment.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete dealer adjustment:", error);
+      res.status(500).json({ error: "Failed to delete dealer adjustment" });
+    }
+  });
+
+  // --- Discount Manager: Program Overrides (MF/APR markups by bank/make/model) ---
+  app.get("/api/admin/program-overrides", adminAuth, async (req, res) => {
+    try {
+      const items = await prisma.programOverride.findMany({ orderBy: [{ make: 'asc' }, { model: 'asc' }] });
+      res.json(items);
+    } catch (error) {
+      console.error("Failed to fetch program overrides:", error);
+      res.status(500).json({ error: "Failed to fetch program overrides" });
+    }
+  });
+
+  app.post("/api/admin/program-overrides", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { bankId, make, model, mfMarkup, aprMarkup, isActive } = req.body;
+      const item = await prisma.programOverride.create({
+        data: {
+          bankId: bankId || null, make: make || null, model: model || null,
+          mfMarkup: mfMarkup ?? null, aprMarkup: aprMarkup ?? null, isActive: isActive ?? true,
+        },
+      });
+      res.json(item);
+    } catch (error) {
+      console.error("Failed to create program override:", error);
+      res.status(500).json({ error: "Failed to create program override" });
+    }
+  });
+
+  app.put("/api/admin/program-overrides/:id", adminAuth, express.json(), async (req, res) => {
+    try {
+      const { bankId, make, model, mfMarkup, aprMarkup, isActive } = req.body;
+      const data: any = {};
+      if (bankId !== undefined) data.bankId = bankId || null;
+      if (make !== undefined) data.make = make || null;
+      if (model !== undefined) data.model = model || null;
+      if (mfMarkup !== undefined) data.mfMarkup = mfMarkup ?? null;
+      if (aprMarkup !== undefined) data.aprMarkup = aprMarkup ?? null;
+      if (isActive !== undefined) data.isActive = isActive;
+      const item = await prisma.programOverride.update({ where: { id: req.params.id }, data });
+      res.json(item);
+    } catch (error) {
+      console.error("Failed to update program override:", error);
+      res.status(500).json({ error: "Failed to update program override" });
+    }
+  });
+
+  app.delete("/api/admin/program-overrides/:id", adminAuth, async (req, res) => {
+    try {
+      await prisma.programOverride.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete program override:", error);
+      res.status(500).json({ error: "Failed to delete program override" });
     }
   });
 

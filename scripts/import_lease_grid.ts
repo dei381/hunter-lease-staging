@@ -134,8 +134,10 @@ async function main() {
   });
 
   // ---- clean slate for this make so stale pre-import data can't shadow the grid ----
-  // 1. Dealer adjustments + OEM incentives (engine filters on isActive).
-  await prisma.dealerAdjustment.updateMany({ where: { make: { equals: makeName, mode: 'insensitive' } }, data: { isActive: false } });
+  // 1. OEM incentives reset. Dealer discounts are NOT imported from the source grid —
+  //    discounts must be set by the admin in the discount manager — so we DELETE any
+  //    dealer adjustments we previously created for this make.
+  await prisma.dealerAdjustment.deleteMany({ where: { make: { equals: makeName, mode: 'insensitive' } } });
   await prisma.oemIncentiveProgram.updateMany({ where: { make: { equals: makeName, mode: 'insensitive' } }, data: { isActive: false } });
   // 2. Models + trims: deactivate all; the grid upserts below re-activate only what's current.
   await prisma.vehicleModel.updateMany({ where: { makeId: make.id }, data: { isActive: false } });
@@ -222,15 +224,8 @@ async function main() {
         },
       });
 
-      // DealerAdjustment (MSRP - selling) for this trim. NOTE: the engine treats
-      // DealerAdjustment.amount as CENTS (dealerDiscountCents), so store cents.
-      const dealerDiscountCents = Math.round((msrp - repSelling) * 100);
-      const existingAdj = await prisma.dealerAdjustment.findFirst({ where: { make: makeName, model: modelName, trim: trimName } });
-      if (existingAdj) {
-        await prisma.dealerAdjustment.update({ where: { id: existingAdj.id }, data: { amount: dealerDiscountCents, isActive: true } });
-      } else {
-        await prisma.dealerAdjustment.create({ data: { make: makeName, model: modelName, trim: trimName, amount: dealerDiscountCents, isActive: true } });
-      }
+      // NOTE: we intentionally do NOT create a DealerAdjustment from the source
+      // selling price. Dealer discounts are the admin's to set in the discount manager.
 
       // Per-trim OEM lease cash (default applied). Matched by make/model/trim in the
       // engine; amount = the trim's representative (36mo) lease cash. Non-taxable cap
@@ -254,33 +249,13 @@ async function main() {
         await prisma.oemIncentiveProgram.updateMany({ where: { seedKey: trimSeedKey }, data: { isActive: false } });
       }
 
-      // LeaseProgram per (term, tier) + grid object for the DealRecord
-      const grid: Record<string, Record<string, any>> = {};
+      // LeaseProgram rows per (term, tier) — the per-tier buy-rates the calculator uses.
       for (const r of trimRows) {
         const term = num(r.term);
         const tk = tierKey(r.credit_tier);
         if (!term || !tk) continue;
         const residualPct = num(r.residual_pct);
         const mf = num(r.money_factor);
-        const apr = num(r.apr);
-        const monthly = num(r.monthly_payment);
-        const incentive = num(r.incentive_total);
-        const selling = num(r.selling_price);
-        const das = num(r.due_at_signing);
-        const dealerDiscount = Math.max(0, Math.round(msrp - selling));
-
-        // grid cell (authoritative published numbers)
-        if (!grid[String(term)]) grid[String(term)] = {};
-        grid[String(term)][tk] = {
-          payment: Math.round(monthly),
-          mf,
-          rv: residualPct / 100,
-          incentive: Math.round(incentive),
-          dealerDiscount,
-          msrp: Math.round(msrp),
-          dueAtSigning: Math.round(das),
-          apr,
-        };
 
         // LeaseProgram row (only mileage=10000 base; residual stored as percent)
         await prisma.leaseProgram.upsert({
@@ -311,9 +286,8 @@ async function main() {
         year,
         msrp,
         type: 'lease',
-        dealerDiscount: repDealerDiscount,
+        dealerDiscount: 0, // discounts are admin-managed, not taken from the source grid
         defaultTerm: 36,
-        grid,
         image: photo.image || null,
         images: photo.images || (photo.image ? [photo.image] : []),
         incentives: incentivesList,
