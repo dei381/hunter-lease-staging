@@ -51,8 +51,8 @@ export const GlossaryPage = () => {
     {
       term_en: "SSN (Social Security Number)",
       term_ru: "SSN (Номер социального страхования)",
-      def_en: "A nine-digit number issued to U.S. citizens, permanent residents, and temporary (working) residents. Hunter Lease specializes in helping clients lease without an SSN.",
-      def_ru: "Девятизначный номер, выдаваемый гражданам США, постоянным и временным резидентам. Hunter Lease специализируется на помощи клиентам в оформлении лизинга без SSN."
+      def_en: "A nine-digit number issued to U.S. citizens, permanent residents, and temporary (working) residents. We help newcomers with thin credit profiles get approved.",
+      def_ru: "Девятизначный номер, выдаваемый гражданам США, постоянным и временным резидентам. Мы помогаем новоприбывшим с короткой кредитной историей получить одобрение."
     },
     {
       term_en: "Credit Score",

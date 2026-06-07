@@ -94,7 +94,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
         currentTerm = '36';
       }
 
-      const totalIncentives = (deal.availableIncentives || []).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+      const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
       const msrp = Number(deal.msrp) || 0;
       const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
       const savingsPctObj = msrp > 0 ? badgeTotalSavings / msrp : 0;
@@ -123,7 +123,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
       if (hasCosigner) {
         matchesFTB = deal.allowWithCoSigner !== false;
       } else {
-        matchesFTB = deal.isFirstTimeBuyerEligible !== false;
+        matchesFTB = true; // We no longer strictly filter out deals for thin-credit/FTB users upfront
       }
     }
     
@@ -131,7 +131,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
   });
 
   const sortedDeals = [...filteredDeals].sort((a, b) => (a.displayPayment || 0) - (b.displayPayment || 0));
-  const displayedDeals = limit ? sortedDeals.slice(0, limit) : sortedDeals;
+  const displayedDeals: any[] = [];
 
   return (
     <div className="space-y-8">
@@ -279,48 +279,33 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 max-w-[80%]">
-                  {deal.isSoldOut && (
+                  {deal.isSoldOut ? (
                     <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-red-600 text-white shadow-sm">
-                      Sold Out
+                      {language === 'ru' ? 'ПРОДАНО' : 'SOLD OUT'}
                     </span>
-                  )}
-                  <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase ${deal.displayType === 'lease' ? 'bg-blue-500 text-white' : 'bg-[var(--grn)] text-white'}`}>
-                    {deal.displayType === 'lease' ? t.lease : t.finance}
-                  </span>
-                  {deal.savingsPctObj >= 0.06 && (
-                    <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[#00E58F] text-black">
-                      {language === 'ru' ? 'Отличная скидка' : 'Great Price'}
+                  ) : deal.hot ? (
+                    <span className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black shadow-sm">
+                      🔥 {language === 'ru' ? 'ХИТ ПРОДАЖ' : 'TOP SELLER'}
                     </span>
-                  )}
-                  {deal.savingsPctObj >= 0.03 && deal.savingsPctObj < 0.06 && (
-                    <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-md">
-                      {language === 'ru' ? 'Хорошая скидка' : 'Good Price'}
-                    </span>
-                  )}
-                  {deal.badgeTotalSavings > 0 && (
-                    <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] backdrop-blur-md">
-                      {language === 'ru' ? `Ниже MSRP на ${fmt(deal.badgeTotalSavings)}` : `Save ${fmt(deal.badgeTotalSavings)}`}
-                    </span>
-                  )}
-                  {deal.displayType === 'lease' && deal.leaseValueRatio > 0 && deal.leaseValueRatio <= 0.0125 && (
-                    <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase ${deal.leaseValueRatio <= 0.010 ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 backdrop-blur-md'}`}>
-                      {deal.leaseValueRatio <= 0.010 
-                        ? (language === 'ru' ? 'Отличный лизинг' : 'Exceptional Lease') 
-                        : (language === 'ru' ? 'Хороший лизинг' : 'Good Lease')}
-                    </span>
-                  )}
-                  {deal.hot && <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black">🔥 {t.hot}</span>}
-                  {deal.rv && (parseFloat(String(deal.rv).replace('%', '')) > 60 || parseFloat(String(deal.rv).replace('%', '')) > 0.6) && (
+                  ) : (deal.viewCount && deal.viewCount > 50) ? (
                     <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-orange-500/20 text-orange-300 border border-orange-500/30 backdrop-blur-md">
-                      {tcalc.fastSelling || "Fast Selling"}
+                      {language === 'ru' ? 'ПОПУЛЯРНОЕ' : 'POPULAR'}
+                    </span>
+                  ) : null}
+
+                  <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase ${deal.savingsPctObj > 0 ? 'bg-[#00E58F] text-black shadow-sm' : 'bg-[var(--s2)] text-[var(--mu2)] border border-[var(--b2)] backdrop-blur-md'}`}>
+                    {deal.savingsPctObj > 0 
+                      ? `${(deal.savingsPctObj * 100).toFixed(1)}% ${language === 'ru' ? 'СКИДКА' : 'OFF MSRP'}`
+                      : `0% ${language === 'ru' ? 'СКИДКА' : 'OFF MSRP'}`
+                    }
+                  </span>
+                  
+                  {(deal.class?.toLowerCase() === 'ev' || deal.fuelType?.toLowerCase() === 'electric') && (
+                    <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30 backdrop-blur-md">
+                      ⚡ EV
                     </span>
                   )}
                 </div>
-                {(deal.class?.toLowerCase() === 'ev' || deal.fuelType?.toLowerCase() === 'electric') && (
-                  <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30 backdrop-blur-md">
-                    ⚡ {t.evBadge}
-                  </span>
-                )}
               </div>
 
               <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">

@@ -322,7 +322,7 @@ export class DataResolver {
           make: { equals: vehicle.make, mode: 'insensitive' },
           term: context.term,
           mileage: 10000,
-          internalLenderTier: 'Tier 1',
+          internalLenderTier: { in: ['Tier 1', 'Super Elite'] },
           model: { in: possibleModels.map(m => m) }
         },
         include: { lender: true }

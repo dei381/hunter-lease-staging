@@ -19,6 +19,7 @@ import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert,
 import { cn } from '../utils/cn';
 
 import { CompareBar } from '../components/CompareBar';
+import { getVal } from '../utils/finance';
 import { getCarImage, CarPhoto } from '../utils/carImage';
 import { SmartPriceAlertModal } from '../components/SmartPriceAlertModal';
 import { Bell } from 'lucide-react';
@@ -68,9 +69,19 @@ export const DealPage = () => {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [leadId, setLeadId] = useState<string | null>(null);
-  const [isMobileCalcOpen, setIsMobileCalcOpen] = useState(false);
 
-  const enrichedDeal = deal;
+  const enrichedDeal = useMemo(() => {
+    if (!deal) return null;
+    const msrp = getVal(deal.msrp);
+    const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+    const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
+    const savingsPctObj = msrp > 0 ? badgeTotalSavings / msrp : 0;
+    return {
+      ...deal,
+      badgeTotalSavings,
+      savingsPctObj
+    };
+  }, [deal]);
 
   const currentFeatures = language === 'ru' && enrichedDeal?.categorizedFeaturesRu && Object.keys(enrichedDeal.categorizedFeaturesRu).length > 0 ? enrichedDeal.categorizedFeaturesRu : enrichedDeal?.categorizedFeatures;
   const currentVerdict = language === 'ru' && enrichedDeal?.ownerVerdictRu && Object.keys(enrichedDeal.ownerVerdictRu).length > 0 ? enrichedDeal.ownerVerdictRu : enrichedDeal?.ownerVerdict;
@@ -142,7 +153,7 @@ export const DealPage = () => {
     
     let expirationDate: Date;
     if (deal.expirationDate) {
-      expirationDate = new Date(deal.expirationDate);
+      expirationDate = new Date(deal.expirationDate); const maxExp = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000); if (expirationDate > maxExp) expirationDate = maxExp;
     } else {
       // Fallback if not in DB
       const now = new Date();
@@ -150,7 +161,7 @@ export const DealPage = () => {
         expirationDate = new Date(now.getTime() - 100000); // Expired
       } else {
         const numId = typeof deal.id === 'string' ? deal.id.charCodeAt(0) : deal.id;
-        const daysToAdd = (numId % 3) + 1;
+        const daysToAdd = 2; // Max 2 days fallback
         expirationDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysToAdd, 23, 59, 59);
       }
     }
@@ -310,27 +321,16 @@ export const DealPage = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3">
           {/* Top Breadcrumbs / Utilities Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[var(--b2)]/50 pb-2 pt-2">
+          <div className="flex flex-col gap-3 pb-4 pt-2">
              <div className="flex items-center gap-2">
                <Breadcrumbs make={deal.make} model={deal.model} />
              </div>
-             <div className="flex items-center gap-4">
-               {/* Discount Chip */}
-               {deal.savings && deal.msrp && (
-                 <div className="flex items-center gap-1.5 text-[11px] font-bold bg-[var(--b1)] px-3 py-1.5 rounded-full border border-[var(--b2)] font-mono">
-                   <div className="w-2 h-2 rounded-full bg-[var(--lime)]" />
-                   {Math.round((deal.savings / deal.msrp) * 100)}% off MSRP
-                 </div>
-               )}
+             <div className="flex items-center justify-between w-full">
+               <div className="flex items-center gap-2 text-[14px]">
+                 {deal.msrp > 0 && (() => { const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: any, inc: any) => sum + (Number(inc.amount) || 0), 0); const totalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0); return (<div className="flex items-center gap-2 font-mono font-bold text-[var(--w)]"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={totalSavings > 0 ? "text-[var(--lime)]" : "text-[var(--mu2)]"}><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span className={totalSavings <= 0 ? "text-[var(--mu2)]" : ""}>{totalSavings > 0 ? ((totalSavings / deal.msrp) * 100).toFixed(1) : 0}% {language === 'ru' ? 'СКИДКА' : 'off MSRP'}</span></div>); })()}
+               </div>
                {/* Utilities */}
-               <div className="flex items-center gap-2">
-                 <button
-                    onClick={() => setIsAlertOpen(true)}
-                    className="p-2 sm:px-4 sm:py-2 rounded-full sm:rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border bg-[var(--s2)] text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]"
-                 >
-                   <Bell size={14} className="text-[var(--lime)]" />
-                   <span className="hidden sm:inline">{language === 'ru' ? 'Следить за ценой' : 'Price Alert'}</span>
-                 </button>
+               <div className="flex items-center gap-3">
                  <button
                     onClick={() => {
                       if (isInCompare(deal.id.toString())) {
@@ -345,8 +345,11 @@ export const DealPage = () => {
                         : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
                     }`}
                  >
-                   <Heart size={14} className={isInCompare(deal.id.toString()) ? "fill-current" : ""} />
+                   <Heart size={16} className={isInCompare(deal.id.toString()) ? "fill-current" : ""} />
                    <span className="hidden sm:inline">{language === 'ru' ? 'СОХРАНИТЬ' : 'SAVE'}</span>
+                 </button>
+                 <button className="p-2 text-[var(--mu2)] hover:text-[var(--w)] transition-colors">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>
                  </button>
                </div>
              </div>
@@ -355,11 +358,26 @@ export const DealPage = () => {
 
 
           {/* Main Content Grid */}
+          
+          {/* Mobile-only Gallery (appears before Calculator) */}
+          <div className="lg:hidden mb-4">
+            <motion.div
+              id="gallery-mobile"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <ImageGallery mainImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} images={deal.images} viewCount={viewCount.toString()} dealId={deal.id.toString()} />
+            </motion.div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 relative items-start">
             {/* Left Column: Gallery & Technical Specs */}
             <div className="lg:col-span-7 space-y-6 order-2 lg:order-1">
+              {/* Desktop-only Gallery */}
               <motion.div
-                id="gallery"
+                id="gallery-desktop"
+                className="hidden lg:block"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
@@ -570,11 +588,11 @@ export const DealPage = () => {
                         exit={{ opacity: 0, x: 10 }}
                         className="space-y-6"
                       >
-                        <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
                           {Object.entries((language === 'ru' && enrichedDeal.detailedSpecsRu && Object.keys(enrichedDeal.detailedSpecsRu).length > 0 ? enrichedDeal.detailedSpecsRu : enrichedDeal.detailedSpecs) || {}).map(([key, val]: [string, any]) => (
-                            <div key={key} className="flex justify-between items-center border-b border-[var(--b2)] pb-2">
-                              <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest">{key}</span>
-                              <span className="text-xs font-mono font-bold">{val}</span>
+                            <div key={key} className="flex justify-between items-baseline border-b border-[var(--b2)] pb-2">
+                              <span className="text-[10px] text-[var(--mu2)] uppercase tracking-widest min-w-[100px]">{key}</span>
+                              <span className="text-sm font-mono font-bold text-right ml-4 break-words">{val}</span>
                             </div>
                           ))}
                         </div>
@@ -619,82 +637,36 @@ export const DealPage = () => {
               </div>
 
               {/* Trust Elements */}
-              <div className="mt-8 space-y-4">
-                <h3 className="font-display text-lg text-[var(--w)]">
+              <div className="mt-12 space-y-6 relative max-w-2xl">
+                <h3 className="font-display text-2xl lg:text-3xl text-[var(--w)]">
                   {language === 'ru' ? 'Что включено в сделку' : 'What\'s included'}
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-[var(--b1)] border border-[var(--b2)] flex gap-4 items-start">
-                    <ShieldCheck className="text-[#00E58F] shrink-0 mt-0.5" size={20} />
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="p-5 sm:p-6 rounded-3xl bg-[var(--s2)] border border-[var(--b2)] flex gap-4 sm:gap-6 items-start">
+                    <div className="shrink-0 mt-1">
+                      <ShieldCheck className="text-[var(--lime)]" size={28} />
+                    </div>
                     <div>
-                      <h4 className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Гарантия производителя' : 'Manufacturer Warranty'}</h4>
-                      <p className="text-xs text-[var(--mu2)] mt-1">{language === 'ru' ? 'Полное покрытие на срок лизинга. Без сюрпризов.' : 'Full coverage for the lease duration. No surprises.'}</p>
+                      <h4 className="text-base sm:text-lg font-bold text-[var(--w)] mb-1 sm:mb-2">{language === 'ru' ? 'Гарантия производителя' : 'Manufacturer Warranty'}</h4>
+                      <p className="text-sm md:text-base text-[var(--mu2)] leading-relaxed">{language === 'ru' ? 'Стандартная заводская гарантия от производителя.' : 'Standard factory warranty provided by the manufacturer.'}</p>
                     </div>
                   </div>
-                  <div className="p-4 rounded-2xl bg-[var(--b1)] border border-[var(--b2)] flex gap-4 items-start">
-                    <CheckCircle className="text-[#00E58F] shrink-0 mt-0.5" size={20} />
+                  <div className="p-5 sm:p-6 rounded-3xl bg-[var(--s2)] border border-[var(--b2)] flex gap-4 sm:gap-6 items-start">
+                    <div className="shrink-0 mt-1">
+                      <CheckCircle className="text-[var(--lime)]" size={28} />
+                    </div>
                     <div>
-                      <h4 className="text-sm font-bold text-[var(--w)]">{language === 'ru' ? 'Никаких наценок' : 'No Hidden Markups'}</h4>
-                      <p className="text-xs text-[var(--mu2)] mt-1">{language === 'ru' ? 'Честная цена без дилерских накруток (No Markups).' : 'Honest pricing with no dealer markups.'}</p>
+                      <h4 className="text-base sm:text-lg font-bold text-[var(--w)] mb-1 sm:mb-2">{language === 'ru' ? 'Никаких наценок' : 'No Hidden Markups'}</h4>
+                      <p className="text-sm md:text-base text-[var(--mu2)] leading-relaxed">{language === 'ru' ? 'Честная цена без дилерских накруток (No Markups).' : 'Honest pricing with no dealer markups.'}</p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Mobile Sticky CTA */}
-            {!isMobileCalcOpen && (
-               <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg)] border-t border-[var(--b2)] p-4 lg:hidden pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex flex-col">
-                    <div className="text-[10px] text-[var(--mu2)] uppercase font-bold tracking-widest">{language === 'ru' ? 'СКОРРЕКТИРОВАТЬ' : 'ADJUST'}</div>
-                    <div className="text-xl font-display text-[var(--w)] font-mono">
-                      <span className="text-[var(--w)] font-sans text-sm">{language === 'ru' ? 'От ' : 'From '}</span>
-                      ${Math.round(selectedConfig?.payment || deal?.displayPayment || 0)}
-                      <span className="text-[var(--mu2)] font-sans text-sm">{language === 'ru' ? '/мес' : '/mo'}</span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setIsMobileCalcOpen(true)}
-                    className="flex-1 max-w-[200px] h-12 bg-[#00E58F] text-black font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-[#00D484] transition-colors"
-                  >
-                    {language === 'ru' ? 'ПОСТРОИТЬ СДЕЛКУ' : 'BUILD DEAL'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Mobile Backdrop */}
-            <AnimatePresence>
-              {isMobileCalcOpen && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm lg:hidden"
-                  onClick={() => setIsMobileCalcOpen(false)}
-                />
-              )}
-            </AnimatePresence>
-
-            {/* Right Column: Calculator (Desktop) & Bottom Sheet (Mobile) */}
-            <div id="calculator" className={cn(
-              "relative scroll-mt-24 lg:col-span-5 lg:order-2 lg:block lg:static lg:bg-transparent lg:shadow-none lg:p-0 lg:overflow-visible",
-              isMobileCalcOpen ? "fixed inset-x-0 bottom-0 z-[110] bg-[var(--bg)] rounded-t-3xl border-t border-[var(--b2)] overflow-y-auto max-h-[90vh] pb-[env(safe-area-inset-bottom)] shadow-2xl flex flex-col" : "hidden order-1"
-            )}>
-              {/* Mobile Header for Sheet */}
-              {isMobileCalcOpen && (
-                <div className="sticky top-0 bg-[var(--bg)] z-40 p-4 border-b border-[var(--b2)] lg:hidden flex justify-between items-center rounded-t-3xl">
-                  <h3 className="font-display text-lg text-[var(--w)]">
-                    {language === 'ru' ? 'Параметры сделки' : 'Deal Parameters'}
-                  </h3>
-                  <button onClick={() => setIsMobileCalcOpen(false)} className="p-2 text-[var(--mu2)] hover:text-[var(--w)] bg-[var(--s2)] rounded-full transition-colors relative z-50">
-                    <X size={20} />
-                  </button>
-                </div>
-              )}
-
-              <div className="lg:sticky lg:top-[calc(var(--nh)+1.5rem)] self-start z-30 space-y-6 lg:pb-24 p-4 lg:p-0">
+            {/* Right Column: Calculator (Desktop) & Inline (Mobile) */}
+            <div id="calculator" className="relative scroll-mt-24 lg:col-span-5 order-1 lg:order-2 block bg-transparent shadow-none p-0 overflow-visible mt-2">
+              <div className="lg:sticky lg:top-[calc(var(--nh)+1.5rem)] self-start z-30 space-y-6 lg:pb-24 p-0">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -912,24 +884,6 @@ export const DealPage = () => {
         model={deal.model}
       />
 
-      {/* Mobile Sticky CTA */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-        <div className="flex flex-col">
-          <div className="text-[10px] text-[var(--mu2)] uppercase tracking-widest font-bold mb-0.5">{selectedConfig?.type === 'finance' ? (language === 'ru' ? 'Платеж по кредиту' : 'Finance Payment') : t.calc.leasePayment}</div>
-          <div className="flex items-baseline gap-1">
-            <span className="font-display text-2xl text-[var(--w)] leading-none">${selectedConfig?.payment || deal.payment}</span>
-            <span className="text-[10px] text-[var(--mu2)]">/mo</span>
-          </div>
-          <div className="text-[10px] text-[var(--mu2)] mt-0.5">${selectedConfig?.down !== undefined ? selectedConfig.down : deal.down} due</div>
-        </div>
-        <button 
-          onClick={() => handleProceed(selectedConfig || deal)}
-          className="flex-1 bg-[var(--lime)] text-black py-3.5 rounded-xl font-display text-lg tracking-widest hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 uppercase"
-        >
-          <span>{td.lockInDeal}</span>
-          <ArrowRight size={18} />
-        </button>
-      </div>
       <CompareBar />
     </div>
   );

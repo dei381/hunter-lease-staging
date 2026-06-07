@@ -13,7 +13,7 @@ import { DealCalculatorModal } from './components/DealCalculatorModal';
 import { Footer } from './components/Footer';
 
 import { AuthModal } from './components/AuthModal';
-import { ExpertChat } from './components/ExpertChat';
+
 import { TrackingModal } from './components/TrackingModal';
 import { LockModal } from './components/LockModal';
 import { VisitTracker } from './components/VisitTracker';
@@ -370,7 +370,7 @@ function MainApp() {
 
         </div>
 
-        {/* Featured Deals Preview */}
+        {/* Featured Deals Preview 
         <div className="mb-16 md:mb-32">
           <div className="flex items-center justify-between mb-8">
              <div className="flex items-center gap-4">
@@ -399,6 +399,7 @@ function MainApp() {
              </button>
           </div>
         </div>
+        */}
 
 
 
@@ -925,7 +926,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       </nav>
       {children}
       <Footer />
-      <ExpertChat />
+
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>

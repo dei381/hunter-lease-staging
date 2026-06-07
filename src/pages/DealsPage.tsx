@@ -259,7 +259,7 @@ export const DealsPage = () => {
       const totalCost = (currentPayment * selectedTerm) + downPayment;
       const valueScore = totalCost > 0 ? (msrp / totalCost).toFixed(2) : '0';
 
-      const totalIncentives = (deal.availableIncentives || []).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+      const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
       const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
       const savingsPctObj = msrp > 0 ? badgeTotalSavings / msrp : 0;
       const leaseValueRatio = msrp > 0 ? currentPayment / msrp : 0;
@@ -292,14 +292,7 @@ export const DealsPage = () => {
       const matchesTrim = selectedTrim === 'All' || deal.trim === selectedTrim;
       const matchesClass = selectedClass === 'All' || deal.class === selectedClass;
       
-      let matchesFTB = true;
-      if (isFirstTimeBuyer) {
-        if (hasCosigner) {
-          matchesFTB = deal.allowWithCoSigner !== false;
-        } else {
-          matchesFTB = deal.isFirstTimeBuyerEligible !== false;
-        }
-      }
+      let matchesFTB = true; // We no longer strictly filter out deals for thin-credit/FTB users upfront
       
       // Advanced Filters
       const matchesBody = selectedBodyStyle === 'All' || deal.bodyStyle === selectedBodyStyle;
@@ -853,43 +846,33 @@ export const DealsPage = () => {
                       
                       {/* Badges */}
                       <div className="absolute top-3 left-3 flex flex-col gap-2 z-20 hover:z-30">
-                        {deal.hot && (
-                          <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
-                            {t.hot}
+                        {deal.isSoldOut ? (
+                          <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
+                            {language === 'ru' ? 'ПРОДАНО' : 'SOLD OUT'}
                           </span>
-                        )}
-                        {deal.type === 'marketcheck' ? (
-                          <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
-                            LIVE INVENTORY
+                        ) : deal.hot ? (
+                          <span className="flex items-center gap-1 bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
+                            🔥 {language === 'ru' ? 'ХИТ ПРОДАЖ' : 'TOP SELLER'}
                           </span>
-                        ) : (
-                          <span className="bg-white/90 backdrop-blur-sm text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
-                            Verified
+                        ) : (deal.viewCount && deal.viewCount > 50) ? (
+                          <span className="bg-orange-500/20 text-orange-300 border border-orange-500/30 backdrop-blur-md text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
+                            {language === 'ru' ? 'ПОПУЛЯРНОЕ' : 'POPULAR'}
                           </span>
-                        )}
-                        {deal.savingsPctObj >= 0.06 && (
-                          <span className="bg-[#00E58F] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative">
-                            {language === 'ru' ? 'Отличная скидка' : 'Great Price'}
-                          </span>
-                        )}
-                        {deal.savingsPctObj >= 0.03 && deal.savingsPctObj < 0.06 && (
-                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative">
-                            {language === 'ru' ? 'Хорошая скидка' : 'Good Price'}
-                          </span>
-                        )}
-                        {deal.badgeTotalSavings > 0 && (
-                          <span className="bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative">
-                            {language === 'ru' ? `Ниже MSRP на ${fmt(deal.badgeTotalSavings)}` : `Save ${fmt(deal.badgeTotalSavings)}`}
-                          </span>
-                        )}
-                        {deal.displayType === 'lease' && deal.leaseValueRatio > 0 && deal.leaseValueRatio <= 0.0125 && (
-                          <span className={cn(
-                            "text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit group/tooltip relative",
-                            deal.leaseValueRatio <= 0.010 ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                          )}>
-                            {deal.leaseValueRatio <= 0.010 
-                              ? (language === 'ru' ? 'Отличный лизинг' : 'Exceptional Lease') 
-                              : (language === 'ru' ? 'Хороший лизинг' : 'Good Lease')}
+                        ) : null}
+
+                        <span className={cn(
+                          "text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit relative",
+                          deal.savingsPctObj > 0 ? 'bg-[#00E58F] text-black' : 'bg-[var(--s2)] text-[var(--mu2)] border border-[var(--b2)] backdrop-blur-md'
+                        )}>
+                          {deal.savingsPctObj > 0 
+                            ? `${(deal.savingsPctObj * 100).toFixed(1)}% ${language === 'ru' ? 'СКИДКА' : 'OFF MSRP'}`
+                            : `0% ${language === 'ru' ? 'СКИДКА' : 'OFF MSRP'}`
+                          }
+                        </span>
+
+                        {(deal.class?.toLowerCase() === 'ev' || deal.fuelType?.toLowerCase() === 'electric') && (
+                          <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 backdrop-blur-md text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm w-fit">
+                            ⚡ EV
                           </span>
                         )}
                       </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Instagram, Twitter, Facebook, Mail, Phone, CheckCircle, AlertCircle } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { translations } from '../translations';
@@ -44,6 +44,14 @@ export const Footer = () => {
       setStatus('error');
     }
   };
+
+  const [pageRefId, setPageRefId] = useState('');
+  const location = useLocation();
+
+  // Generate a new 5-digit ID on every page visit
+  useEffect(() => {
+    setPageRefId(Math.floor(10000 + Math.random() * 90000).toString());
+  }, [location.pathname]);
 
   return (
     <footer className="bg-[var(--s2)] border-t border-[var(--b2)] pt-24 pb-12">
@@ -160,8 +168,9 @@ export const Footer = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 pt-12 border-t border-[var(--b2)] flex flex-col md:flex-row justify-between items-center gap-8">
-        <div className="text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">
-          © {new Date().getFullYear()} Hunter Lease. {t.footer.rights}
+        <div className="text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest flex items-center gap-4">
+          <span>© {new Date().getFullYear()} Hunter Lease. {t.footer.rights}</span>
+          <span className="px-2 py-0.5 bg-[var(--b1)] rounded border border-[var(--b2)]">DEAL ID: {pageRefId}</span>
         </div>
         <div className="flex flex-wrap justify-center md:justify-end gap-8 text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">
           <Link to="/privacy" className="hover:text-[var(--lime)] transition-colors">{t.legal.privacy}</Link>

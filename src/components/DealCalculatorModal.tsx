@@ -279,7 +279,7 @@ export const DealCalculatorModal = ({
 
                     <div>
                       <div className="flex justify-between items-center mb-3">
-                        <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider">{t.dueAtSigning}</label>
+                        <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider">{calcType === 'lease' ? t.dueAtSigning : (language === 'ru' ? 'Первоначальный взнос' : 'Down Payment')}</label>
                         <span className="text-[var(--lime)] font-mono text-base bg-[var(--lime)]/10 px-2 py-1 rounded-md">{fmt(down)}</span>
                       </div>
                       <div className="flex gap-2 mb-4">
@@ -311,8 +311,8 @@ export const DealCalculatorModal = ({
 
                     <div>
                       <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider block mb-3">{t.term} (Months)</label>
-                      <div className={`grid gap-1 sm:gap-2 bg-[var(--s2)] p-1 rounded-xl border border-[var(--b2)] ${calcType === 'lease' ? 'grid-cols-3' : 'grid-cols-5'}`}>
-                        {(calcType === 'lease' ? [24, 36, 48] : [48, 60, 72, 84, 96]).map(t => (
+                      <div className={`grid gap-1 sm:gap-2 bg-[var(--s2)] p-1 rounded-xl border border-[var(--b2)] ${calcType === 'lease' ? 'grid-cols-3 lg:grid-cols-6' : 'grid-cols-5'}`}>
+                        {(calcType === 'lease' ? [24, 30, 36, 39, 42, 48] : [48, 60, 72, 84, 96]).map(t => (
                           <button
                             key={t}
                             onClick={() => setTerm(t)}
@@ -503,7 +503,7 @@ export const DealCalculatorModal = ({
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-blue-400 font-bold uppercase tracking-widest text-[10px]">{t.hunterLeaseDiscount}</span>
                           <span className="text-blue-400 font-bold font-mono">
-                            -{fmt(deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && (inc.type === 'dealer' || inc.isDefault)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
+                            -{fmt((quoteResult?.dealerDiscountCents !== undefined ? Math.abs(quoteResult.dealerDiscountCents) / 100 : Math.abs(Number(deal.savings) || 0)) + (deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && inc.isDefault).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0))}
                           </span>
                         </div>
 
@@ -521,12 +521,12 @@ export const DealCalculatorModal = ({
                       <div className="pt-2 border-t border-[var(--b2)] flex justify-between items-center">
                         <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
                         <span className="text-lg font-display text-[var(--lime)]">
-                          {fmt(quoteResult?.sellingPriceCents !== undefined ? quoteResult.sellingPriceCents / 100 : ((Number(deal.msrp) || 0) - (deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)))}
+                          {fmt(quoteResult?.sellingPriceCents !== undefined ? quoteResult.sellingPriceCents / 100 : ((Number(deal.msrp) || 0) - (Number(deal.savings) || 0) - (deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)))}
                         </span>
                       </div>
 
                       <div className="flex justify-between items-center text-sm pt-2">
-                        <span className="text-[var(--mu2)] uppercase tracking-widest text-[10px] font-bold">{t.dueAtSigning}</span>
+                        <span className="text-[var(--mu2)] uppercase tracking-widest text-[10px] font-bold">{calcType === 'lease' ? t.dueAtSigning : (language === 'ru' ? 'Первоначальный взнос' : 'Down Payment')}</span>
                         <span className="text-[var(--w)] font-mono">{fmt(quoteResult?.dueAtSigningCents !== undefined ? quoteResult.dueAtSigningCents / 100 : (down + (msdCount * Math.ceil((Number(calculatedPayment) || 0) / 50) * 50)))}</span>
                       </div>
                       {msdCount > 0 && (
