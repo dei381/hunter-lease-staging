@@ -84,13 +84,12 @@ async function main() {
       if (incAmount > 0) {
         const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Customer Cash';
         const seedKey = `gridinc:${makeName}:${model}:${trim}:${term}`.toLowerCase();
-        const isCash = /cash|rebate|bonus/i.test(incName);
         await prisma.oemIncentiveProgram.upsert({
           where: { seedKey },
-          update: { eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
+          update: { type: 'OEM_CASH', eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
           create: {
             seedKey, name: incName, amountCents: Math.round(incAmount * 100),
-            type: isCash ? 'OEM_CASH' : 'SPECIAL', dealApplicability: 'ALL', isTaxableCa: false,
+            type: 'OEM_CASH', dealApplicability: 'ALL', isTaxableCa: false,
             exclusiveGroupId: `${makeName}_${model}_${trim}_INC`.toLowerCase(),
             make: makeName, model, trim, eligibilityRules: { terms: [term] },
             stackable: true, isActive: true, status: 'PUBLISHED',
