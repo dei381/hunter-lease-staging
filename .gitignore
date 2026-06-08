@@ -8,3 +8,9 @@ coverage/
 !.env.example
 *.db
 *.db-journal
+
+.playwright-mcp/
+.qodo/
+scripts/_*.json
+scripts/_*.log
+scripts/_*.ts
