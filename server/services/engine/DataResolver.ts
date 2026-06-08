@@ -375,19 +375,32 @@ export class DataResolver {
         } as any);
       }
     } else {
+      // Per-tier finance buy-rates (t1..t6); fall back to base tier for legacy data.
+      const requestedTier = context.creditTier || 't1';
       const financeProgs = await prisma.financeProgram.findMany({
         where: {
           isActive: true,
           status: 'PUBLISHED',
           make: { equals: vehicle.make, mode: 'insensitive' },
           term: context.term,
-          internalLenderTier: 'Tier 1',
+          internalLenderTier: { in: [requestedTier, 't1', 'Tier 1', 'Tier 1+', 'Super Elite'] },
           model: { in: possibleModels.map(m => m) }
         },
         include: { lender: true }
       });
       const matchedFinanceProgs = financeProgs.filter(p => p.trim === 'ALL' || possibleTrims.includes(p.trim));
+      const byKey = new Map<string, any>();
       for (const p of matchedFinanceProgs) {
+        const key = `${p.lenderId}|${p.model}|${p.trim}`;
+        const existing = byKey.get(key);
+        const isExact = p.internalLenderTier === requestedTier;
+        if (!existing) {
+          byKey.set(key, p);
+        } else if (isExact && existing.internalLenderTier !== requestedTier) {
+          byKey.set(key, p);
+        }
+      }
+      for (const p of byKey.values()) {
         bankPrograms.push({
           id: p.id,
           batchId: activeBatch.id,
@@ -402,7 +415,8 @@ export class DataResolver {
           mf: null,
           rv: null,
           apr: Number(p.buyRateApr),
-          lender: p.lender
+          lender: p.lender,
+          _exactTier: p.internalLenderTier === requestedTier
         } as any);
       }
     }

@@ -227,26 +227,34 @@ async function main() {
       // NOTE: we intentionally do NOT create a DealerAdjustment from the source
       // selling price. Dealer discounts are the admin's to set in the discount manager.
 
-      // Per-trim OEM lease cash (default applied). Matched by make/model/trim in the
-      // engine; amount = the trim's representative (36mo) lease cash. Non-taxable cap
-      // reduction, exclusive per trim so it never double-stacks.
-      const trimSeedKey = `gridlease:${makeName}:${modelName}:${trimName}`.toLowerCase();
-      if (repIncentive > 0) {
-        const incName = (rep.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Lease Cash';
-        await prisma.oemIncentiveProgram.upsert({
-          where: { seedKey: trimSeedKey },
-          update: { name: incName, amountCents: Math.round(repIncentive * 100), trim: trimName, isActive: true, status: 'PUBLISHED' },
-          create: {
-            seedKey: trimSeedKey, name: incName, amountCents: Math.round(repIncentive * 100),
-            type: 'OEM_CASH', dealApplicability: 'LEASE', isTaxableCa: false,
-            exclusiveGroupId: `${makeName}_${modelName}_${trimName}_LEASE`.toLowerCase(),
-            make: makeName, model: modelName, trim: trimName, stackable: true, isActive: true, status: 'PUBLISHED',
-          },
-        });
-        nIncentives++;
-      } else {
-        // no lease cash for this trim -> ensure any prior one is disabled
-        await prisma.oemIncentiveProgram.updateMany({ where: { seedKey: trimSeedKey }, data: { isActive: false } });
+      // Per-(trim, term) incentives — the amount depends on term (client spec).
+      // eligibilityRules.terms is what the engine's term filter reads. dealApplicability
+      // 'ALL' so it applies to both lease and finance. OEM_CASH/rebate auto-applies and
+      // reduces the cap cost (non-taxable), not the residual. One incentive per term
+      // (amount is constant across tiers within a term).
+      const seenIncTerms = new Set<number>();
+      for (const r of trimRows) {
+        const term = num(r.term);
+        if (!term || seenIncTerms.has(term)) continue;
+        seenIncTerms.add(term);
+        const incAmount = num(r.incentive_total);
+        const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Lease Cash';
+        const seedKey = `gridinc:${makeName}:${modelName}:${trimName}:${term}`.toLowerCase();
+        if (incAmount > 0) {
+          const isCash = /cash|rebate|bonus/i.test(incName);
+          await prisma.oemIncentiveProgram.upsert({
+            where: { seedKey },
+            update: { name: incName, amountCents: Math.round(incAmount * 100), trim: trimName, eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
+            create: {
+              seedKey, name: incName, amountCents: Math.round(incAmount * 100),
+              type: isCash ? 'OEM_CASH' : 'SPECIAL', dealApplicability: 'ALL', isTaxableCa: false,
+              exclusiveGroupId: `${makeName}_${modelName}_${trimName}_INC`.toLowerCase(),
+              make: makeName, model: modelName, trim: trimName,
+              eligibilityRules: { terms: [term] }, stackable: true, isActive: true, status: 'PUBLISHED',
+            },
+          });
+          nIncentives++;
+        }
       }
 
       // LeaseProgram rows per (term, tier) — the per-tier buy-rates the calculator uses.
