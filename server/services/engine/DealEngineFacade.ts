@@ -128,10 +128,14 @@ export class DealEngineFacade {
       return this.createErrorResponse('MISSING_MSRP');
     }
 
-    const settings = await DataResolver.resolveSettings();
-    const programs = await DataResolver.resolvePrograms(context, vehicle);
-    const dealerDiscountCents = await DataResolver.resolveDealerDiscount(context, vehicle);
-    const incentivesData = await DataResolver.resolveIncentives(context, vehicle);
+    // These four reads are independent once we have the vehicle — run them in parallel
+    // to cut calculator latency (was sequential).
+    const [settings, programs, dealerDiscountCents, incentivesData] = await Promise.all([
+      DataResolver.resolveSettings(),
+      DataResolver.resolvePrograms(context, vehicle),
+      DataResolver.resolveDealerDiscount(context, vehicle),
+      DataResolver.resolveIncentives(context, vehicle),
+    ]);
     
     const totalIncentivesCents = incentivesData.totalRebateCents || 0;
     const taxableIncentivesCents = incentivesData.taxableRebateCents || 0;
