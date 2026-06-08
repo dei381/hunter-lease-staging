@@ -71,7 +71,7 @@ export const DealsPage = () => {
   const [tier, setTier] = useState('t1');
   const [downPayment, setDownPayment] = useState(searchParams.has('down') ? parseInt(searchParams.get('down')!) : 3000);
   const debouncedDownPayment = useDebounce(downPayment, 500);
-  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent'>('value');
+  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent'>('payment');
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
