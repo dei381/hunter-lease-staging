@@ -86,7 +86,8 @@ export const DealsPage = () => {
       down: debouncedDownPayment.toString(),
       mileage: selectedMileage,
       displayMode: displayMode,
-      limit: '500' // Increased limit so nothing is deleted
+      limit: '1000',
+      timestamp: Date.now().toString()
     });
 
 

@@ -25,7 +25,7 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
   }, []);
 
   useEffect(() => {
-    fetchWithCache('/api/deals?limit=100')
+    fetchWithCache(`/api/deals?limit=800&t=${Date.now()}`)
       .then((data: any) => {
         // Deduplicate deals by Make + Model + Trim + Color
         const uniqueDealsMap = new Map();

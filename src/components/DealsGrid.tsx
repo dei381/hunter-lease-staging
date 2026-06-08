@@ -37,7 +37,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
   const effectiveFTB = isFirstTimeBuyer && !hasCosigner;
 
   useEffect(() => {
-    const url = limit ? `/api/deals?limit=${limit * 3}` : '/api/deals'; // Fetch a bit more to account for deduplication
+    const url = limit ? `/api/deals?limit=${limit * 3}&t=${Date.now()}` : `/api/deals?t=${Date.now()}`;
     Promise.all([
       fetchWithCache(url),
       fetchWithCache('/api/car-photos')
