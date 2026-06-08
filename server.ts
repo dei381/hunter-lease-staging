@@ -4336,7 +4336,10 @@ const mapDealsForFrontend = (
 
   return processedDeals.map(({ deal, data, computed }) => {
     const { payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type } = computed;
-    const effectiveSavings = savings;
+    // Auto-applied manufacturer incentive (counted once) + admin dealer discount drive
+    // the "% off" badge, the savings figure, and the card's incentive list.
+    const incentiveTotal = Math.max(Number(leaseCash) || 0, Number(rebates) || 0);
+    const effectiveSavings = (Number(discount) || 0) + incentiveTotal;
 
     // Handle RV percentage vs absolute
     let rvPercent = '0%';
@@ -4497,12 +4500,14 @@ const mapDealsForFrontend = (
       image: imageUrl,
       images: images,
       expirationDate: deal.expirationDate,
-      availableIncentives: data.availableIncentives || [],
+      availableIncentives: (Array.isArray(data.availableIncentives) && data.availableIncentives.length)
+        ? data.availableIncentives
+        : (incentiveTotal > 0 ? [{ name: (Array.isArray(data.incentives) && data.incentives[0]?.name) || 'Manufacturer Incentive', amount: incentiveTotal }] : []),
       leaseCash: leaseCash || 0,
       rebates: data.rebates || 0,
       discount: discount || data.discount || 0,
       dealerDiscountCents: data.dealerDiscountCents || 0,
-      discountPercent: data.discountPercent || 0,
+      discountPercent: msrp > 0 ? Math.round(effectiveSavings / msrp * 100) : (data.discountPercent || 0),
       // New fields for detailed deal page
       bodyStyle: bodyStyle,
       fuelType: fuelType,

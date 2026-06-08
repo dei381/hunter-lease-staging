@@ -58,40 +58,52 @@ async function main() {
   console.log(`Lender: ${lender.name}`);
 
   let nFin = 0, nInc = 0;
-  const seenIncByTrimTerm = new Set<string>();
 
+  // Pass 1 (in-memory): for each (trim,term,tier) keep the LOWEST-APR program — some
+  // EVs list two offers (e.g. 0% APR + small cash vs higher APR + big cash); the best
+  // advertised rate is the low-APR one. Also keep the incentive from that best-rate row.
+  type Prog = { model: string; trim: string; term: number; tk: string; year: number; apr: number; incAmount: number; incName: string };
+  const best = new Map<string, Prog>();
   for (const r of rows) {
     if ((r.make || '').toLowerCase() !== makeName.toLowerCase()) continue;
     const model = r.model?.trim(), trim = r.trim?.trim();
     const term = num(r.term), tk = tierKey(r.credit_tier);
     const apr = num(r.apr), year = num(r.year) || yearDefault;
-    if (!model || !trim || !term || !tk) continue;
+    if (!model || !trim || !term || !tk || apr <= 0) continue;
+    const k = `${model}|${trim}|${term}|${tk}`;
+    const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Customer Cash';
+    const cand: Prog = { model, trim, term, tk, year, apr, incAmount: num(r.incentive_total), incName };
+    const cur = best.get(k);
+    if (!cur || cand.apr < cur.apr) best.set(k, cand);
+  }
 
-    if (apr > 0) {
-      await prisma.financeProgram.upsert({
-        where: { lenderId_make_model_trim_year_term_internalLenderTier: { lenderId: lender.id, make: makeName, model, trim, year, term, internalLenderTier: tk } },
-        update: { buyRateApr: apr, isActive: true, status: 'PUBLISHED' },
-        create: { lenderId: lender.id, make: makeName, model, trim, year, term, internalLenderTier: tk, buyRateApr: apr, isActive: true, status: 'PUBLISHED' },
-      });
-      nFin++;
-    }
+  // Pass 2: upsert FinanceProgram + the best-rate row's incentive (per trim/term).
+  const seenInc = new Set<string>();
+  for (const p of best.values()) {
+    await prisma.financeProgram.upsert({
+      where: { lenderId_make_model_trim_year_term_internalLenderTier: { lenderId: lender.id, make: makeName, model: p.model, trim: p.trim, year: p.year, term: p.term, internalLenderTier: p.tk } },
+      update: { buyRateApr: p.apr, isActive: true, status: 'PUBLISHED' },
+      create: { lenderId: lender.id, make: makeName, model: p.model, trim: p.trim, year: p.year, term: p.term, internalLenderTier: p.tk, buyRateApr: p.apr, isActive: true, status: 'PUBLISHED' },
+    });
+    nFin++;
 
-    // Top up per-(trim,term) incentive (shared 'ALL' set). One per (trim,term).
-    const key = `${model}|${trim}|${term}`;
-    if (!seenIncByTrimTerm.has(key)) {
-      seenIncByTrimTerm.add(key);
-      const incAmount = num(r.incentive_total);
-      if (incAmount > 0) {
-        const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Customer Cash';
-        const seedKey = `gridinc:${makeName}:${model}:${trim}:${term}`.toLowerCase();
+    // Incentive once per (trim,term), from the best-rate (t1) row. The lease importer
+    // owns overlapping terms (its lease cash differs from finance cash) — only fill
+    // finance-only terms (e.g. 54/60/66/72) so we never clobber the lease incentive.
+    const incKey = `${p.model}|${p.trim}|${p.term}`;
+    if (p.tk === 't1' && !seenInc.has(incKey) && p.incAmount > 0) {
+      seenInc.add(incKey);
+      const seedKey = `gridinc:${makeName}:${p.model}:${p.trim}:${p.term}`.toLowerCase();
+      const existing = await prisma.oemIncentiveProgram.findUnique({ where: { seedKey } });
+      if (!(existing && existing.isActive)) {
         await prisma.oemIncentiveProgram.upsert({
           where: { seedKey },
-          update: { type: 'OEM_CASH', eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
+          update: { name: p.incName, amountCents: Math.round(p.incAmount * 100), type: 'OEM_CASH', eligibilityRules: { terms: [p.term] }, isActive: true, status: 'PUBLISHED' },
           create: {
-            seedKey, name: incName, amountCents: Math.round(incAmount * 100),
+            seedKey, name: p.incName, amountCents: Math.round(p.incAmount * 100),
             type: 'OEM_CASH', dealApplicability: 'ALL', isTaxableCa: false,
-            exclusiveGroupId: `${makeName}_${model}_${trim}_INC`.toLowerCase(),
-            make: makeName, model, trim, eligibilityRules: { terms: [term] },
+            exclusiveGroupId: `${makeName}_${p.model}_${p.trim}_INC`.toLowerCase(),
+            make: makeName, model: p.model, trim: p.trim, eligibilityRules: { terms: [p.term] },
             stackable: true, isActive: true, status: 'PUBLISHED',
           },
         });

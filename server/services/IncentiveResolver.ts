@@ -97,10 +97,11 @@ export class IncentiveResolver {
         let failedRule = false;
         let ruleReason = '';
         
-        // Example: { "term": [36, 48] }
-        if (context && inc.eligibilityRules.term && Array.isArray(inc.eligibilityRules.term) && !inc.eligibilityRules.term.includes(context.term)) {
+        // Example: { "terms": [36, 48] } — accept both "terms" (canonical) and legacy "term".
+        const termRule = inc.eligibilityRules.terms || inc.eligibilityRules.term;
+        if (context && termRule && Array.isArray(termRule) && !termRule.includes(context.term)) {
           failedRule = true;
-          ruleReason = `Term mismatch. Required: ${inc.eligibilityRules.term.join(', ')}, Found: ${context.term}`;
+          ruleReason = `Term mismatch. Required: ${termRule.join(', ')}, Found: ${context.term}`;
         }
         
         if (failedRule) {

@@ -543,7 +543,7 @@ export class DealEngineFacade {
       } else {
         const sellingPriceCents = (msrp - effectiveDiscount - discount) * 100;
         const residualValueCents = rv > 1 ? rv * 100 : Math.round(msrp * rv * 100);
-        const taxableIncentivesCents = (Math.max(leaseCash, manufacturerRebate) + rebates) * 100;
+        const taxableIncentivesCents = Math.max(leaseCash, manufacturerRebate, rebates) * 100;
 
         leaseCCR = PureMathEngine.calculateLeaseCCRFromDAS({
           msrpCents: msrp * 100,
@@ -583,7 +583,7 @@ export class DealEngineFacade {
 
         const finance = PureMathEngine.calculateFinance({
           sellingPriceCents: (msrp - effectiveDiscount - discount) * 100,
-          totalIncentivesCents: (Math.max(leaseCash, manufacturerRebate) + rebates) * 100,
+          totalIncentivesCents: Math.max(leaseCash, manufacturerRebate, rebates) * 100,
           apr,
           term,
           downPaymentCents: down * 100,

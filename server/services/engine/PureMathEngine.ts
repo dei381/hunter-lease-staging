@@ -90,7 +90,9 @@ export class PureMathEngine {
     // Cap cost is selling price + capitalized fees - down payment (cash + trade)
     const capCostCents = sellingPriceCents + capitalizedFeesCents - downPaymentCents;
     
-    const depreciationCents = (capCostCents - residualValueCents) / term;
+    // Depreciation can't be negative — if cap cost falls below residual (e.g. an
+    // oversized incentive), the monthly is just the rent charge, never a sub-$50 fluke.
+    const depreciationCents = Math.max(0, (capCostCents - residualValueCents) / term);
     const rentChargeCents = (capCostCents + residualValueCents) * moneyFactor;
     
     const basePaymentCents = depreciationCents + rentChargeCents;
