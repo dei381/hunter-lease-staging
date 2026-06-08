@@ -46,7 +46,9 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, quoteResult 
 
   if (!deal) return null;
 
-  const isFinance = quoteResult?.quoteType === 'FINANCE' || quoteResult?.quoteType === 'finance' || deal.displayType === 'FINANCE' || deal.type === 'FINANCE';
+  // Case-robust finance detection (calculator uses lowercase 'finance'); otherwise the
+  // modal mixed lease rows (residual/MF/mileage) into finance breakdowns.
+  const isFinance = String(quoteResult?.quoteType || deal.displayType || deal.type || 'lease').toLowerCase() === 'finance';
   
   const msrp = quoteResult ? quoteResult.msrpCents / 100 : Number(deal.msrp) || 0;
   const totalPayment = quoteResult ? quoteResult.monthlyPaymentCents / 100 : Number(deal.displayPayment || deal.payment) || 0;

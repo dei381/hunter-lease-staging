@@ -67,9 +67,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
   const [selectedMake, setSelectedMake] = useState<any>(null);
   const [selectedModel, setSelectedModel] = useState<any>(null);
   const [selectedTrim, setSelectedTrim] = useState<any>(null);
-  const [down, setDown] = useState(Number(deal?.down) || 3000);
+  const [down, setDown] = useState(Number(deal?.down) || (calcType === 'finance' ? 5000 : 3000));
   const [tradeInEquity, setTradeInEquity] = useState(0);
-  const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 60 : (parseInt(deal?.term) || 36)));
+  const [term, setTerm] = useState(parseInt(deal?.displayTerm) || (calcType === 'finance' ? 72 : (parseInt(deal?.term) || 36)));
   const [mileage, setMileage] = useState(['Kia', 'Hyundai'].includes(deal?.make) ? '10k' : '7.5k');
   const { zipCode } = useLocationStore();
   const [showIncentives, setShowIncentives] = useState(!isStandalone);
@@ -580,7 +580,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 key={m}
                 onClick={() => {
                   setCalcType(m);
-                  setTerm(m === 'finance' ? 60 : 36);
+                  // Finance defaults: 72-month term, $5,000 down (lease: 36mo, $3,000).
+                  setTerm(m === 'finance' ? 72 : 36);
+                  setDown(m === 'finance' ? 5000 : 3000);
                 }}
                 className={cn(
                   "flex-1 py-3 text-xs md:text-sm font-bold tracking-widest transition-all uppercase outline-none",
