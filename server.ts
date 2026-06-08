@@ -432,6 +432,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder'
   apiVersion: '2023-10-16' as any,
 });
 
+import cron from 'node-cron';
+import { syncDealersInventory } from './server/jobs/syncExternalCars';
+
 async function startServer() {
   // Ensure data is loaded before starting routes (non-blocking)
   loadDataFromFirestore().catch(err => console.error("Initial data load failed:", err));
@@ -2180,29 +2183,11 @@ You must return the response as a JSON array of objects. Each object must have t
         return res.json(apiCache.get(cacheKey));
       }
       const { make, model, trim, rows = 55, start = 0 } = req.query;
-      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
       
-      let url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&latitude=34.0522&longitude=-118.2437&radius=100&car_type=new&rows=${rows}&start=${start}`;
-      
-      const TARGET_MAKES = 'Acura,Chevrolet,Ford,Genesis,Hyundai,Kia,Lexus,RAM,Toyota,Volvo';
-      
-      if (make && make !== 'All') {
-        url += `&make=${encodeURIComponent(make as string)}`;
-      } else {
-        url += `&make=${encodeURIComponent(TARGET_MAKES)}`;
-      }
-      
-      if (model && model !== 'All') url += `&model=${encodeURIComponent(model as string)}`;
-      if (trim && trim !== 'All') url += `&trim=${encodeURIComponent(trim as string)}`;
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Marketcheck API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      apiCache.set(cacheKey, data, 1800); // cache for 30 mins
-      res.json(data);
+      // MARKETCHECK DISABLED FOR NOW //
+      const disabledData = { num_found: 0, listings: [] };
+      apiCache.set(cacheKey, disabledData, 86400000); // Cache forever basically
+      return res.json(disabledData);
     } catch (error) {
       console.error("Error fetching marketcheck data:", error);
       res.status(500).json({ error: "Failed to fetch marketcheck data" });
@@ -4393,8 +4378,14 @@ const mapDealsForFrontend = (
           if (modelPhotos.length > 0) {
             // Sort so default is first
             modelPhotos.sort((a: any, b: any) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
-            images = modelPhotos.map((p: any) => p.imageUrl);
-            imageUrl = images[0];
+            // Only attach images if they are regular URLs, not massive base64 strings to prevent payload bloat
+            // Base64 photos are handled separately on the frontend through /api/car-photos
+            if (!modelPhotos[0].imageUrl.startsWith('data:image')) {
+              images = modelPhotos.map((p: any) => p.imageUrl).filter((url: string) => !url.startsWith('data:image'));
+              if (images.length > 0) {
+                imageUrl = images[0];
+              }
+            }
           }
           bodyStyle = getBodyStyle(modelObj.class, modelObj.name);
           fuelType = getFuelType(modelObj.class, data.trim || '');
@@ -5047,6 +5038,12 @@ const mapDealsForFrontend = (
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    
+    // Cache marketcheck vehicles for 30 days, run every night at 3 AM
+    cron.schedule('0 3 * * *', () => {
+      console.log('Running nightly Marketcheck sync...');
+      syncDealersInventory().catch(console.error);
+    });
   });
 }
 

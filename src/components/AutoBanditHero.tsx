@@ -120,12 +120,6 @@ export const AutoBanditHero = () => {
               </div>
             ))}
           </div>
-
-          <div className="flex items-center gap-2 text-[10px] text-gray-400 italic">
-            <Info size={12} />
-            Images are generic and may not be representative of paint color or selected options
-          </div>
-          <div className="text-[11px] font-bold text-gray-500">Deal ID: 286877</div>
         </div>
 
         {/* Right Column: Details & Pricing */}
@@ -277,36 +271,6 @@ export const AutoBanditHero = () => {
         </div>
       </div>
 
-      {/* Floating Chat Widget */}
-      <div className="fixed bottom-6 right-6 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
-        <div className="bg-[#E63946] p-4 flex items-center gap-3">
-          <div className="relative">
-            <img src="https://picsum.photos/seed/cindy/100/100" className="w-12 h-12 rounded-full border-2 border-white" alt="Cindy" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
-          </div>
-          <div className="text-white">
-            <div className="font-bold">Talk with Cindy</div>
-            <div className="text-[10px] opacity-80 uppercase font-bold tracking-widest">Online</div>
-          </div>
-        </div>
-        <div className="p-4 h-80 overflow-y-auto bg-[#F8F9FA] space-y-4">
-          <div className="bg-white p-3 rounded-2xl rounded-tl-none text-xs text-gray-700 shadow-sm border border-gray-100 max-w-[85%]">
-            Hi Azat, I'm Cindy. I'm here to help you find the best car deal that's easy, clear, and stress free. Just tell me what you're looking for and I'll handle the rest.
-          </div>
-          <div className="bg-white p-3 rounded-2xl rounded-tl-none text-xs text-gray-700 shadow-sm border border-gray-100 max-w-[85%]">
-            Hello Azat, I see you were recently looking at a Hyundai Elantra Hybrid Blue and a Toyota Corolla Hybrid LE. I can certainly help you find a great deal on a vehicle. Want me to start?
-          </div>
-          <div className="flex justify-end">
-            <div className="bg-blue-50 p-3 rounded-2xl rounded-tr-none text-xs text-blue-900 shadow-sm border border-blue-100 max-w-[85%]">
-              Hello!
-            </div>
-          </div>
-        </div>
-        <div className="p-4 border-t border-gray-100 flex items-center gap-2">
-          <input type="text" placeholder="Type your message..." className="flex-1 text-xs outline-none" />
-          <MessageCircle size={18} className="text-gray-400 cursor-pointer" />
-        </div>
-      </div>
     </div>
   );
 };

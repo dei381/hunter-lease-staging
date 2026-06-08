@@ -60,6 +60,11 @@ export const DealCalculatorModal = ({
       .catch(err => console.error('Failed to fetch photos', err));
   }, []);
 
+  const [quoteResult, setQuoteResult] = useState<any>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  const activeIncentives = useMemo(() => quoteResult?.availableIncentives || deal?.availableIncentives || [], [quoteResult, deal]);
+
   useEffect(() => {
     if (isOpen && deal) {
       const initialType = deal.displayType || deal.type || 'lease';
@@ -67,24 +72,30 @@ export const DealCalculatorModal = ({
       setTier('t1');
       setDown(Number(deal.down) || 3000);
       setTerm(parseInt(deal.displayTerm) || (initialType === 'finance' ? 72 : (parseInt(deal.term) || 36)));
-      setSelectedIncentives(deal.availableIncentives?.filter((inc: any) => inc.isDefault).map((inc: any) => inc.id) || []);
+      setSelectedIncentives(activeIncentives?.filter((inc: any) => inc.isDefault).map((inc: any) => inc.id) || []);
       
       const isKiaHyundai = ['Kia', 'Hyundai'].includes(deal.make);
       setMileage(isKiaHyundai ? '10k' : '7.5k');
     }
   }, [isOpen, deal]);
 
+  // Update selected incentives if available incentives change (e.g. from term change)
+  useEffect(() => {
+    if (quoteResult?.availableIncentives) {
+       setSelectedIncentives(prev => prev.filter(id => quoteResult.availableIncentives.some((inc:any) => inc.id === id)));
+       const defaults = quoteResult.availableIncentives.filter((inc:any) => inc.isDefault).map((inc:any) => inc.id);
+       setSelectedIncentives(prev => Array.from(new Set([...prev, ...defaults])));
+    }
+  }, [quoteResult?.availableIncentives]);
+
   const toggleIncentive = (id: string) => {
-    const incentive = deal?.availableIncentives?.find((inc: any) => inc.id === id);
+    const incentive = activeIncentives?.find((inc: any) => inc.id === id);
     if (incentive?.isDefault && role !== 'admin') return;
     
     setSelectedIncentives(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
   };
-
-  const [quoteResult, setQuoteResult] = useState<any>(null);
-  const [isCalculating, setIsCalculating] = useState(false);
 
   const debouncedDown = useDebounce(down, 500);
   const debouncedTerm = useDebounce(term, 500);
@@ -279,7 +290,7 @@ export const DealCalculatorModal = ({
 
                     <div>
                       <div className="flex justify-between items-center mb-3">
-                        <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider">{t.dueAtSigning}</label>
+                        <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider">{calcType === 'lease' ? t.dueAtSigning : (language === 'ru' ? 'Первоначальный взнос' : 'Down Payment')}</label>
                         <span className="text-[var(--lime)] font-mono text-base bg-[var(--lime)]/10 px-2 py-1 rounded-md">{fmt(down)}</span>
                       </div>
                       <div className="flex gap-2 mb-4">
@@ -311,8 +322,8 @@ export const DealCalculatorModal = ({
 
                     <div>
                       <label className="text-xs font-bold text-[var(--mu)] uppercase tracking-wider block mb-3">{t.term} (Months)</label>
-                      <div className={`grid gap-1 sm:gap-2 bg-[var(--s2)] p-1 rounded-xl border border-[var(--b2)] ${calcType === 'lease' ? 'grid-cols-3' : 'grid-cols-5'}`}>
-                        {(calcType === 'lease' ? [24, 36, 48] : [48, 60, 72, 84, 96]).map(t => (
+                      <div className={`grid gap-1 sm:gap-2 bg-[var(--s2)] p-1 rounded-xl border border-[var(--b2)] grid-cols-3 lg:grid-cols-6`}>
+                        {(calcType === 'lease' ? [24, 30, 36, 39, 42, 48] : [24, 36, 48, 60, 72, 84]).map(t => (
                           <button
                             key={t}
                             onClick={() => setTerm(t)}
@@ -342,7 +353,7 @@ export const DealCalculatorModal = ({
                       </div>
                     )}
 
-                      {deal.availableIncentives && deal.availableIncentives.length > 0 && (
+                      {activeIncentives && activeIncentives.length > 0 && (
                         <div className="pt-4 space-y-4">
                           <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--b2)] bg-[var(--s2)]">
                             <div className="space-y-1">
@@ -503,16 +514,16 @@ export const DealCalculatorModal = ({
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-blue-400 font-bold uppercase tracking-widest text-[10px]">{t.hunterLeaseDiscount}</span>
                           <span className="text-blue-400 font-bold font-mono">
-                            -{fmt(deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && (inc.type === 'dealer' || inc.isDefault)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
+                            -{fmt((quoteResult?.dealerDiscountCents !== undefined ? Math.abs(quoteResult.dealerDiscountCents) / 100 : Math.abs(Number(deal.savings) || 0)) + (activeIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && inc.isDefault).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0))}
                           </span>
                         </div>
 
                         {/* Other Selected Incentives */}
-                        {deal.availableIncentives?.some((inc: any) => selectedIncentives.includes(inc.id) && inc.type !== 'dealer' && !inc.isDefault) && (
+                        {activeIncentives?.some((inc: any) => selectedIncentives.includes(inc.id) && inc.type !== 'dealer' && !inc.isDefault) && (
                           <div className="flex justify-between items-center text-sm">
                             <span className="text-orange-400 font-bold uppercase tracking-widest text-[10px]">{t.selectedIncentives}</span>
                             <span className="text-orange-400 font-bold font-mono">
-                              -{fmt(deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && inc.type !== 'dealer' && !inc.isDefault).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
+                              -{fmt(activeIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id) && inc.type !== 'dealer' && !inc.isDefault).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)}
                             </span>
                           </div>
                         )}
@@ -521,12 +532,12 @@ export const DealCalculatorModal = ({
                       <div className="pt-2 border-t border-[var(--b2)] flex justify-between items-center">
                         <span className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">{t.sellingPrice}</span>
                         <span className="text-lg font-display text-[var(--lime)]">
-                          {fmt(quoteResult?.sellingPriceCents !== undefined ? quoteResult.sellingPriceCents / 100 : ((Number(deal.msrp) || 0) - (deal.availableIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)))}
+                          {fmt(quoteResult?.sellingPriceCents !== undefined ? quoteResult.sellingPriceCents / 100 : ((Number(deal.msrp) || 0) - (Number(deal.savings) || 0) - (activeIncentives?.filter((inc: any) => selectedIncentives.includes(inc.id)).reduce((sum: number, inc: any) => sum + inc.amount, 0) || 0)))}
                         </span>
                       </div>
 
                       <div className="flex justify-between items-center text-sm pt-2">
-                        <span className="text-[var(--mu2)] uppercase tracking-widest text-[10px] font-bold">{t.dueAtSigning}</span>
+                        <span className="text-[var(--mu2)] uppercase tracking-widest text-[10px] font-bold">{calcType === 'lease' ? t.dueAtSigning : (language === 'ru' ? 'Первоначальный взнос' : 'Down Payment')}</span>
                         <span className="text-[var(--w)] font-mono">{fmt(quoteResult?.dueAtSigningCents !== undefined ? quoteResult.dueAtSigningCents / 100 : (down + (msdCount * Math.ceil((Number(calculatedPayment) || 0) / 50) * 50)))}</span>
                       </div>
                       {msdCount > 0 && (

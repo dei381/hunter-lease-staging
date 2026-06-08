@@ -13,8 +13,8 @@ interface SEOProps {
 
 export const SEO: React.FC<SEOProps> = ({
   title = 'Hunter Lease | Car Leasing & Buying for Expats in USA',
-  description = 'Get a car in the USA without SSN or credit history. We specialize in auto leasing and financing for immigrants, expats, and international students.',
-  keywords = 'car lease no ssn, buy car without credit history usa, auto loan for immigrants, ITIN car loan, car leasing Los Angeles',
+  description = 'Lease a new car in California with transparent, pre-negotiated pricing. Real payment, money factor and drive-off shown up front, no dealer markups. English and Russian support.',
+  keywords = 'car lease Los Angeles, transparent lease deals California, new car lease SoCal, lease payment calculator, лизинг авто Калифорния',
   canonicalUrl,
   ogImage = 'https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&q=80&w=1200',
   schema,
@@ -30,7 +30,7 @@ export const SEO: React.FC<SEOProps> = ({
     name: 'Hunter Lease',
     url: siteUrl,
     logo: `${siteUrl}/logo.png`, // Assuming a logo exists
-    description: 'Specialized auto leasing and financing for immigrants and expats in the USA without SSN or credit history.',
+    description: 'Lease a new car in California with transparent, pre-negotiated pricing. Real payment, money factor and drive-off shown up front, no dealer markups. English and Russian support.',
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: '+1-800-555-0199', // Replace with actual

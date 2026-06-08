@@ -371,74 +371,43 @@ export const MarketcheckDealPage: React.FC = () => {
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2">
         <div className="flex flex-col gap-2">
-          {/* Enhanced Hero Section - Higher conversion layout */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 pt-4 pb-2">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="bg-[var(--lime)] text-black text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest leading-none">
-                  {language === 'ru' ? 'Отличная цена' : 'Great Deal'}
-                </span>
-              </div>
-              <Breadcrumbs make={listing.make} model={listing.model} />
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display uppercase tracking-tighter leading-[0.9] mt-2 mb-4">
-                {listing.make} <span className="text-[var(--mu2)]">{listing.model}</span>
-              </h1>
-              <div className="flex flex-wrap items-center gap-4 text-[var(--mu2)]">
-                <span className="font-mono text-[10px] tracking-widest">{listing.year} {t.modelYear}</span>
-                <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                <span className="font-mono text-[10px] tracking-widest">{listing.trim || t.premiumPlus}</span>
-                <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                <div className="flex items-center gap-1.5 relative group cursor-help bg-[var(--lime)]/10 border border-[var(--lime)]/30 px-2 py-0.5 rounded-full">
-                  <ShieldCheck size={12} className="text-[var(--lime)]" />
-                  <span className="font-mono text-[10px] font-bold tracking-widest text-[var(--lime)]">{t.passedAudit}</span>
-                </div>
-                {viewCount > 5 && (
-                  <>
-                    <div className="w-1 h-1 rounded-full bg-[var(--b2)]" />
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-[var(--mu2)] uppercase">
-                      <Eye size={12} className="text-[var(--lime)]" />
-                      {language === 'ru' ? `${viewCount} смотрят сейчас` : `${viewCount} looking`}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex flex-col items-start md:items-end gap-3 bg-[var(--s1)] p-4 rounded-2xl border border-[var(--b2)] w-full md:w-auto">
-              <div className="text-[10px] text-[var(--mu2)] font-bold uppercase tracking-widest mb-1">
-                 {tc.leasePayment} / {activeSelection?.term || 36} {tc.moShort}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="font-display text-4xl text-[var(--w)] leading-none">${activeSelection?.payment || dealForCalc.displayPayment}</span>
-                <span className="text-xs text-[var(--mu2)] font-bold">/ {tc.moShort}</span>
-              </div>
-              
-              <div className="flex items-center gap-2 mt-2 w-full">
-                <button
-                  onClick={() => setIsAlertOpen(true)}
-                  className="flex-1 py-3 px-4 rounded-xl border border-[var(--b2)] hover:border-[var(--mu)] transition-colors text-[10px] font-bold uppercase text-[var(--mu2)] hover:text-white flex items-center justify-center gap-2"
-                >
-                  <Bell size={12} />
-                  {language === 'ru' ? 'За ценой' : 'Alert'}
-                </button>
-                <button
-                  onClick={() => {
-                    if (isInCompare(listing.id?.toString() || listing.vin)) {
-                      removeFromCompare(listing.id?.toString() || listing.vin);
-                    } else {
-                      addToCompare(dealForCalc);
-                    }
-                  }}
-                  className={`px-4 py-3 rounded-xl transition-colors flex items-center justify-center border ${
-                    isInCompare(listing.id?.toString() || listing.vin) 
-                      ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
-                      : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
-                  }`}
-                >
-                  <Heart size={14} className={isInCompare(listing.id?.toString() || listing.vin) ? "fill-current" : ""} />
-                </button>
-              </div>
-            </div>
+          <div className="flex flex-col gap-3 pb-4 pt-2">
+             <div className="flex items-center gap-2">
+               <Breadcrumbs make={listing.make} model={listing.model} />
+             </div>
+             <div className="flex items-center justify-between w-full">
+               <div className="flex items-center gap-2 text-[14px]">
+                 {listing.msrp > 0 && (
+                   <div className="flex items-center gap-2 font-mono font-bold text-[var(--w)]">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={savings > 0 ? "text-[var(--lime)]" : "text-[var(--mu2)]"}><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+                     <span className={savings <= 0 ? "text-[var(--mu2)]" : ""}>{savings > 0 ? ((savings / listing.msrp) * 100).toFixed(1) : 0}% off MSRP</span>
+                   </div>
+                 )}
+               </div>
+               {/* Utilities */}
+               <div className="flex items-center gap-3">
+                 <button
+                    onClick={() => {
+                      if (isInCompare(listing.id?.toString() || listing.vin)) {
+                        removeFromCompare(listing.id?.toString() || listing.vin);
+                      } else {
+                        addToCompare(dealForCalc);
+                      }
+                    }}
+                    className={`p-2 sm:px-4 sm:py-2 rounded-full sm:rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border ${
+                      isInCompare(listing.id?.toString() || listing.vin) 
+                        ? 'bg-[var(--s2)] text-[var(--lime)] border-[var(--lime)]' 
+                        : 'bg-transparent text-[var(--mu2)] border-[var(--b2)] hover:border-[var(--mu)] hover:text-[var(--w)]'
+                    }`}
+                 >
+                   <Heart size={16} className={isInCompare(listing.id?.toString() || listing.vin) ? "fill-current" : ""} />
+                   <span className="hidden sm:inline">{language === 'ru' ? 'СОХРАНИТЬ' : 'SAVE'}</span>
+                 </button>
+                 <button className="p-2 text-[var(--mu2)] hover:text-[var(--w)] transition-colors">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>
+                 </button>
+               </div>
+             </div>
           </div>
 
           {/* Sticky Navigation - More Compact */}
@@ -536,10 +505,16 @@ export const MarketcheckDealPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="p-4 bg-[var(--lime)]/10 rounded-2xl border border-[var(--lime)]/30">
-                  <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest mb-1">Total Savings</div>
+                  <div className="text-[10px] font-bold text-[var(--lime)] uppercase tracking-widest mb-1">{language === 'ru' ? 'Общая выгода' : 'Total Savings'}</div>
                   <div className="text-xl font-mono text-[var(--lime)]">
-                    {savings > 0 ? `-$${savings.toLocaleString()}` : '$0'}
-                    <span className="text-xs ml-1 opacity-70">({savingsPercent}%)</span>
+                    {savings > 0 ? (
+                      <>
+                        -${savings.toLocaleString()}
+                        <span className="text-xs ml-1 opacity-70">({savingsPercent}%)</span>
+                      </>
+                    ) : (
+                      '0%'
+                    )}
                   </div>
                 </div>
               </div>
@@ -763,7 +738,7 @@ export const MarketcheckDealPage: React.FC = () => {
                           initialIsFirstTimeBuyer={isFirstTimeBuyer}
                           initialHasCosigner={hasCosigner}
                           viewCount={viewCount}
-                          hideCTA={true}
+                          hideCTA={false}
                         />
                       </div>
                     </details>
@@ -1009,25 +984,7 @@ export const MarketcheckDealPage: React.FC = () => {
         </section>
       </div>
 
-      {/* Mobile Sticky CTA */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--b2)] z-50 flex items-center justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-        <div className="flex flex-col">
-          <div className="text-[10px] text-[var(--w)] uppercase tracking-widest font-bold mb-0.5">
-             {tc.leasePayment} / {activeSelection?.term || 36} {tc.moShort}
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="font-display text-2xl text-[var(--lime)] leading-none">${activeSelection?.payment || dealForCalc.displayPayment}</span>
-            <span className="text-[10px] text-[var(--mu2)] uppercase">/ mo</span>
-          </div>
-        </div>
-        <button 
-          onClick={() => handleProceed(activeSelection || dealForCalc)}
-          className="flex flex-col bg-[var(--lime)] text-black px-6 py-2.5 rounded-xl font-display tracking-widest hover:scale-[1.02] transition-transform items-center justify-center uppercase"
-        >
-          <span className="text-sm font-bold">{language === 'ru' ? 'Связаться' : 'Check Availability'}</span>
-          <span className="text-[9px] opacity-70 lowercase font-sans">no commitment</span>
-        </button>
-      </div>
+
 
       <DepositModal 
         isOpen={isDepositOpen}

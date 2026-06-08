@@ -169,7 +169,7 @@ export const translations = {
           car: "BMW XB7 Alpina",
           save: "Saved $15,000",
           loc: "Irvine",
-          quote: "The dealer quoted me $2,100/mo with $5k down. AutoBandit got the exact same car for $1,750/mo with $0 down. The process was completely transparent.",
+          quote: "The dealer quoted me $2,100/mo with $5k down. Hunter Lease got the exact same car for $1,750/mo with $0 down. The process was completely transparent.",
         },
         {
           id: 3,
@@ -177,7 +177,7 @@ export const translations = {
           car: "Mercedes GLB",
           save: "Saved $8,000",
           loc: "Encino",
-          quote: "I was tired of negotiating. AutoBandit showed me the real wholesale price and secured a $550/mo lease when others wanted $700+. Highly recommended.",
+          quote: "I was tired of negotiating. Hunter Lease showed me the real wholesale price and secured a $550/mo lease when others wanted $700+. Highly recommended.",
         },
         {
           id: 4,
@@ -185,7 +185,7 @@ export const translations = {
           car: "Hyundai Santa-Fe Hybrid",
           save: "$0 Down",
           loc: "San Jose",
-          quote: "Got my hybrid with absolutely zero down payment. The dealer tried to add $3,000 in markups, but AutoBandit bypassed all of that. True lifesavers.",
+          quote: "Got my hybrid with absolutely zero down payment. The dealer tried to add $3,000 in markups, but Hunter Lease bypassed all of that. True lifesavers.",
         },
         {
           id: 5,
@@ -193,7 +193,7 @@ export const translations = {
           car: "Lexus NX450 Luxury",
           save: "Market Window",
           loc: "San Diego",
-          quote: "We almost signed a terrible deal at the dealership. AutoBandit audited our contract, found $4,000 in hidden fees, and got us a clean lease instead.",
+          quote: "We almost signed a terrible deal at the dealership. Hunter Lease audited our contract, found $4,000 in hidden fees, and got us a clean lease instead.",
         },
         {
           id: 6,
@@ -993,8 +993,8 @@ export const translations = {
       auditDesc: "Every line of the contract is verified for hidden markups.",
       fleetTitle: "FLEET ACCESS",
       fleetDesc: "Direct access to wholesale pricing departments.",
-      matchTitle: "EXPERT MATCH",
-      matchDesc: "We ensure this specific car fits your requirements.",
+      matchTitle: "PAYMENT GUARANTEE",
+      matchDesc: "We guarantee your monthly payment will not change when you finalize your paperwork at the dealership.",
       techProp: "TECHNICAL PROPERTY",
       auditSectionTitle: "THE",
       auditSectionSubtitle: "AUDIT",
@@ -1422,8 +1422,8 @@ export const translations = {
       title: "FAQ",
       questions: [
         {
-          q: "Can I lease a car in the US without an SSN or credit history?",
-          a: "Yes! We specialize in helping expats, international students, and immigrants lease cars without a Social Security Number (SSN) or US credit history. We work with banks that accept alternative documents like visas, employment letters, or I-20 forms.",
+          q: "I am new to the US with a thin credit history. Can you help?",
+          a: "Yes. An SSN is required to lease, but we help newcomers with a short or thin US credit history get approved. We match you with lenders friendly to first-time borrowers, and a co-signer can speed up approval.",
         },
         {
           q: "Does checking my options on Hunter Lease affect my credit score?",
@@ -1482,7 +1482,7 @@ export const translations = {
           loc: "West Hollywood, CA",
           car: "Mercedes GLC 300 2026 4MATIC",
           text: "My time is expensive. I am not ready to spend 6 hours haggling with managers in the showroom. Hunter.Lease is like a Bloomberg Terminal for buying a car. You see the real price, click a button, pick up the car.",
-          save: "Approved without SSN",
+          save: "Approved with thin US credit",
         },
         {
           name: "Dmitry T.",
@@ -2040,7 +2040,7 @@ export const translations = {
           car: "BMW XB7 Alpina",
           save: "Сэкономила $15,000",
           loc: "Ирвайн",
-          quote: "Дилер предлагал мне $2,100/мес с первоначальным взносом $5k. AutoBandit нашел точно такую же машину за $1,750/мес без взноса. Процесс был полностью прозрачным.",
+          quote: "Дилер предлагал мне $2,100/мес с первоначальным взносом $5k. Hunter Lease нашел точно такую же машину за $1,750/мес без взноса. Процесс был полностью прозрачным.",
         },
         {
           id: 3,
@@ -2048,7 +2048,7 @@ export const translations = {
           car: "Mercedes GLB",
           save: "Сэкономил $8,000",
           loc: "Энсино",
-          quote: "Я устал торговаться. AutoBandit показал мне реальную оптовую цену и оформил лизинг за $550/мес, когда другие хотели $700+. Очень рекомендую.",
+          quote: "Я устал торговаться. Hunter Lease показал мне реальную оптовую цену и оформил лизинг за $550/мес, когда другие хотели $700+. Очень рекомендую.",
         },
         {
           id: 4,
@@ -2056,7 +2056,7 @@ export const translations = {
           car: "Hyundai Santa-Fe Hybrid",
           save: "$0 Первый взнос",
           loc: "Сан-Хосе",
-          quote: "Взял гибрид абсолютно без первоначального взноса. Дилер пытался добавить $3,000 наценок, но AutoBandit обошел все это. Настоящие спасители.",
+          quote: "Взял гибрид абсолютно без первоначального взноса. Дилер пытался добавить $3,000 наценок, но Hunter Lease обошел все это. Настоящие спасители.",
         },
         {
           id: 5,
@@ -2064,7 +2064,7 @@ export const translations = {
           car: "Lexus NX450 Luxury",
           save: "Рыночное окно",
           loc: "Сан-Диего",
-          quote: "Мы чуть не подписали ужасный договор в дилерском центре. AutoBandit проверил наш контракт, нашел $4,000 скрытых комиссий и вместо этого оформил нам чистый лизинг.",
+          quote: "Мы чуть не подписали ужасный договор в дилерском центре. Hunter Lease проверил наш контракт, нашел $4,000 скрытых комиссий и вместо этого оформил нам чистый лизинг.",
         },
         {
           id: 6,
@@ -2869,9 +2869,9 @@ export const translations = {
       auditDesc: "Каждая строка контракта проверена на скрытые наценки.",
       fleetTitle: "ДОСТУП К FLEET",
       fleetDesc: "Прямой доступ к отделам оптовых продаж.",
-      matchTitle: "ЭКСПЕРТНЫЙ ПОДБОР",
+      matchTitle: "ФИКСИРОВАННЫЙ ПЛАТЕЖ",
       matchDesc:
-        "Мы гарантируем, что этот автомобиль соответствует вашим требованиям.",
+        "Мы гарантируем, что ваш ежемесячный платеж не изменится при оформлении автомобиля в салоне.",
       techProp: "ТЕХНИЧЕСКИЙ АНАЛИЗ",
       auditSectionTitle: "АУДИТ",
       auditSectionSubtitle: "11-KEY",
@@ -3305,8 +3305,8 @@ export const translations = {
       title: "FAQ",
       questions: [
         {
-          q: "Можно ли взять авто в лизинг в США без SSN и кредитной истории?",
-          a: "Да! Мы специализируемся на помощи экспатам, иностранным студентам и иммигрантам в получении авто в лизинг без номера социального страхования (SSN) или кредитной истории в США. Мы работаем с банками, которые принимают альтернативные документы: визы, письма от работодателя или формы I-20.",
+          q: "Я недавно в США, кредитная история тонкая. Поможете?",
+          a: "Да. SSN для лизинга обязателен, но мы помогаем новоприбывшим с короткой или тонкой кредитной историей получить одобрение. Подбираем банки, лояльные к первому кредиту, со-подписание ускоряет одобрение.",
         },
         {
           q: "Влияет ли проверка условий на Hunter Lease на мой кредитный рейтинг?",
@@ -3365,7 +3365,7 @@ export const translations = {
           loc: "Западный Голливуд, Калифорния",
           car: "Mercedes GLC 300 2026 4MATIC",
           text: "Мое время стоит дорого. Я не готова тратить 6 часов на торги с менеджерами в шоуруме. Hunter.Lease — это как терминал Bloomberg для покупки авто. Видишь реальную цену, нажимаешь кнопку, забираешь машину.",
-          save: "Одобрено без SSN",
+          save: "Одобрен с короткой кредитной историей",
         },
         {
           name: "Дмитрий Т.",

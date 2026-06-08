@@ -21,7 +21,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
   const [photos, setPhotos] = useState<CarPhoto[]>(initialPhotos || []);
 
   const currentPayment = Number(deal.displayPayment) || Number(deal.payment) || 0;
-  const totalIncentives = (deal.availableIncentives || []).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+  const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
   const msrpObj = Number(deal.msrp) || 0;
   const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
   const savingsPctObj = msrpObj > 0 ? badgeTotalSavings / msrpObj : 0;
@@ -95,51 +95,33 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
             </div>
           )}
           <div className="flex flex-wrap gap-1.5 max-w-[80%]">
-            {deal.isSoldOut && (
+            {deal.isSoldOut ? (
               <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-red-600 text-white shadow-sm">
-                Sold Out
+                {language === 'ru' ? 'ПРОДАНО' : 'SOLD OUT'}
               </span>
-            )}
-            <span className={cn(
-              "text-[8px] font-bold px-2 py-0.5 rounded-md uppercase",
-              deal.displayType === 'lease' ? 'bg-blue-500 text-white' : 'bg-[var(--grn)] text-white'
-            )}>
-              {deal.displayType === 'lease' ? t.lease : t.finance}
-            </span>
-            {savingsPctObj >= 0.06 && (
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[#00E58F] text-black">
-                {language === 'ru' ? 'Отличная скидка' : 'Great Price'}
+            ) : deal.hot ? (
+              <span className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black shadow-sm">
+                🔥 {language === 'ru' ? 'ХИТ ПРОДАЖ' : 'TOP SELLER'}
               </span>
-            )}
-            {savingsPctObj >= 0.03 && savingsPctObj < 0.06 && (
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-md">
-                {language === 'ru' ? 'Хорошая скидка' : 'Good Price'}
-              </span>
-            )}
-            {badgeTotalSavings > 0 && (
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] backdrop-blur-md">
-                {language === 'ru' ? `Ниже MSRP на ${fmt(badgeTotalSavings)}` : `Save ${fmt(badgeTotalSavings)}`}
-              </span>
-            )}
-            {deal.displayType === 'lease' && leaseValueRatio > 0 && leaseValueRatio <= 0.0125 && (
-              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase ${leaseValueRatio <= 0.010 ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 backdrop-blur-md'}`}>
-                {leaseValueRatio <= 0.010 
-                  ? (language === 'ru' ? 'Отличный лизинг' : 'Exceptional Lease') 
-                  : (language === 'ru' ? 'Хороший лизинг' : 'Good Lease')}
-              </span>
-            )}
-            {deal.hot && <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--lime)] text-black">{tcalc.hotDeal}</span>}
-            {deal.rv && (parseFloat(String(deal.rv).replace('%', '')) > 60 || parseFloat(String(deal.rv).replace('%', '')) > 0.6) && (
+            ) : (deal.viewCount && deal.viewCount > 50) ? (
               <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-orange-500/20 text-orange-300 border border-orange-500/30 backdrop-blur-md">
-                {tcalc.fastSelling}
+                {language === 'ru' ? 'ПОПУЛЯРНОЕ' : 'POPULAR'}
+              </span>
+            ) : null}
+
+            <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase ${savingsPctObj > 0 ? 'bg-[#00E58F] text-black shadow-sm' : 'bg-[var(--s2)] text-[var(--mu2)] border border-[var(--b2)] backdrop-blur-md'}`}>
+              {savingsPctObj > 0 
+                ? `${(savingsPctObj * 100).toFixed(1)}% ${language === 'ru' ? 'СКИДКА' : 'OFF MSRP'}`
+                : `0% ${language === 'ru' ? 'СКИДКА' : 'OFF MSRP'}`
+              }
+            </span>
+            
+            {(deal.class?.toLowerCase() === 'ev' || deal.fuelType?.toLowerCase() === 'electric') && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30 backdrop-blur-md">
+                ⚡ EV
               </span>
             )}
           </div>
-          {(deal.class?.toLowerCase() === 'ev' || deal.fuelType?.toLowerCase() === 'electric') && (
-            <span className="text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30 backdrop-blur-md">
-              ⚡ {t.evBadge}
-            </span>
-          )}
           <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-black/60 text-white backdrop-blur-md border border-white/10">
             <Star size={10} className="fill-[var(--lime)] text-[var(--lime)]" />
             <span>4.8</span>
@@ -182,7 +164,7 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
 
         <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
           <div className="text-[var(--grn)] font-bold text-[10px] bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-md shadow-sm">
-            −{fmt(deal.savings)} {t.totalSavings}
+            −{fmt(badgeTotalSavings)} {t.totalSavings}
           </div>
         </div>
       </div>

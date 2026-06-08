@@ -179,7 +179,16 @@ export class DataResolver {
       }
     });
 
-    formattedIncentives = dbIncentives.map(inc => ({
+    const filteredDbIncentives = dbIncentives.filter(inc => {
+      if (!inc.eligibilityRules) return true;
+      const rules = inc.eligibilityRules as any;
+      if (rules.terms && Array.isArray(rules.terms)) {
+        return rules.terms.includes(context.term);
+      }
+      return true;
+    });
+
+    formattedIncentives = filteredDbIncentives.map(inc => ({
       id: inc.id,
       name: inc.name,
       amount: inc.amountCents / 100,
@@ -326,7 +335,7 @@ export class DataResolver {
           make: { equals: vehicle.make, mode: 'insensitive' },
           term: context.term,
           mileage: 10000,
-          internalLenderTier: { in: [requestedTier, 't1', 'Tier 1', 'Tier 1+'] },
+          internalLenderTier: { in: [requestedTier, 't1', 'Tier 1', 'Tier 1+', 'Super Elite'] },
           model: { in: possibleModels.map(m => m) }
         },
         include: { lender: true }
@@ -527,17 +536,37 @@ export class DataResolver {
     }
 
     if (bankPrograms.length === 0) {
-      console.log('NO PROGRAMS FOUND. Debug info:', {
-        batchId: activeBatch.id,
-        programType: context.quoteType,
-        make: vehicle.make,
-        model: vehicle.model,
-        trim: vehicle.trim,
-        year: vehicle.year,
-        term: context.term,
-        mileage: context.mileage
-      });
-      return [];
+      if (context.quoteType === 'FINANCE') {
+        const defaultApr = 5.9; // Standard fallback APR
+        bankPrograms.push({
+          id: 'standard-finance-fallback',
+          batchId: activeBatch.id,
+          lenderId: 'STANDARD',
+          programType: 'FINANCE',
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          year: vehicle.year,
+          term: context.term,
+          mileage: null,
+          mf: null,
+          rv: null,
+          apr: defaultApr,
+          lender: { name: 'Standard Auto Loan', lenderType: 'BANK', eligibilityRules: [] }
+        } as any);
+      } else {
+        console.log('NO PROGRAMS FOUND. Debug info:', {
+          batchId: activeBatch.id,
+          programType: context.quoteType,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          year: vehicle.year,
+          term: context.term,
+          mileage: context.mileage
+        });
+        return [];
+      }
     }
 
     // Apply Program Overrides

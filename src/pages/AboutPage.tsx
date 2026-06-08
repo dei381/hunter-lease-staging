@@ -19,7 +19,7 @@ export const AboutPage = () => {
       "name": "Hunter Lease",
       "url": "https://hunterlease.com",
       "logo": "https://hunterlease.com/logo.png",
-      "description": "Hunter Lease is the premier auto leasing marketplace in the US, specializing in helping immigrants, expats, and international students get cars without SSN or credit history.",
+      "description": "Lease a new car in California with transparent, pre-negotiated pricing. Real payment, money factor and drive-off shown up front, no dealer markups. English and Russian support.",
       "sameAs": [
         "https://www.instagram.com/hunterlease",
         "https://twitter.com/hunterlease"
@@ -31,7 +31,7 @@ export const AboutPage = () => {
     <div className="min-h-screen bg-[var(--bg)] pt-32 pb-20">
       <SEO 
         title={language === 'ru' ? 'О нас | Hunter Lease' : 'About Us | Hunter Lease'}
-        description={language === 'ru' ? 'Узнайте больше о Hunter Lease. Мы помогаем иммигрантам и экспатам получить авто в лизинг без SSN и кредитной истории в США.' : 'Learn more about Hunter Lease. We help immigrants and expats lease cars without an SSN or credit history in the US.'}
+        description={language === 'ru' ? 'Узнайте больше о Hunter Lease. Честные цены без наценок.' : 'Learn more about Hunter Lease. Transparent pricing with no markups.'}
         schema={aboutSchema}
       />
 
@@ -64,7 +64,7 @@ export const AboutPage = () => {
             <p className="text-[var(--mu2)] leading-relaxed mb-4">
               {language === 'ru' 
                 ? 'Мы верим, что отсутствие кредитной истории (Credit Score) или номера социального страхования (SSN) не должно быть препятствием для мобильности в США. Наша миссия — сделать процесс лизинга и покупки автомобилей прозрачным, честным и доступным для каждого новоприбывшего.' 
-                : 'We believe that lacking a Credit Score or a Social Security Number (SSN) should not be a barrier to mobility in the US. Our mission is to make the car leasing and buying process transparent, fair, and accessible for every newcomer.'}
+                : 'We believe that having a thin credit history should not be a barrier to mobility in the US. Our mission is to make the car leasing and buying process transparent, fair, and accessible for every newcomer.'}
             </p>
             <p className="text-[var(--mu2)] leading-relaxed">
               {language === 'ru' 
@@ -84,10 +84,10 @@ export const AboutPage = () => {
               },
               {
                 icon: Users,
-                title_en: "No SSN Required",
-                title_ru: "SSN не требуется",
-                desc_en: "Special programs for expats, international students, and immigrants without a US credit history.",
-                desc_ru: "Специальные программы для экспатов, иностранных студентов и иммигрантов без кредитной истории в США."
+                title_en: "Newcomer Friendly",
+                title_ru: "Поддержка новоприбывших",
+                desc_en: "Special programs for expats, international students, and immigrants with a thin US credit history.",
+                desc_ru: "Специальные программы для экспатов, иностранных студентов и иммигрантов с короткой кредитной историей в США."
               },
               {
                 icon: Car,

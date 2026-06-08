@@ -148,15 +148,12 @@ export const Calculator: React.FC<CalculatorProps> = ({
             tradeInEquityCents: tradeInEquity * 100,
             tier,
             zipCode,
-            selectedIncentives,
+            selectedIncentives: showIncentives ? selectedIncentives : [],
             isFirstTimeBuyer,
             hasCosigner,
             isStandalone: isCustomCar,
             adminOverrides: {
-              ...(vehiclePrice ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 } : {}),
-              ...(currentCar?.mf !== undefined ? { mf: Number(currentCar.mf) } : {}),
-              ...(currentCar?.rv !== undefined ? { rv: typeof currentCar.rv === 'string' && currentCar.rv.includes('%') ? parseInt(currentCar.rv) / 100 : Number(currentCar.rv) } : {}),
-              ...(currentCar?.baseAPR !== undefined ? { apr: Number(currentCar.baseAPR) } : {})
+              ...(vehiclePrice ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 } : (currentCar?.savings ? { dealerDiscountCents: currentCar.savings * 100 } : {}))
             },
             marketcheckData: (vehiclePrice || incentiveCashBack || currentCar.msrp) ? {
               priceCents: vehiclePrice ? vehiclePrice * 100 : undefined,
@@ -189,7 +186,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
     const timer = setTimeout(fetchLenderOptions, 500);
     return () => clearTimeout(timer);
-  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, JSON.stringify(selectedIncentives), isFirstTimeBuyer, hasCosigner]);
+  }, [currentCar, calcType, term, down, tradeInEquity, mileage, tier, zipCode, showIncentives, JSON.stringify(selectedIncentives), isFirstTimeBuyer, hasCosigner]);
 
   
 
@@ -355,9 +352,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [currentCar, calculatedPayment, calcType, down, term, tier, mileage, zipCode, isCustomCar, onChange]);
 
   const totalIncentives = useMemo(() => {
-    if (quoteData?.totalIncentivesCents !== undefined) {
-      return quoteData.totalIncentivesCents / 100;
-    }
     return effectiveIncentives.reduce((sum: number, inc: any) => {
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
       if (selectedIncentives.includes(inc.id) || (isFtbIncentive && isFirstTimeBuyer)) {
@@ -365,7 +359,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
       }
       return sum;
     }, 0) || 0;
-  }, [quoteData, effectiveIncentives, selectedIncentives, isFirstTimeBuyer]);
+  }, [effectiveIncentives, selectedIncentives, isFirstTimeBuyer]);
 
   const marketAvgRatio = useMemo(() => {
     if (!currentCar || !currentCar.displayPayment) return 1.267;
@@ -462,9 +456,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     strokeDasharray="214"
                     initial={{ strokeDashoffset: 214 }}
                     animate={{ 
-                      strokeDashoffset: 214 * (1 - (
-                        ((timeLeft?.days || 0) * 24 + (timeLeft?.hours || 0) + (timeLeft?.minutes || 0) / 60) / 72
-                      )) 
+                      strokeDashoffset: 214 * (1 - Math.min(1, Math.max(0, 
+                        ((timeLeft?.days || 0) * 24 + (timeLeft?.hours || 0) + (timeLeft?.minutes || 0) / 60) / 48
+                      ))) 
                     }}
                   />
                 </svg>
@@ -472,8 +466,8 @@ export const Calculator: React.FC<CalculatorProps> = ({
                  <div className="text-[7.5px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-0.5" style={{ lineHeight: '1.1' }}>TIME LEFT</div>
                  <div className="text-[10px] font-mono font-medium text-[var(--w)] flex flex-col items-center text-center">
                    {timeLeft.days > 0 
-                      ? <>{timeLeft.days} day{timeLeft.days !== 1 ? 's' : ''}<br/>{timeLeft.hours} hour{timeLeft.hours !== 1 ? 's' : ''}</>
-                      : `${timeLeft.hours}h ${timeLeft.minutes}m`}
+                      ? `${timeLeft.days}d ${timeLeft.hours}h ${timeLeft.minutes}m ${timeLeft.seconds}s`
+                      : `${timeLeft.hours}h:${timeLeft.minutes < 10 ? '0' : ''}${timeLeft.minutes}m:${timeLeft.seconds < 10 ? '0' : ''}${timeLeft.seconds}s`}
                  </div>
               </div>
             </div>
@@ -598,44 +592,46 @@ export const Calculator: React.FC<CalculatorProps> = ({
           {/* Matrix table */}
           <div className="bg-[var(--s1)] rounded-b-xl border border-[var(--b2)] border-t-0 flex flex-col pt-1 pb-1">
             
-           <div className="grid grid-cols-2 lg:grid-cols-4">
+           <div className={cn("grid", calcType === 'lease' ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 md:grid-cols-3")}>
                {/* Term Value */}
                <div className="relative min-w-0 border-b lg:border-b-0 lg:border-r border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors">
                   <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Term Length</span></div>
                   <select 
                     value={term}
                     onChange={(e) => setTerm(parseInt(e.target.value))}
-                    disabled={!!deal}
+                    disabled={false}
                     className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative disabled:opacity-50"
                   >
-                    {(deal ? [parseInt(deal.term) || 36] : (calcType === 'lease' ? [36] : [60])).map(v => (
+                    {(calcType === 'lease' ? [24, 30, 36, 39, 42, 48] : [24, 36, 48, 60, 72, 84]).map(v => (
                       <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{v} {t.moShort}</option>
                     ))}
                   </select>
-                  {!deal && <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />}
+                  <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />
                </div>
 
                {/* Mileage Value */}
-               <div className={cn("relative min-w-0 border-b lg:border-b-0 lg:border-r border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors", calcType !== 'lease' && "opacity-50 pointer-events-none")}>
-                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Annual Mileage</span></div>
-                  <select 
-                    value={mileage}
-                    onChange={(e) => {
-                      setMileage(e.target.value);
-                      onMileageChange?.(e.target.value);
-                    }}
-                    disabled={calcType !== 'lease'}
-                    className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative disabled:opacity-50"
-                  >
-                    {[ '7.5k', '10k', '12k', '15k', '20k' ].map(v => {
-                      const val = t.mileageOptions[v as keyof typeof t.mileageOptions] || (v === '20k' ? '20,000' : v);
-                      return (
-                        <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{val} mi</option>
-                      )
-                    })}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />
-               </div>
+               {calcType === 'lease' && (
+                 <div className="relative min-w-0 border-b lg:border-b-0 lg:border-r border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors">
+                    <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Annual Mileage</span></div>
+                    <select 
+                      value={mileage}
+                      onChange={(e) => {
+                        setMileage(e.target.value);
+                        onMileageChange?.(e.target.value);
+                      }}
+                      disabled={calcType !== 'lease'}
+                      className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative disabled:opacity-50"
+                    >
+                      {[ '7.5k', '10k', '12k', '15k', '20k' ].map(v => {
+                        const val = t.mileageOptions[v as keyof typeof t.mileageOptions] || (v === '20k' ? '20,000' : v);
+                        return (
+                          <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{val} mi</option>
+                        )
+                      })}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-9 w-4 h-4 text-[var(--mu2)] group-hover:text-[var(--w)] transition-colors pointer-events-none z-0" />
+                 </div>
+               )}
 
                {/* Tier Value */}
                <div className="relative min-w-0 border-r lg:border-b-0 border-[var(--b2)] group hover:bg-[var(--w)]/5 transition-colors">
@@ -699,22 +695,28 @@ export const Calculator: React.FC<CalculatorProps> = ({
               </div>
 
               <AnimatePresence>
-              {showIncentives && (
+              {showIncentives && (() => {
+                const activeIncentivesCount = selectedIncentives.length;
+                return (
                 <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} exit={{opacity:0, height:0}} className="overflow-hidden mb-6">
-                  <div className="border border-[var(--b2)] rounded-md px-4 py-3 flex flex-row items-center justify-between gap-4 w-full">
-                    <span className="text-sm font-medium text-[var(--mu2)]">
-                      {language === 'ru' ? 'Сэкономьте добавив инсентивы' : 'Save by adding incentives'}
+                  <div className={cn("border rounded-md px-4 py-3 flex flex-row items-center justify-between gap-4 w-full", activeIncentivesCount > 0 ? "border-[var(--lime)]/50 bg-[var(--lime)]/5" : "border-[var(--b2)]")}>
+                    <span className={cn("text-sm font-medium", activeIncentivesCount > 0 ? "text-[var(--w)]" : "text-[var(--mu2)]")}>
+                      {activeIncentivesCount > 0 
+                        ? (language === 'ru' ? `${fmt(badgeTotalSavings)} сэкономлено с ${activeIncentivesCount} примененными скидками` : `${fmt(badgeTotalSavings)} savings with ${activeIncentivesCount} incentive${activeIncentivesCount === 1 ? '' : 's'} applied`)
+                        : (language === 'ru' ? 'Сэкономьте добавив инсентивы' : 'Save by adding incentives')
+                      }
                     </span>
                     <button 
                       type="button"
                       onClick={() => setIsIncentivesModalOpen(true)}
-                      className="px-4 py-2 bg-[var(--s2)] hover:bg-[var(--b2)] rounded-full text-[10px] font-bold text-[var(--w)] uppercase tracking-widest transition-colors flex items-center gap-2"
+                      className={cn("px-4 py-2 rounded-full justify-center w-auto shrink-0 text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2", activeIncentivesCount > 0 ? "bg-[var(--w)] text-[var(--bg)] hover:bg-white/80" : "bg-[var(--s2)] text-[var(--w)] hover:bg-[var(--b2)]")}
                     >
-                      <ClipboardList size={14} /> {language === 'ru' ? 'МЕНЕДЖЕР СКИДОК' : 'ADD INCENTIVES'}
+                      <ClipboardList size={14} /> {language === 'ru' ? 'МЕНЕДЖЕР СКИДОК' : (activeIncentivesCount > 0 ? 'UPDATE INCENTIVES' : 'ADD INCENTIVES')}
                     </button>
                   </div>
                 </motion.div>
-              )}
+                );
+              })()}
               </AnimatePresence>
             </>
           )}
@@ -757,7 +759,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   
                   <div className="flex flex-col items-end gap-2 mt-2">
                     <div className="text-[13px] text-[var(--mu2)] group cursor-pointer" onClick={() => setIsTransparencyOpen(true)}>
-                      <span>(+<strong>{fmt(down)}</strong> {language === 'ru' ? 'при подписании' : 'due at signing'})</span>
+                      <span>(+<strong>{fmt(down)}</strong> {calcType === 'lease' ? (language === 'ru' ? 'при подписании' : 'due at signing') : (language === 'ru' ? 'первоначальный взнос' : 'down payment')})</span>
                     </div>
                     {/* Explicit Price Transparency Button */}
                     <button 
@@ -783,7 +785,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
           {/* CTA */}
           {!isCalibrator && !hideCTA && (
-            <div className="w-full mt-6 flex justify-center">
+            <div className="w-full mt-6 flex flex-col items-center">
                <button 
                   onClick={() => currentCar && onProceed?.({ 
                     ...currentCar, payment: calculatedPayment, type: calcType, down, term: `${term} mo`, tier, mileage, source: isCustomCar ? 'custom_calculator' : 'catalog_deal'
@@ -795,9 +797,15 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     : "bg-[#00E58F] hover:bg-[#00D484] text-black shadow-[0_0_15px_rgba(0,229,143,0.3)] hover:shadow-[0_0_25px_rgba(0,229,143,0.4)] border border-[#00E58F]/50"
                   )}
                >
-                  {isCustomCar ? (language === 'ru' ? 'ОТПРАВИТЬ ЗАЯВКУ' : 'SUBMIT REQUEST') : (language === 'ru' ? 'РЕЗЕРВ' : 'RESERVE')}
+                  {isCustomCar ? (language === 'ru' ? 'ОТПРАВИТЬ ЗАЯВКУ' : 'SUBMIT REQUEST') : (language === 'ru' ? 'ЗАФИКСИРОВАТЬ ЭТУ ЦЕНУ' : 'LOCK IN THIS PRICE')}
                   <ChevronRight size={16} />
                </button>
+               <div className="text-[9px] md:text-[10px] text-[var(--mu2)] uppercase tracking-widest mt-3 flex items-center justify-center gap-1.5 font-bold text-center">
+                 <ShieldCheck size={12} className="text-[var(--lime)]" />
+                 {language === 'ru' 
+                   ? 'Без влияния на кредитную историю. Soft Pull.' 
+                   : 'No impact on credit score. Soft Pull.'}
+               </div>
             </div>
           )}
         </div>
