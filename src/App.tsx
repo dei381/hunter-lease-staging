@@ -785,12 +785,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     ...(role === 'admin' ? [{ to: '/admin', label: t.nav.admin, isAdmin: true }] : [])
   ];
 
-  const handleNavClick = (link: any, e: React.MouseEvent) => {
+  const handleNavClick = (_link: any, _e: React.MouseEvent) => {
+    // The "Calculator" link navigates to /#calc; the location-hash effect above
+    // scrolls to the on-page calculator. (Calc-modal state lives in MainApp, not here.)
     setIsMobileMenuOpen(false);
-    if (link.id === 'calc') {
-      e.preventDefault();
-      setIsCalcModalOpen(true);
-    }
   };
   
   return (
