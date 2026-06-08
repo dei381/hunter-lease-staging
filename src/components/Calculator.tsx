@@ -153,10 +153,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
             hasCosigner,
             isStandalone: isCustomCar,
             adminOverrides: {
-              ...(vehiclePrice ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 } : (currentCar?.savings ? { dealerDiscountCents: currentCar.savings * 100 } : {})),
-              ...(isCustomCar && currentCar?.mf !== undefined ? { mf: Number(currentCar.mf) } : {}),
-              ...(isCustomCar && currentCar?.[`rv${term}`] !== undefined ? { rv: typeof currentCar[`rv${term}`] === 'string' && currentCar[`rv${term}`].includes('%') ? parseInt(currentCar[`rv${term}`]) / 100 : Number(currentCar[`rv${term}`]) } : (isCustomCar && currentCar?.rv !== undefined ? { rv: typeof currentCar.rv === 'string' && currentCar.rv.includes('%') ? parseInt(currentCar.rv) / 100 : Number(currentCar.rv) } : {})),
-              ...(isCustomCar && currentCar?.baseAPR !== undefined ? { apr: Number(currentCar.baseAPR) } : {})
+              ...(vehiclePrice ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 } : (currentCar?.savings ? { dealerDiscountCents: currentCar.savings * 100 } : {}))
             },
             marketcheckData: (vehiclePrice || incentiveCashBack || currentCar.msrp) ? {
               priceCents: vehiclePrice ? vehiclePrice * 100 : undefined,
@@ -605,7 +602,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                     disabled={false}
                     className="w-full bg-transparent text-sm md:text-[15px] px-3 pb-3 pt-1 font-medium outline-none appearance-none cursor-pointer pr-8 text-[var(--w)] truncate z-10 relative disabled:opacity-50"
                   >
-                    {(calcType === 'lease' ? [24, 30, 36, 39, 42, 48] : [48, 60, 72, 84, 96]).map(v => (
+                    {(calcType === 'lease' ? [24, 30, 36, 39, 42, 48] : [24, 36, 48, 60, 72, 84]).map(v => (
                       <option key={v} value={v} className="bg-[var(--s1)] text-[var(--w)]">{v} {t.moShort}</option>
                     ))}
                   </select>
