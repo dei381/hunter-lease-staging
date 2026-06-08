@@ -239,16 +239,16 @@ async function main() {
         seenIncTerms.add(term);
         const incAmount = num(r.incentive_total);
         const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Lease Cash';
-        const seedKey = `gridinc:${makeName}:${modelName}:${trimName}:${term}`.toLowerCase();
+        const seedKey = `gridinc-lease:${makeName}:${modelName}:${trimName}:${term}`.toLowerCase();
         if (incAmount > 0) {
-          // All grid incentives are manufacturer cash baked into the advertised payment,
-          // so they auto-apply (OEM_CASH -> isDefault) and reduce the cap, not the residual.
+          // Lease incentives (dealApplicability LEASE). Manufacturer cash baked into the
+          // advertised payment -> auto-apply (OEM_CASH) and reduce the cap, not the residual.
           await prisma.oemIncentiveProgram.upsert({
             where: { seedKey },
             update: { name: incName, amountCents: Math.round(incAmount * 100), trim: trimName, type: 'OEM_CASH', eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
             create: {
               seedKey, name: incName, amountCents: Math.round(incAmount * 100),
-              type: 'OEM_CASH', dealApplicability: 'ALL', isTaxableCa: false,
+              type: 'OEM_CASH', dealApplicability: 'LEASE', isTaxableCa: false,
               exclusiveGroupId: `${makeName}_${modelName}_${trimName}_INC`.toLowerCase(),
               make: makeName, model: modelName, trim: trimName,
               eligibilityRules: { terms: [term] }, stackable: true, isActive: true, status: 'PUBLISHED',

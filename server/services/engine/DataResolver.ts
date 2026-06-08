@@ -198,7 +198,8 @@ export class DataResolver {
       stackable: inc.stackable,
       isTaxableCa: inc.isTaxableCa,
       verifiedByAdmin: inc.verifiedByAdmin,
-      dbType: inc.type
+      dbType: inc.type,
+      dealApplicability: inc.dealApplicability // LEASE | FINANCE | ALL — IncentiveResolver filters by quote type
     }));
 
     // 3b. From Firestore (Marketcheck)
