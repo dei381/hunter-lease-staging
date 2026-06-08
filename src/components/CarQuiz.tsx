@@ -25,12 +25,13 @@ export const CarQuiz: React.FC<CarQuizProps> = ({ onSelect }) => {
   }, []);
 
   useEffect(() => {
-    fetchWithCache('/api/deals?limit=100')
+    fetchWithCache(`/api/deals?limit=800&t=${Date.now()}`)
       .then((data: any) => {
-        // Deduplicate deals by make + model + trim
+        // Deduplicate deals by Make + Model + Trim + Color
         const uniqueDealsMap = new Map();
         data.forEach((deal: any) => {
-          const key = `${deal.make}-${deal.model}-${deal.trim}`;
+          if (!deal || !deal.make || !deal.model) return;
+          const key = `${deal.make}-${deal.model}-${deal.trim || 'base'}-${deal.color || deal.exteriorColor || 'any-color'}`;
           if (!uniqueDealsMap.has(key) || deal.type === 'lease') {
             uniqueDealsMap.set(key, deal);
           }

@@ -4493,6 +4493,8 @@ const mapDealsForFrontend = (
       unit: data.unit || 'h',
       dot: data.dot || 'lv',
       isNew: data.isNew !== undefined ? data.isNew : true,
+      color: data.color || data.exteriorColor || 'any-color',
+      vin: data.vin || deal.id,
       isFirstTimeBuyerEligible: isFirstTimeBuyerEligible,
       allowWithCoSigner: allowWithCoSigner,
       displayPayment: payment,
@@ -4643,6 +4645,11 @@ const mapDealsForFrontend = (
         let data = null;
         try {
           data = deal.financialData ? JSON.parse(deal.financialData) : null;
+          if (data && deal.payload) {
+            const payload = JSON.parse(deal.payload);
+            data.exteriorColor = payload.exterior_color || payload.exteriorColor || data.exteriorColor || 'any-color';
+            data.color = payload.exterior_color || payload.exteriorColor || data.color || 'any-color';
+          }
         } catch (e) {
           console.error(`Failed to parse financialData for deal ${deal.id}:`, e);
         }
@@ -4656,7 +4663,7 @@ const mapDealsForFrontend = (
         }
 
         if (shouldDeduplicate) {
-          const key = `${data.make}-${data.model}-${data.trim}`;
+          const key = `${data.make}-${data.model}-${data.trim || 'base'}-${data.exteriorColor || data.color || 'any-color'}`;
           if (!uniqueDealsMap.has(key) || data.type === 'lease') {
             uniqueDealsMap.set(key, { deal, data });
           }

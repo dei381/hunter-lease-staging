@@ -456,7 +456,7 @@ function MainApp() {
               </div>
             </div>
           </div>
-          <button onClick={() => scrollToSection('market')} className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors">
+          <button onClick={() => navigate('/deals')} className="relative z-10 shrink-0 bg-[var(--lime)] text-black px-6 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors">
             {language === 'ru' ? 'Смотреть каталог' : 'Browse Catalog'}
           </button>
         </div>
@@ -787,15 +787,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const handleNavClick = (link: any, e: React.MouseEvent) => {
     setIsMobileMenuOpen(false);
-    if (link.id === 'calc' && isHome) {
+    if (link.id === 'calc') {
       e.preventDefault();
-      const el = document.getElementById('calc');
-      if (el) {
-        window.scrollTo({
-          top: el.getBoundingClientRect().top + window.scrollY - 80,
-          behavior: 'smooth'
-        });
-      }
+      setIsCalcModalOpen(true);
     }
   };
   

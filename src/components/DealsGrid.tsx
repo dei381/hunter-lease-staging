@@ -37,7 +37,7 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
   const effectiveFTB = isFirstTimeBuyer && !hasCosigner;
 
   useEffect(() => {
-    const url = limit ? `/api/deals?limit=${limit * 3}` : '/api/deals'; // Fetch a bit more to account for deduplication
+    const url = limit ? `/api/deals?limit=${limit * 3}&t=${Date.now()}` : `/api/deals?t=${Date.now()}`;
     Promise.all([
       fetchWithCache(url),
       fetchWithCache('/api/car-photos')
@@ -48,10 +48,11 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
           console.error('Expected array of deals, got:', data);
           return;
         }
-        // Deduplicate deals by make + model + trim
+        // Deduplicate deals by Make + Model + Trim + Color
         const uniqueDealsMap = new Map();
         data.forEach((deal: any) => {
-          const key = `${deal.make}-${deal.model}-${deal.trim}`;
+          if (!deal || !deal.make || !deal.model) return;
+          const key = `${deal.make}-${deal.model}-${deal.trim || 'base'}-${deal.color || deal.exteriorColor || 'any-color'}`;
           if (!uniqueDealsMap.has(key) || deal.type === 'lease') {
             uniqueDealsMap.set(key, deal);
           }

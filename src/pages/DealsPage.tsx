@@ -71,7 +71,7 @@ export const DealsPage = () => {
   const [tier, setTier] = useState('t1');
   const [downPayment, setDownPayment] = useState(searchParams.has('down') ? parseInt(searchParams.get('down')!) : 3000);
   const debouncedDownPayment = useDebounce(downPayment, 500);
-  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent'>('value');
+  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent'>('payment');
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -86,7 +86,8 @@ export const DealsPage = () => {
       down: debouncedDownPayment.toString(),
       mileage: selectedMileage,
       displayMode: displayMode,
-      limit: '500' // Increased limit so nothing is deleted
+      limit: '1000',
+      timestamp: Date.now().toString()
     });
 
 
@@ -110,11 +111,11 @@ export const DealsPage = () => {
           return;
         }
 
-        // Deduplicate deals by make + model + trim
+        // Deduplicate deals by Make + Model + Trim + Color
         const uniqueDealsMap = new Map();
         data.forEach((deal: any) => {
           if (!deal || !deal.make || !deal.model) return;
-          const key = `${deal.make}-${deal.model}-${deal.trim || 'base'}`;
+          const key = `${deal.make}-${deal.model}-${deal.trim || 'base'}-${deal.color || deal.exteriorColor || 'any-color'}`;
           if (!uniqueDealsMap.has(key) || deal.type === 'lease') {
             uniqueDealsMap.set(key, deal);
           }

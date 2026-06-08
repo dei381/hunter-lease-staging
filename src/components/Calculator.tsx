@@ -464,10 +464,15 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 </svg>
               <div className="text-center z-10 px-1 flex flex-col items-center mt-1">
                  <div className="text-[7.5px] font-bold text-[var(--mu2)] uppercase tracking-widest mb-0.5" style={{ lineHeight: '1.1' }}>TIME LEFT</div>
-                 <div className="text-[10px] font-mono font-medium text-[var(--w)] flex flex-col items-center text-center">
-                   {timeLeft.days > 0 
-                      ? `${timeLeft.days}d ${timeLeft.hours}h ${timeLeft.minutes}m ${timeLeft.seconds}s`
-                      : `${timeLeft.hours}h:${timeLeft.minutes < 10 ? '0' : ''}${timeLeft.minutes}m:${timeLeft.seconds < 10 ? '0' : ''}${timeLeft.seconds}s`}
+                 <div className="text-[10px] font-mono font-medium text-[var(--w)] flex flex-col items-center justify-center leading-tight">
+                   {timeLeft.days > 0 ? (
+                      <>
+                        <span>{timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m</span>
+                        <span>{timeLeft.seconds}s</span>
+                      </>
+                   ) : (
+                     <span>{timeLeft.hours}h {timeLeft.minutes}m {timeLeft.seconds}s</span>
+                   )}
                  </div>
               </div>
             </div>
