@@ -696,7 +696,11 @@ export class DataResolver {
       vehicle
     );
 
-    if (context.marketcheckData?.cashBackCents) {
+    // Marketcheck cashback is a fallback incentive source for raw MC inventory cars that
+    // have no OEM incentive in our DB. If we already resolved an OEM incentive for this
+    // vehicle, DON'T add the cashback on top — it's the same incentive and would double
+    // count (caused the IONIQ 9 lease showing ~$176 instead of ~$572).
+    if (context.marketcheckData?.cashBackCents && (resolvedIncentives.totalRebateCents || 0) === 0) {
       resolvedIncentives.totalRebateCents += context.marketcheckData.cashBackCents;
       // Assume marketcheck cashback is non-taxable for simplicity unless specified
       resolvedIncentives.nonTaxableRebateCents += context.marketcheckData.cashBackCents;
