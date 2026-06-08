@@ -71,7 +71,7 @@ export const DealsPage = () => {
   const [tier, setTier] = useState('t1');
   const [downPayment, setDownPayment] = useState(searchParams.has('down') ? parseInt(searchParams.get('down')!) : 3000);
   const debouncedDownPayment = useDebounce(downPayment, 500);
-  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc'>('payment');
+  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent'>('value');
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -328,8 +328,22 @@ export const DealsPage = () => {
     // Sorting
     return result.sort((a, b) => {
       if (sortBy === 'payment') return a.displayPayment - b.displayPayment;
-      if (sortBy === 'savings') return b.savings - a.savings;
-      if (sortBy === 'value') return b.valueScore - a.valueScore;
+      if (sortBy === 'savings') return b.savingsPctObj - a.savingsPctObj;
+      if (sortBy === 'value') {
+        const ratioA = a.leaseValueRatio || (a.displayPayment / (a.msrp || 1));
+        const ratioB = b.leaseValueRatio || (b.displayPayment / (b.msrp || 1));
+        return ratioA - ratioB;
+      }
+      if (sortBy === 'popular') {
+        const popA = a.isPopular ? 1 : 0;
+        const popB = b.isPopular ? 1 : 0;
+        return popB - popA || (b.views || 0) - (a.views || 0);
+      }
+      if (sortBy === 'recent') {
+        const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+        const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+        return timeB - timeA;
+      }
       if (sortBy === 'price_asc') return (a.price || a.msrp || 0) - (b.price || b.msrp || 0);
       if (sortBy === 'price_desc') return (b.price || b.msrp || 0) - (a.price || a.msrp || 0);
       return 0;
@@ -756,7 +770,7 @@ export const DealsPage = () => {
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-[var(--mu)] uppercase tracking-widest">{t.sort}:</span>
-                    <select 
+                      <select 
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                       className="bg-transparent text-xs font-bold uppercase tracking-widest outline-none cursor-pointer text-[var(--w)]"
@@ -764,8 +778,10 @@ export const DealsPage = () => {
                       <option value="value">{t.bestDeal}</option>
                       <option value="payment">{t.lowestPayment}</option>
                       <option value="savings">{t.highestSavings}</option>
+                      <option value="popular">{language === 'ru' ? 'Популярность' : 'Trending'}</option>
                       <option value="price_asc">Price (Low - High)</option>
                       <option value="price_desc">Price (High - Low)</option>
+                      <option value="recent">{language === 'ru' ? 'Новинки' : 'Recently Added'}</option>
                     </select>
                   </div>
                   <button 
