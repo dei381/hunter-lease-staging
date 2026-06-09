@@ -20,6 +20,9 @@ export const QuoteContextSchema = z.object({
   isFirstTimeBuyer: z.boolean().default(false),
   hasCosigner: z.boolean().default(false),
   selectedIncentiveIds: z.array(z.string()).default([]),
+  // true when the caller explicitly sent a selection (calculator UIs); callers that omit
+  // the field (hero, catalog) keep the auto-apply-defaults behavior
+  hasExplicitIncentiveSelection: z.boolean().default(false),
   saveSnapshot: z.boolean().default(false),
   isStandalone: z.boolean().default(false),
 

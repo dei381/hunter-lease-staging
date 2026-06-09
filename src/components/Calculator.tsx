@@ -289,7 +289,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
   }, [trimsData, deal, selectedModel?.id, selectedTrim, deepLinkProcessed.trim]);
 
   const effectiveIncentives = useMemo(() => {
-    const incs = deal?.availableIncentives || quoteData?.availableIncentives || currentCar?.availableIncentives || [];
+    // Prefer the quote's list: it's filtered by term + lease/finance on the backend,
+    // while the deal card's list is a static lease-term snapshot
+    const incs = quoteData?.availableIncentives || deal?.availableIncentives || currentCar?.availableIncentives || [];
     if (incs.length === 0 && (deal?.rebates > 0 || currentCar?.rebates > 0)) {
       return [{
         id: 'rebate_default',
@@ -302,20 +304,28 @@ export const Calculator: React.FC<CalculatorProps> = ({
     return incs;
   }, [deal, quoteData, currentCar]);
 
+  const seenIncentiveIdsRef = React.useRef<Set<string>>(new Set());
+
   useEffect(() => {
-    // Only set default incentives on initial load if none are selected
-    // Note: To avoid overriding the user's manual unchecks, we ONLY do this
-    // right after the car/deal data becomes available for the first time
-    if (effectiveIncentives.length > 0 && selectedIncentives.length === 0) {
-      const defaultIds = effectiveIncentives
-        .filter((inc: any) => {
-          if (isCustomCar && inc.type === 'dealer') return false;
-          return inc.isDefault || inc.type === 'dealer';
-        })
-        .map((inc: any) => inc.id);
-      
-      setSelectedIncentives(defaultIds);
-    }
+    // Keep the selection in sync with the currently-eligible list:
+    // - drop selected ids that are no longer eligible (term/type changed)
+    // - auto-select defaults the first time they appear
+    // - never re-add a default the user already saw and unchecked
+    const eligibleIds = new Set(effectiveIncentives.map((inc: any) => inc.id));
+    const newDefaultIds = effectiveIncentives
+      .filter((inc: any) => {
+        if (seenIncentiveIdsRef.current.has(inc.id)) return false;
+        if (isCustomCar && inc.type === 'dealer') return false;
+        return inc.isDefault || inc.type === 'dealer';
+      })
+      .map((inc: any) => inc.id);
+
+    effectiveIncentives.forEach((inc: any) => seenIncentiveIdsRef.current.add(inc.id));
+
+    setSelectedIncentives(prev => {
+      const next = [...prev.filter(id => eligibleIds.has(id)), ...newDefaultIds.filter(id => !prev.includes(id))];
+      return next.length === prev.length && next.every(id => prev.includes(id)) ? prev : next;
+    });
   }, [currentCar?.id, currentCar?.trim, isCustomCar, effectiveIncentives]);
 
   const toggleIncentive = (id: string) => {

@@ -103,6 +103,13 @@ export class IncentiveResolver {
           failedRule = true;
           ruleReason = `Term mismatch. Required: ${termRule.join(', ')}, Found: ${context.term}`;
         }
+
+        // Example: { "tiers": ["t1", "t2"] }
+        const tierRule = inc.eligibilityRules.tiers;
+        if (!failedRule && context && tierRule && Array.isArray(tierRule) && context.creditTier && !tierRule.includes(context.creditTier)) {
+          failedRule = true;
+          ruleReason = `Tier mismatch. Required: ${tierRule.join(', ')}, Found: ${context.creditTier}`;
+        }
         
         if (failedRule) {
           evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: ruleReason });
@@ -118,7 +125,13 @@ export class IncentiveResolver {
       const isFtbIncentive = inc.type === 'first_time_buyer' || inc.name?.toLowerCase().includes('first time buyer');
       
       if (inc.isDefault) {
-        eligibleIncentives.push(baseIncentive);
+        // Auto-apply defaults, but honor an explicit uncheck from the calculator UI.
+        // Callers that don't send a selection at all (hero, catalog) keep auto-apply.
+        if (context?.hasExplicitIncentiveSelection && !isSelected) {
+          evaluatedIncentives.push({ ...baseIncentive, status: 'REJECTED', reason: 'Deselected by user' });
+        } else {
+          eligibleIncentives.push(baseIncentive);
+        }
       } else if (isFtbIncentive) {
         if (isFirstTimeBuyer) {
           eligibleIncentives.push(baseIncentive);

@@ -180,10 +180,18 @@ export class DataResolver {
     });
 
     const filteredDbIncentives = dbIncentives.filter(inc => {
+      // Lease incentives must not surface in finance quotes and vice versa
+      const applicability = (inc as any).dealApplicability;
+      if (applicability && applicability !== 'ALL' && context.quoteType && applicability !== context.quoteType) {
+        return false;
+      }
       if (!inc.eligibilityRules) return true;
       const rules = inc.eligibilityRules as any;
-      if (rules.terms && Array.isArray(rules.terms)) {
-        return rules.terms.includes(context.term);
+      if (rules.terms && Array.isArray(rules.terms) && !rules.terms.includes(context.term)) {
+        return false;
+      }
+      if (rules.tiers && Array.isArray(rules.tiers) && context.creditTier && !rules.tiers.includes(context.creditTier)) {
+        return false;
       }
       return true;
     });
@@ -236,7 +244,11 @@ export class DataResolver {
       trim,
       year,
       msrpCents: msrpCents > 0 ? msrpCents : null,
-      availableIncentives: formattedIncentives
+      availableIncentives: formattedIncentives,
+      // pre-filter count: lets resolveIncentives distinguish "no incentives exist for this
+      // vehicle" (MC cashback fallback OK) from "incentives exist but none match this
+      // term/type" (fallback must NOT re-add them)
+      _dbIncentiveCount: dbIncentives.length
     };
   }
 
@@ -696,11 +708,14 @@ export class DataResolver {
       vehicle
     );
 
-    // Marketcheck cashback is a fallback incentive source for raw MC inventory cars that
-    // have no OEM incentive in our DB. If we already resolved an OEM incentive for this
-    // vehicle, DON'T add the cashback on top — it's the same incentive and would double
-    // count (caused the IONIQ 9 lease showing ~$176 instead of ~$572).
-    if (context.marketcheckData?.cashBackCents && (resolvedIncentives.totalRebateCents || 0) === 0) {
+    // Marketcheck cashback is a fallback incentive source ONLY for raw MC inventory cars
+    // that have no incentive in our DB at all. If the vehicle HAS DB incentives, never
+    // add the cashback — even when they were all rejected (wrong term, lease-only incentive
+    // in a finance quote, user uncheck): the frontend passes the card's lease incentive as
+    // cashBackCents, and applying it here would silently re-add an incentive the grid says
+    // doesn't exist for this term/type.
+    const hasDbIncentives = (vehicle._dbIncentiveCount ?? (vehicle.availableIncentives || []).length) > 0;
+    if (context.marketcheckData?.cashBackCents && !hasDbIncentives && (resolvedIncentives.totalRebateCents || 0) === 0) {
       resolvedIncentives.totalRebateCents += context.marketcheckData.cashBackCents;
       // Assume marketcheck cashback is non-taxable for simplicity unless specified
       resolvedIncentives.nonTaxableRebateCents += context.marketcheckData.cashBackCents;

@@ -27,7 +27,10 @@ export class Validator {
     if (safeBody.selectedIncentives && !safeBody.selectedIncentiveIds) {
       safeBody.selectedIncentiveIds = safeBody.selectedIncentives;
     }
-    
+    if (Array.isArray(safeBody.selectedIncentiveIds) || Array.isArray(safeBody.selectedIncentives)) {
+      safeBody.hasExplicitIncentiveSelection = true;
+    }
+
     return QuoteContextSchema.parse(safeBody);
   }
 
@@ -47,6 +50,9 @@ export class Validator {
     }
     if (safeBody.selectedIncentives && !safeBody.selectedIncentiveIds) {
       safeBody.selectedIncentiveIds = safeBody.selectedIncentives;
+    }
+    if (Array.isArray(safeBody.selectedIncentiveIds) || Array.isArray(safeBody.selectedIncentives)) {
+      safeBody.hasExplicitIncentiveSelection = true;
     }
     return QuoteContextSchema.parse(safeBody);
   }

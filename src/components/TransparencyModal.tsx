@@ -183,10 +183,10 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, quoteResult 
             <div className="space-y-4">
               <div className="flex justify-between items-baseline text-base text-[#1f2937]">
                 <span>Total rebates</span>
-                <span className="font-semibold">{fmt(deal.rebates || 0)}</span>
+                <span className="font-semibold">{fmt(quoteResult?.totalIncentivesCents !== undefined ? quoteResult.totalIncentivesCents / 100 : (deal.rebates || 0))}</span>
               </div>
-              
-              {deal?.availableIncentives?.filter((inc:any) => deal?.selectedIncentives?.includes(inc.id) || !deal.selectedIncentives).map((inc:any, i:number) => (
+
+              {(quoteResult?.availableIncentives || deal?.availableIncentives)?.filter((inc:any) => deal?.selectedIncentives?.includes(inc.id) || !deal.selectedIncentives).map((inc:any, i:number) => (
                  <div key={i} className="pl-6 space-y-2">
                    <div className="flex justify-between items-center text-[15px] text-gray-600">
                      <span>{inc.name}</span>
