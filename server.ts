@@ -96,6 +96,10 @@ let cachedCarDbMaps: {
   makeMap: Map<string, any>;
   modelMap: Map<string, any>;
   trimMap: Map<string, any>;
+  leaseGridMap: Map<string, any>;
+  financeGridMap: Map<string, any>;
+  incentiveGridMap: Map<string, any[]>;
+  dealerAdjMap: Map<string, any[]>;
   lastUpdated: number;
 } | null = null;
 
@@ -112,7 +116,40 @@ async function getCachedCarDbMaps() {
     return cachedCarDbMaps;
   }
 
-  const CAR_DB = await getCarDb();
+  // Load carDb (display data) AND the rate grid (LeaseProgram/FinanceProgram/OEM
+  // incentives) in parallel. Catalog cards price from the SAME grid the calculator
+  // uses, so card and calculator numbers come from one source.
+  const [CAR_DB, leaseRows, financeRows, incentiveRows, dealerAdjRows] = await Promise.all([
+    getCarDb(),
+    prisma.leaseProgram.findMany({ where: { isActive: true, status: 'PUBLISHED' } }).catch(() => []),
+    prisma.financeProgram.findMany({ where: { isActive: true, status: 'PUBLISHED' } }).catch(() => []),
+    prisma.oemIncentiveProgram.findMany({ where: { isActive: true, status: 'PUBLISHED' } }).catch(() => []),
+    prisma.dealerAdjustment.findMany({ where: { isActive: true } }).catch(() => [])
+  ]);
+
+  const leaseGridMap = new Map();
+  for (const p of leaseRows as any[]) {
+    const key = `${p.make}|${p.model}|${p.trim}|${p.term}|${p.internalLenderTier}`.toLowerCase();
+    leaseGridMap.set(key, { mf: Number(p.buyRateMf), rv: Number(p.residualPercentage) / 100 });
+  }
+  const financeGridMap = new Map();
+  for (const p of financeRows as any[]) {
+    const key = `${p.make}|${p.model}|${p.trim}|${p.term}|${p.internalLenderTier}`.toLowerCase();
+    financeGridMap.set(key, { apr: Number(p.buyRateApr) });
+  }
+  const incentiveGridMap = new Map<string, any[]>();
+  for (const inc of incentiveRows as any[]) {
+    const key = `${inc.make}|${inc.model || ''}|${inc.trim || ''}`.toLowerCase();
+    if (!incentiveGridMap.has(key)) incentiveGridMap.set(key, []);
+    incentiveGridMap.get(key)!.push(inc);
+  }
+  const dealerAdjMap = new Map<string, any[]>();
+  for (const adj of dealerAdjRows as any[]) {
+    const key = (adj.make || '').toLowerCase();
+    if (!dealerAdjMap.has(key)) dealerAdjMap.set(key, []);
+    dealerAdjMap.get(key)!.push(adj);
+  }
+
   const makeMap = new Map();
   const modelMap = new Map();
   const trimMap = new Map();
@@ -137,7 +174,7 @@ async function getCachedCarDbMaps() {
     }
   }
 
-  cachedCarDbMaps = { makeMap, modelMap, trimMap, lastUpdated: now };
+  cachedCarDbMaps = { makeMap, modelMap, trimMap, leaseGridMap, financeGridMap, incentiveGridMap, dealerAdjMap, lastUpdated: now };
   return cachedCarDbMaps;
 }
 
