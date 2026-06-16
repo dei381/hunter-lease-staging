@@ -153,7 +153,15 @@ export const Calculator: React.FC<CalculatorProps> = ({
             hasCosigner,
             isStandalone: isCustomCar,
             adminOverrides: {
-              ...(vehiclePrice ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 } : (currentCar?.savings ? { dealerDiscountCents: currentCar.savings * 100 } : {}))
+              // `dealerDiscount` is the pure admin discount; `savings` includes the
+              // incentive, and sending it here made the engine subtract the incentive
+              // twice. When dealerDiscount is present (catalog deals), defer to it —
+              // 0 means "no override", the engine resolves DealerAdjustment itself.
+              ...(vehiclePrice
+                ? { dealerDiscountCents: currentCar.msrp * 100 - vehiclePrice * 100 }
+                : (currentCar?.dealerDiscount !== undefined
+                  ? (Number(currentCar.dealerDiscount) > 0 ? { dealerDiscountCents: Number(currentCar.dealerDiscount) * 100 } : {})
+                  : (currentCar?.savings ? { dealerDiscountCents: currentCar.savings * 100 } : {})))
             },
             marketcheckData: (vehiclePrice || incentiveCashBack || currentCar.msrp) ? {
               priceCents: vehiclePrice ? vehiclePrice * 100 : undefined,
@@ -393,7 +401,10 @@ export const Calculator: React.FC<CalculatorProps> = ({
   console.log('Calculator rendering, carDbLoading:', carDbLoading, 'carDbError:', carDbError, 'makes count:', carDb?.makes?.length);
 
   const msrpObj = Number(currentCar?.msrp) || 0;
-  const badgeTotalSavings = (Number(currentCar?.savings) || 0) + (showIncentives ? totalIncentives : 0);
+  // `savings` from the API already INCLUDES the auto-applied incentive; adding
+  // totalIncentives on top doubled the badge ($33,500 instead of $16,750). Use the
+  // pure dealer discount when the API provides it, plus the currently selected incentives.
+  const badgeTotalSavings = (Number(currentCar?.dealerDiscount ?? currentCar?.savings) || 0) + (showIncentives ? totalIncentives : 0);
   const savingsPctObj = msrpObj > 0 ? badgeTotalSavings / msrpObj : 0;
   
   const tenPercentDown = msrpObj * 0.10;
@@ -670,7 +681,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
                {/* Down Payment Value */}
                <div className="relative min-w-0 group hover:bg-[var(--w)]/5 transition-colors">
-                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">Due At Signing</span></div>
+                  <div className="px-3 pt-2.5 pb-0.5"><span className="text-[10px] font-bold text-[var(--mu2)] uppercase tracking-widest">{calcType === 'lease' ? (language === 'ru' ? 'ПРИ ПОДПИСАНИИ' : 'DUE AT SIGNING') : (language === 'ru' ? 'ПЕРВ. ВЗНОС' : 'DOWN PAYMENT')}</span></div>
                   <select 
                     value={down}
                     onChange={(e) => setDown(parseInt(e.target.value))}
@@ -686,7 +697,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
           </div>
         </div>
 
-        {/* Incentives Box and Price Block combined somewhat to match Autobandit */}
+        {/* Incentives Box and Price Block combined into the unified price layout */}
         <div className="w-full max-w-[800px] mx-auto mt-6 px-4 md:px-0">
           {!isStandalone && (
             <>
@@ -738,7 +749,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
             </>
           )}
 
-          {/* Price Layout Autobandit Style */}
+          {/* Price Layout */}
           <div className="flex flex-col mt-4 pt-4 border-t border-[var(--b2)]/50">
             <h3 className="text-[11px] font-bold tracking-widest text-[var(--mu2)] uppercase mb-4 flex items-center gap-2">
               <span className="text-[var(--lime)]">$</span> {calcType === 'lease' ? (language === 'ru' ? 'ВЗЯТЬ В ЛИЗИНГ' : 'LEASE IT NOW') : (language === 'ru' ? 'ОФОРМИТЬ КРЕДИТ' : 'FINANCE IT NOW')}
@@ -776,8 +787,28 @@ export const Calculator: React.FC<CalculatorProps> = ({
                   
                   <div className="flex flex-col items-end gap-2 mt-2">
                     <div className="text-[13px] text-[var(--mu2)] group cursor-pointer" onClick={() => setIsTransparencyOpen(true)}>
-                      <span>(+<strong>{fmt(down)}</strong> {calcType === 'lease' ? (language === 'ru' ? 'при подписании' : 'due at signing') : (language === 'ru' ? 'первоначальный взнос' : 'down payment')})</span>
+                      {/* Lease: show the REAL drive-off (first month + fees + taxes + any cash
+                          down) from the live quote, not the raw cash-down input — otherwise
+                          picking "$0" showed a dishonest "+$0 at signing". Finance: the input
+                          IS the down payment (fees roll into the loan). */}
+                      <span>(+<strong>{fmt(calcType === 'lease'
+                        ? (quoteData?.dueAtSigningCents != null ? quoteData.dueAtSigningCents / 100 : down)
+                        : down)}</strong> {calcType === 'lease' ? (language === 'ru' ? 'при подписании' : 'due at signing') : (language === 'ru' ? 'первоначальный взнос' : 'down payment')})</span>
                     </div>
+                    {/* Rate readout: Money Factor for lease, APR for finance. The client
+                        flagged that these were never shown ("не показывает money factor и APR").
+                        Read straight from the live quote so it always matches the payment. */}
+                    {calcType === 'lease'
+                      ? (quoteData?.appliedMf > 0 && (
+                          <div className="text-[12px] text-[var(--mu2)] font-mono tracking-tight">
+                            <span className="font-bold text-[var(--w)]">Money Factor:</span> {quoteData.appliedMf.toFixed(5)}
+                          </div>
+                        ))
+                      : (quoteData?.appliedApr > 0 && (
+                          <div className="text-[12px] text-[var(--mu2)] font-mono tracking-tight">
+                            <span className="font-bold text-[var(--w)]">APR:</span> {quoteData.appliedApr.toFixed(2)}%
+                          </div>
+                        ))}
                     {/* Explicit Price Transparency Button */}
                     <button 
                       type="button"
@@ -833,26 +864,11 @@ export const Calculator: React.FC<CalculatorProps> = ({
             {!isStandalone && (
               <div className="space-y-4">
               
+              {/* The incentives summary + manager button live in ONE place (the bar
+                  under the incentives toggle above); a second identical widget here
+                  read as "two discount managers" and showed a stale total. */}
               {showIncentives && effectiveIncentives.length > 0 && (
                 <div className="space-y-4">
-                  <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/20 rounded-xl p-4 flex items-center justify-between gap-4">
-                    <div className="text-xs font-bold text-[var(--lime)]">
-                      {translations[language].calc.incentiveSavings
-                        .replace('{amount}', fmt(totalIncentives))
-                        .replace('{count}', selectedIncentives.length.toString())}
-                    </div>
-                    <button 
-                      type="button"
-                      onClick={() => setIsIncentivesModalOpen(true)}
-                      className="px-3 py-1.5 bg-[var(--s2)] border border-[var(--b2)] rounded-lg text-[9px] font-bold uppercase tracking-widest hover:border-[var(--lime)] transition-all flex items-center gap-2"
-                    >
-                      <span className="flex items-center gap-2 text-[var(--w)]">
-                        <Info size={12} />
-                        {language === 'ru' ? 'МЕНЕДЖЕР СКИДОК' : 'EDIT INCENTIVES'}
-                      </span>
-                    </button>
-                  </div>
-                  
                   <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--b2)] bg-[var(--s2)]">
                     <div className="space-y-1">
                       <div className="text-xs font-bold uppercase tracking-widest text-[var(--w)]">First Time Buyer</div>

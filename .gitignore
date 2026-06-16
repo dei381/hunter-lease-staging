@@ -10,7 +10,14 @@ coverage/
 *.db-journal
 
 .playwright-mcp/
+test-results/
+playwright-report/
+playwright/.cache/
 .qodo/
 scripts/_*.json
 scripts/_*.log
 scripts/_*.ts
+
+# local scratch data (grids, not committed)
+.data/
+scripts/_mc_photos.json

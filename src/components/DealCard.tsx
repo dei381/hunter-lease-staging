@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Scale, Info, ArrowRight, Star } from 'lucide-react';
+import { Heart, Scale, Info, ArrowRight, Star, Gauge } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useGarageStore } from '../store/garageStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -68,6 +68,24 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--s1)]/80 to-transparent opacity-60" />
         
         <div className="absolute top-4 left-4 flex flex-col items-start gap-1.5">
+          {deal.hunterStatus === 'scored' && deal.hunterScore != null && (
+            <div className={cn(
+              "flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-md uppercase shadow-sm backdrop-blur-md border relative group/hscore",
+              (deal.hunterBand === 'steal' || deal.hunterBand === 'strong')
+                ? 'bg-[var(--lime)] text-black border-[var(--lime)]'
+                : deal.hunterBand === 'fair'
+                ? 'bg-yellow-400/90 text-black border-yellow-400/60'
+                : 'bg-[var(--s2)] text-[var(--mu2)] border-[var(--b2)]'
+            )}>
+              <Gauge size={11} className={deal.hunterBand === 'above_market' ? '' : 'fill-black/10'} />
+              <span>Hunter {deal.hunterScore}</span>
+              <div className="absolute left-0 top-full mt-1 w-52 p-2 bg-black/90 text-[8px] text-white rounded opacity-0 group-hover/hscore:opacity-100 transition-opacity pointer-events-none z-50 normal-case font-normal leading-relaxed">
+                {deal.hunterLabel}. {language === 'ru'
+                  ? 'Hunter Score оценивает лизинг 0-100 относительно похожих местных сделок.'
+                  : 'Hunter Score rates this lease 0-100 against comparable local deals.'}
+              </div>
+            </div>
+          )}
           {deal.source === 'marketcheck' ? (
             <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-[var(--s2)] text-[var(--w)] border border-[var(--b2)] shadow-sm relative group/tooltip">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--mu2)]"></span>
@@ -122,10 +140,12 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-black/60 text-white backdrop-blur-md border border-white/10">
-            <Star size={10} className="fill-[var(--lime)] text-[var(--lime)]" />
-            <span>4.8</span>
-          </div>
+          {typeof deal.rating === 'number' && deal.rating > 0 && (
+            <div className="flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-md uppercase bg-black/60 text-white backdrop-blur-md border border-white/10">
+              <Star size={10} className="fill-[var(--lime)] text-[var(--lime)]" />
+              <span>{deal.rating.toFixed(1)}</span>
+            </div>
+          )}
         </div>
 
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
@@ -172,7 +192,10 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
       <div className="p-5 border-b border-[var(--b1)]">
         <h3 className="font-display text-2xl tracking-tight leading-tight mb-1">{deal.make} {deal.model}</h3>
         <div className="flex justify-between items-center mb-2">
-          <p className="text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">{deal.trim}</p>
+          <p className="text-[10px] text-[var(--mu)] font-bold uppercase tracking-widest">
+            {deal.trim}
+            {deal.exteriorColor ? <span className="normal-case font-medium text-[var(--mu2)]"> · {deal.exteriorColor}</span> : null}
+          </p>
           <div className="flex items-center gap-2">
             {deal.displayType === 'lease' && (
               <span className="text-[9px] text-[var(--lime)] font-bold bg-[var(--lime)]/10 px-2 py-0.5 rounded-full">
@@ -187,8 +210,9 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
             {tcalc.msrp}: <span className="text-[var(--w)] font-mono">{fmt(deal.msrp || 0)}</span>
           </div>
           <div className="flex flex-col items-end">
-            <div className="text-[8px] font-mono text-[var(--mu2)]">VIN: {deal.vin || '4T1B...' + Math.floor(100 + Math.random() * 900)}</div>
-            <div className="text-[8px] font-mono text-[var(--mu2)]">Last verified: 2 hours ago</div>
+            {typeof deal.vin === 'string' && deal.vin.length === 17 && (
+              <div className="text-[8px] font-mono text-[var(--mu2)]">VIN: {deal.vin}</div>
+            )}
           </div>
         </div>
       </div>
@@ -207,21 +231,30 @@ export const DealCard = ({ deal, onSelect, effectiveFTB = false, photos: initial
               </div>
             )}
             
-            {/* Market Comparison Block */}
-            <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-xl p-3 space-y-2 mb-4">
-              <div className="flex justify-between items-center text-[8px]">
-                <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{tcalc.opportunityCost}</span>
-                <span className="text-[var(--mu2)] line-through font-mono">{fmt((deal.displayPayment || deal.payment || 0) * 1.267)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[8px] text-[var(--w)] uppercase font-bold tracking-widest">{tcalc.hunterPrice}</span>
-                <span className="text-lg font-display text-[var(--w)]">{fmt(deal.displayPayment || deal.payment || 0)}</span>
-              </div>
-              <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
-                <span className="text-[8px] text-[var(--lime)] uppercase font-bold tracking-widest">{tcalc.avoidableMarkup}</span>
-                <span className="text-sm font-display text-[var(--lime)]">{fmt(((deal.displayPayment || deal.payment || 0) * 0.267) * parseInt(deal.displayTerm || deal.term || '36'))}</span>
-              </div>
-            </div>
+            {/* Market Comparison Block — only when we have a REAL local market average above the
+                payment. No fabricated numbers; the Hunter Score carries the below-market signal otherwise. */}
+            {(() => {
+              const pay = deal.displayPayment || deal.payment || 0;
+              const mkt = Number(deal.marketAvg) || 0;
+              const term = parseInt(deal.displayTerm || deal.term || '36') || 36;
+              if (!(pay > 0 && mkt > pay)) return null;
+              return (
+                <div className="bg-[var(--lime)]/5 border border-[var(--lime)]/10 rounded-xl p-3 space-y-2 mb-4">
+                  <div className="flex justify-between items-center text-[8px]">
+                    <span className="text-[var(--mu2)] uppercase font-bold tracking-widest">{tcalc.opportunityCost}</span>
+                    <span className="text-[var(--mu2)] line-through font-mono">{fmt(mkt)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[8px] text-[var(--w)] uppercase font-bold tracking-widest">{tcalc.hunterPrice}</span>
+                    <span className="text-lg font-display text-[var(--w)]">{fmt(pay)}</span>
+                  </div>
+                  <div className="pt-2 border-t border-[var(--lime)]/20 flex justify-between items-center">
+                    <span className="text-[8px] text-[var(--lime)] uppercase font-bold tracking-widest">{tcalc.avoidableMarkup}</span>
+                    <span className="text-sm font-display text-[var(--lime)]">{fmt((mkt - pay) * term)}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <div className="text-right">
             <div className="text-[9px] text-[var(--w)] font-bold">{deal.displayTerm || deal.term} {translations[language].transparency.months}</div>

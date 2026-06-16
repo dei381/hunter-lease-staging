@@ -82,6 +82,42 @@ const num = (v: any) => {
   return isNaN(n) ? 0 : n;
 };
 
+// ---- rich 'incentives' string parser ----
+// The 'incentives' column is a ';'-separated list of "Name $Amount [marker]" items, e.g.
+//   "HMF Special Lease $250 [applied]; HMA Retail Bonus Cash $2,000 [cond: ANY 0-1000]; ..."
+//   [applied] = already baked into the advertised payment (these SUM to incentive_total) -> auto-applied.
+//   [cond: ...] = available/potential rebate, NOT in the advertised payment -> customer-selectable.
+// Robust to commas inside amounts ("$2,000") and multiple ';'-separated items.
+function parseIncentives(s: string): { name: string; amount: number; applied: boolean }[] {
+  if (!s) return [];
+  return s.split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const m = part.match(/^(.*?)\s*\$([\d,]+(?:\.\d+)?)\s*\[(applied|cond[^\]]*)\]\s*$/i);
+    if (!m) return null;
+    const name = m[1].trim();
+    const amount = parseFloat(m[2].replace(/,/g, '')) || 0;
+    const applied = /^applied$/i.test(m[3].trim());
+    return { name, amount, applied };
+  }).filter(Boolean) as { name: string; amount: number; applied: boolean }[];
+}
+
+// Clean display name for the auto-applied OEM_CASH: the names of the '[applied]' items
+// only (the raw string also lists every [cond:] item, so it must NOT be used as the name).
+function appliedName(raw: string, fallback: string): string {
+  const applied = parseIncentives(raw).filter(i => i.applied).map(i => i.name);
+  return applied.length ? applied.join(' + ') : fallback;
+}
+
+// Map a rebate name to a DB incentive type. Anything that is NOT 'OEM_CASH' is treated
+// by DataResolver as selectable (isDefault=false). 'OEM_CASH' is reserved for the
+// auto-applied cash baked into the advertised payment.
+function incentiveTypeByName(name: string): string {
+  const n = (name || '').toLowerCase();
+  if (n.includes('college grad')) return 'college';
+  if (n.includes('first responder')) return 'first_responder';
+  if (n.includes('military')) return 'military';
+  return 'other';
+}
+
 function lenderIsCaptive(name: string): boolean {
   const n = (name || '').toLowerCase();
   return n.includes('motor finance') || n.includes('financial services') || n.includes('financial') || n.includes('motor credit') || n.includes('financial corp');
@@ -142,6 +178,14 @@ async function main() {
   // 2. Models + trims: deactivate all; the grid upserts below re-activate only what's current.
   await prisma.vehicleModel.updateMany({ where: { makeId: make.id }, data: { isActive: false } });
   await prisma.vehicleTrim.updateMany({ where: { model: { makeId: make.id } }, data: { isActive: false } });
+  // 2b. Lease/Finance programs: deactivate ALL for this make so stale rows from a prior
+  //     grid (e.g. last year's terms/rates) can't shadow the new grid. The lease upserts
+  //     below re-activate the current lease rows; the finance importer (run next) does the
+  //     same for finance. Without this, an old 2025 LeaseProgram (mf 0.00282) coexisted with
+  //     the new 2026 row (mf 0.00219) and the calculator resolved the stale one -> the
+  //     catalog and calculator disagreed by >$150 on the same car.
+  await prisma.leaseProgram.updateMany({ where: { make: { equals: makeName, mode: 'insensitive' } }, data: { isActive: false } });
+  await prisma.financeProgram.updateMany({ where: { make: { equals: makeName, mode: 'insensitive' } }, data: { isActive: false } });
   // 3. Legacy BankPrograms for this make compete with our LeasePrograms in the active
   //    batch — park them in a non-active batch so only the grid drives this make.
   let parkBatch = await prisma.programBatch.findFirst({ where: { status: 'PARKED' } });
@@ -167,6 +211,11 @@ async function main() {
   }
 
   let nModels = 0, nTrims = 0, nLeasePrograms = 0, nDeals = 0, nIncentives = 0;
+  // Track which grid cards we (re)published this run so we can archive stale ones below
+  // (e.g. a prior 2025 grid card whose trim is gone from the current 2026 grid — it would
+  // otherwise linger PUBLISHED and disagree with the calculator, since its LeaseProgram
+  // rows were not refreshed for that year).
+  const seenIngestionIds = new Set<string>();
 
   for (const [modelName, trimMap] of byModelTrim) {
     nModels++;
@@ -197,7 +246,7 @@ async function main() {
       const repApr = num(rep.apr);
 
       if (modelName && repIncentive > 0) {
-        const incName = (rep.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Lease Cash';
+        const incName = appliedName(rep.incentives, 'Lease Cash');
         modelIncentives.set(incName, Math.max(modelIncentives.get(incName) || 0, repIncentive));
       }
 
@@ -238,11 +287,13 @@ async function main() {
         if (!term || seenIncTerms.has(term)) continue;
         seenIncTerms.add(term);
         const incAmount = num(r.incentive_total);
-        const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Lease Cash';
+        const incName = appliedName(r.incentives, 'Lease Cash');
         const seedKey = `gridinc-lease:${makeName}:${modelName}:${trimName}:${term}`.toLowerCase();
         if (incAmount > 0) {
           // Lease incentives (dealApplicability LEASE). Manufacturer cash baked into the
           // advertised payment -> auto-apply (OEM_CASH) and reduce the cap, not the residual.
+          // This is the SUM of the '[applied]' items (e.g. the $250 HMF Special Lease) and
+          // preserves the current behavior that matches the advertised payment exactly.
           await prisma.oemIncentiveProgram.upsert({
             where: { seedKey },
             update: { name: incName, amountCents: Math.round(incAmount * 100), trim: trimName, type: 'OEM_CASH', eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
@@ -250,6 +301,29 @@ async function main() {
               seedKey, name: incName, amountCents: Math.round(incAmount * 100),
               type: 'OEM_CASH', dealApplicability: 'LEASE', isTaxableCa: false,
               exclusiveGroupId: `${makeName}_${modelName}_${trimName}_INC`.toLowerCase(),
+              make: makeName, model: modelName, trim: trimName,
+              eligibilityRules: { terms: [term] }, stackable: true, isActive: true, status: 'PUBLISHED',
+            },
+          });
+          nIncentives++;
+        }
+
+        // SELECTABLE rebates: one OemIncentiveProgram per '[cond:]' item in the string.
+        // '[applied]' items are already summed into the OEM_CASH above, so skip them here.
+        // Type is the by-name value (NOT OEM_CASH) so DataResolver sets isDefault=false and
+        // the resolver / IncentivesModal treat it as opt-in. No exclusiveGroupId: each
+        // selectable rebate stands alone (the '_INC' group is reserved for the auto-applied
+        // cash; grouping cond items there would make the resolver keep only the highest).
+        for (const item of parseIncentives(r.incentives)) {
+          if (item.applied) continue;
+          if (item.amount <= 0) continue;
+          const condSeed = `gridinc-lease-opt:${makeName}:${modelName}:${trimName}:${term}:${item.name}`.toLowerCase().replace(/\s+/g, '-');
+          await prisma.oemIncentiveProgram.upsert({
+            where: { seedKey: condSeed },
+            update: { name: item.name, amountCents: Math.round(item.amount * 100), trim: trimName, type: incentiveTypeByName(item.name), eligibilityRules: { terms: [term] }, isActive: true, status: 'PUBLISHED' },
+            create: {
+              seedKey: condSeed, name: item.name, amountCents: Math.round(item.amount * 100),
+              type: incentiveTypeByName(item.name), dealApplicability: 'LEASE', isTaxableCa: false,
               make: makeName, model: modelName, trim: trimName,
               eligibilityRules: { terms: [term] }, stackable: true, isActive: true, status: 'PUBLISHED',
             },
@@ -286,6 +360,7 @@ async function main() {
 
       // DealRecord (catalog card) — idempotent by ingestionId
       const ingestionId = `gridlease:${makeName}:${modelName}:${trimName}:${year}`.toLowerCase();
+      seenIngestionIds.add(ingestionId);
       const photo = photoMap[modelName] || {};
       const incentivesList = Array.from(modelIncentives.entries()).map(([name, amount]) => ({ name, amount }));
       const financialData = {
@@ -330,6 +405,18 @@ async function main() {
     }
 
   }
+
+  // Archive stale grid cards for this make: any gridlease:<make>:* DealRecord we did NOT
+  // refresh this run (old year / dropped trim). Keeps the catalog == calculator.
+  const staleArchive = await prisma.dealRecord.updateMany({
+    where: {
+      ingestionId: { startsWith: `gridlease:${makeName}:`.toLowerCase() },
+      publishStatus: { not: 'ARCHIVED' },
+      NOT: { ingestionId: { in: Array.from(seenIngestionIds) } },
+    },
+    data: { publishStatus: 'ARCHIVED' },
+  });
+  if (staleArchive.count > 0) console.log(`Archived ${staleArchive.count} stale ${makeName} grid cards not in the current grid`);
 
   console.log(`\nDone. models=${nModels} trims=${nTrims} leasePrograms=${nLeasePrograms} deals=${nDeals} oemIncentives=${nIncentives}`);
 }

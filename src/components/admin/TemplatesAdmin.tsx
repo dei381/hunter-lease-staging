@@ -4,10 +4,10 @@ import { Mail, MessageSquare, Save } from 'lucide-react';
 export function TemplatesAdmin() {
   const [selectedTemplate, setSelectedTemplate] = useState('welcome');
   const [templateData, setTemplateData] = useState<Record<string, { subject?: string; body: string }>>({
-    'welcome': { subject: 'Welcome to AutoBandit!', body: 'Hi {{user_name}},\n\nWelcome to AutoBandit. Find the best car deals here!' },
-    'price_alert': { subject: 'Great news! {{car_name}} has a new price drop', body: 'Hi {{user_name}},\n\nThe {{car_name}} you were watching has a new price drop!\nIt is now {{new_price}}.\n\nClick here to view: {{link}}\n\nAutoBandit Team' },
+    'welcome': { subject: 'Welcome to Hunter Lease!', body: 'Hi {{user_name}},\n\nWelcome to Hunter Lease. Find the best car deals here!' },
+    'price_alert': { subject: 'Great news! {{car_name}} has a new price drop', body: 'Hi {{user_name}},\n\nThe {{car_name}} you were watching has a new price drop!\nIt is now {{new_price}}.\n\nClick here to view: {{link}}\n\nHunter Lease Team' },
     'lead_new': { subject: 'We received your inquiry', body: 'Hi {{user_name}},\n\nWe received your inquiry for the {{car_name}}. Our experts are reviewing it.' },
-    'sms_verify': { body: 'Your AutoBandit verification code is {{code}}.' }
+    'sms_verify': { body: 'Your Hunter Lease verification code is {{code}}.' }
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

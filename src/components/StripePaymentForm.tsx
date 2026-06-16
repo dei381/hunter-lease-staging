@@ -4,9 +4,17 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { Loader2 } from 'lucide-react';
 import { getAuthToken } from '../utils/auth';
 
-// Initialize Stripe outside of component to avoid recreating the object
-// We use a placeholder key if env var is missing, but in production this should be the real publishable key
-const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+// Publishable key comes from the server (/api/stripe-config), so admins can swap keys
+// from the dashboard without a rebuild. Build-time env stays as a fallback.
+// Memoized outside the component so Stripe.js is loaded once per page.
+const stripePromise = (async () => {
+  let key = '';
+  try {
+    const res = await fetch('/api/stripe-config');
+    if (res.ok) key = (await res.json()).publishableKey || '';
+  } catch {}
+  return loadStripe(key || (import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+})();
 
 interface StripePaymentFormProps {
   leadId: string;

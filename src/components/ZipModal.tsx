@@ -86,7 +86,7 @@ export const ZipModal: React.FC = () => {
             
             <button 
               onClick={handleConfirm}
-              className="w-full h-12 bg-[var(--w)] text-black rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[var(--lime)] transition-colors mt-6"
+              className="w-full h-12 bg-[var(--lime)] text-black rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[var(--lime2)] transition-colors mt-6"
             >
               {language === 'ru' ? 'Подтвердить' : 'Confirm'}
             </button>

@@ -132,7 +132,9 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
   });
 
   const sortedDeals = [...filteredDeals].sort((a, b) => (a.displayPayment || 0) - (b.displayPayment || 0));
-  const displayedDeals: any[] = [];
+  // Render the sorted deals (capped by `limit` for the homepage teaser). This was
+  // previously an always-empty array, so the teaser always showed the "no deals" state.
+  const displayedDeals = limit ? sortedDeals.slice(0, limit) : sortedDeals;
 
   return (
     <div className="space-y-8">
@@ -413,16 +415,16 @@ export const DealsGrid = ({ onSelect, filter = '', limit, hideFilters = false }:
                 <p className="text-[10px] text-[var(--mu2)] leading-relaxed italic">"{deal.intel}"</p>
               </div>
               
-              <div className="flex flex-col gap-1 mt-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-[9px] text-amber-500/80 font-bold uppercase tracking-widest">{t.scarcity}</span>
+              {deal.expirationDate && new Date(deal.expirationDate) > new Date() && (
+                <div className="flex flex-col gap-1 mt-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[9px] text-amber-500/80 font-bold uppercase tracking-widest">
+                      {language === 'ru' ? 'Истекает' : 'Expires'} {new Date(deal.expirationDate).toLocaleDateString(language === 'ru' ? 'ru-RU' : 'en-US')}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-[9px] text-red-500/80 font-bold uppercase tracking-widest">{t.inventoryScarcity || "Limited allocation"}</span>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="p-4 bg-[var(--s2)]/30 border-t border-[var(--b1)] flex justify-between items-center">

@@ -125,7 +125,7 @@ export class DealEngineFacade {
     // 1. Resolve Data
     const vehicle = await DataResolver.resolveVehicle(context);
     if (!vehicle.msrpCents) {
-      return this.createErrorResponse('MISSING_MSRP');
+      return this.createErrorResponse('MISSING_MSRP', context.quoteType);
     }
 
     // These four reads are independent once we have the vehicle — run them in parallel
@@ -148,7 +148,7 @@ export class DealEngineFacade {
     settings.taxRate = getTaxRateByZip(context.zipCode || '');
 
     if (programs.length === 0) {
-      const err = this.createErrorResponse('NO_PROGRAMS');
+      const err = this.createErrorResponse('NO_PROGRAMS', context.quoteType);
       err.warnings = [`Debug: make=${vehicle.make}, model=${vehicle.model}, trim=${vehicle.trim}, year=${vehicle.year}, term=${context.term}, mileage=${context.mileage}, type=${context.quoteType}`];
       return err;
     }
@@ -213,6 +213,24 @@ export class DealEngineFacade {
             taxRate: settings.taxRate
           });
           formattedResult = Formatter.formatFinance(context, mathResult, resolvedData, modifiers);
+        } else if (targetDasCents === 0) {
+          // LEASE sign-and-drive: the customer wants $0 at signing, so capitalize the first
+          // payment + fees into the monthly (no cash-down search needed).
+          mathResult = PureMathEngine.calculateLeaseSignAndDrive({
+            msrpCents: vehicle.msrpCents,
+            sellingPriceCents,
+            residualValuePercent: appliedRvPercent,
+            moneyFactor: appliedMf,
+            term: context.term,
+            downPaymentCents: taxableIncentivesCents + context.tradeInEquityCents, // cash down = 0
+            acqFeeCents: settings.acqFeeCents,
+            docFeeCents: settings.docFeeCents,
+            dmvFeeCents: settings.dmvFeeCents,
+            brokerFeeCents: settings.brokerFeeCents,
+            taxRate: settings.taxRate
+          });
+          formattedResult = Formatter.formatLease({ ...context, downPaymentCents: 0 }, mathResult, resolvedData, modifiers);
+          bestCashDownCents = 0;
         } else {
           // LEASE: Algebraic calculation of Cash Down from target DAS
           const baseCashDown = PureMathEngine.calculateLeaseCCRFromDAS({
@@ -341,7 +359,7 @@ export class DealEngineFacade {
     }
 
     if (!bestResult) {
-      return this.createErrorResponse('MATH_ERROR');
+      return this.createErrorResponse('MATH_ERROR', context.quoteType);
     }
 
     // Populate options - group by lender and pick the best one for each
@@ -391,9 +409,13 @@ export class DealEngineFacade {
     return bestResult;
   }
 
-  private static createErrorResponse(status: PaymentBreakdown['calcStatus']): PaymentBreakdown {
+  private static createErrorResponse(
+    status: PaymentBreakdown['calcStatus'],
+    quoteType: PaymentBreakdown['quoteType'] = 'LEASE'
+  ): PaymentBreakdown {
     return {
       calcStatus: status,
+      quoteType,
       warnings: [],
       monthlyPaymentCents: 0,
       dueAtSigningCents: 0,
@@ -425,7 +447,7 @@ export class DealEngineFacade {
     const acqFeeCents = (settings.acquisitionFee ?? 650) * 100;
     const docFeeCents = (settings.docFee ?? 85) * 100;
     const dmvFeeCents = (settings.dmvFee ?? 400) * 100;
-    const brokerFeeCents = (settings.brokerFee ?? 595) * 100; // same default as DataResolver.resolveSettings
+    const brokerFeeCents = (Number(settings.brokerFee) || 0) * 100; // same default as DataResolver.resolveSettings (no broker fee)
     const taxRate = (settings.taxRateDefault || 8.875) / 100;
 
     let getVal = (v: any, def = 0) => {
@@ -471,6 +493,8 @@ export class DealEngineFacade {
       let type = data.type || 'lease';
 
       let usedTiersData = false;
+      let usedCarDbRates = false;
+      let carDbTrimName = '';
       if (data.make && data.model && data.trim) {
         const makeKey = data.make.toLowerCase();
         const modelKey = `${makeKey}-${data.model.toLowerCase()}`;
@@ -480,38 +504,62 @@ export class DealEngineFacade {
         if (makeObj) {
           const modelObj = carDbModelMap.get(modelKey);
           if (modelObj) {
-            const trimObj = carDbTrimMap.get(trimKey);
-            if (trimObj) {
-              msrp = Number(trimObj.msrp) || msrp;
-              mf = trimObj.mf !== undefined && String(trimObj.mf) !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && String(modelObj.mf) !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && String(makeObj.baseMF) !== "" ? Number(makeObj.baseMF) : (mf !== undefined && String(mf) !== "" ? Number(mf) : 0.002)));
-              rv = trimObj.rv36 !== undefined && String(trimObj.rv36) !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && String(modelObj.rv36) !== "" ? Number(modelObj.rv36) : (rv !== undefined && String(rv) !== "" ? Number(rv) : 0.55));
-              leaseCash = trimObj.leaseCash !== undefined && String(trimObj.leaseCash) !== "" ? Number(trimObj.leaseCash) : (leaseCash !== undefined && String(leaseCash) !== "" ? Number(leaseCash) : 0);
-              apr = trimObj.baseAPR !== undefined && String(trimObj.baseAPR) !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && String(modelObj.baseAPR) !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && String(makeObj.baseAPR) !== "" ? Number(makeObj.baseAPR) : (apr !== undefined && String(apr) !== "" ? Number(apr) : 4.9)));
-
-              if (queryTier) {
-                const tierId = queryTier as string;
-                const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
-                
-                if (makeTier || modelObj.tiersData?.[tierId] || trimObj.tiersData?.[tierId]) {
-                  const fallbackMakeTier = makeTier || { mfAdd: 0, aprAdd: 0 };
-                  const modelTier = modelObj.tiersData?.[tierId] || fallbackMakeTier;
-                  const trimTier = trimObj.tiersData?.[tierId];
-
-                  if (trimTier) {
-                    mf = trimTier.mf !== undefined && trimTier.mf !== "" ? Number(trimTier.mf) : mf;
-                    rv = trimTier.rv36 !== undefined && trimTier.rv36 !== "" ? Number(trimTier.rv36) : rv;
-                    leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
-                    apr = trimTier.baseAPR !== undefined && trimTier.baseAPR !== "" ? Number(trimTier.baseAPR) : apr;
-                  } else {
-                    const adjusted = ModifierEngine.applyTierAdjustment(mf, apr, tierId);
-                    mf = adjusted.mf;
-                    apr = adjusted.apr;
-                  }
-                  
-                  if (!data.tiersData) data.tiersData = {};
-                  data.tiersData[tierId] = { mf, rv36: rv, baseAPR: apr, leaseCash };
-                  usedTiersData = true;
+            // Same exact -> word -> partial trim matching the calculator's resolver
+            // applies; exact-key only missed short dealer-inventory trims ("SEL")
+            // and the two paths then priced from different fallbacks.
+            let trimObj = carDbTrimMap.get(trimKey);
+            let fuzzyCarDbTrim = false;
+            if (!trimObj && data.trim && Array.isArray(modelObj.trims)) {
+              const lc = String(data.trim).toLowerCase();
+              // Whole-word containment without a dynamic RegExp (ReDoS-safe):
+              // the needle must appear with non-alphanumeric (or string) boundaries
+              const isWordChar = (ch: string | undefined) => !!ch && /[a-z0-9]/.test(ch);
+              const hasWord = (name: any) => {
+                const n = String(name || '').toLowerCase();
+                let idx = n.indexOf(lc);
+                while (idx !== -1) {
+                  if (!isWordChar(n[idx - 1]) && !isWordChar(n[idx + lc.length])) return true;
+                  idx = n.indexOf(lc, idx + 1);
                 }
+                return false;
+              };
+              trimObj = modelObj.trims.find((t: any) => hasWord(t.name))
+                || modelObj.trims.find((t: any) => String(t.name).toLowerCase().includes(lc));
+              fuzzyCarDbTrim = !!trimObj;
+            }
+            if (trimObj?.name) carDbTrimName = trimObj.name;
+            // Even with no trim match, make/model-level rates apply — the calculator's
+            // carDb fallback prices unmatched trims from modelObj/makeObj the same way.
+            usedCarDbRates = true;
+            // Fuzzy/absent carDb match supplies RATES only; the listing's own MSRP
+            // stays (it is the real per-VIN sticker, same as the calculator uses)
+            if (trimObj && !fuzzyCarDbTrim) msrp = Number(trimObj.msrp) || msrp;
+            mf = trimObj?.mf !== undefined && String(trimObj?.mf) !== "" ? Number(trimObj.mf) : (modelObj.mf !== undefined && String(modelObj.mf) !== "" ? Number(modelObj.mf) : (makeObj.baseMF !== undefined && String(makeObj.baseMF) !== "" ? Number(makeObj.baseMF) : (mf !== undefined && String(mf) !== "" ? Number(mf) : 0.002)));
+            rv = trimObj?.rv36 !== undefined && String(trimObj?.rv36) !== "" ? Number(trimObj.rv36) : (modelObj.rv36 !== undefined && String(modelObj.rv36) !== "" ? Number(modelObj.rv36) : (rv !== undefined && String(rv) !== "" ? Number(rv) : 0.55));
+            leaseCash = trimObj?.leaseCash !== undefined && String(trimObj?.leaseCash) !== "" ? Number(trimObj.leaseCash) : (leaseCash !== undefined && String(leaseCash) !== "" ? Number(leaseCash) : 0);
+            apr = trimObj?.baseAPR !== undefined && String(trimObj?.baseAPR) !== "" ? Number(trimObj.baseAPR) : (modelObj.baseAPR !== undefined && String(modelObj.baseAPR) !== "" ? Number(modelObj.baseAPR) : (makeObj.baseAPR !== undefined && String(makeObj.baseAPR) !== "" ? Number(makeObj.baseAPR) : (apr !== undefined && String(apr) !== "" ? Number(apr) : 4.9)));
+
+            if (queryTier) {
+              const tierId = queryTier as string;
+              const makeTier = makeObj.tiers?.find((t: any) => t.id === tierId);
+
+              if (makeTier || modelObj.tiersData?.[tierId] || trimObj?.tiersData?.[tierId]) {
+                const trimTier = trimObj?.tiersData?.[tierId];
+
+                if (trimTier) {
+                  mf = trimTier.mf !== undefined && trimTier.mf !== "" ? Number(trimTier.mf) : mf;
+                  rv = trimTier.rv36 !== undefined && trimTier.rv36 !== "" ? Number(trimTier.rv36) : rv;
+                  leaseCash = trimTier.leaseCash !== undefined && trimTier.leaseCash !== "" ? Number(trimTier.leaseCash) : leaseCash;
+                  apr = trimTier.baseAPR !== undefined && trimTier.baseAPR !== "" ? Number(trimTier.baseAPR) : apr;
+                } else {
+                  const adjusted = ModifierEngine.applyTierAdjustment(mf, apr, tierId);
+                  mf = adjusted.mf;
+                  apr = adjusted.apr;
+                }
+
+                if (!data.tiersData) data.tiersData = {};
+                data.tiersData[tierId] = { mf, rv36: rv, baseAPR: apr, leaseCash };
+                usedTiersData = true;
               }
             }
           }
@@ -529,9 +577,66 @@ export class DealEngineFacade {
       // incentives reduce the selling price; taxable ones act as cap cost reduction
       let leaseTaxableCents = 0, leaseNonTaxableCents = 0;
       let financeTaxableCents = 0, financeNonTaxableCents = 0;
+      // Per-incentive lists for the card (same shape DataResolver returns: id/name/
+      // amount/type/isDefault). isDefault === [applied] (auto-applied, in payment);
+      // non-default === [cond:] selectable rebates. Built only for grid-priced cards.
+      type CardIncentive = { id: string; name: string; amount: number; type: string; isDefault: boolean };
+      let leaseAvailableIncentives: CardIncentive[] | null = null;
+      let financeAvailableIncentives: CardIncentive[] | null = null;
       if (data.make && data.model && data.trim) {
         const tierId = (queryTier as string) || 't1';
-        const gridKey = `${data.make}|${data.model}|${data.trim}|${term}|${tierId}`.toLowerCase();
+
+        // Resolve the deal's trim onto a grid trim name. Dealer inventory trims are
+        // short ("SE", "Limited") while grid trims carry the drivetrain ("SE AWD"):
+        // exact -> trim+drivetrain -> word match -> partial, preferring the variant
+        // that matches the car's drivetrain — mirroring the calculator resolver's
+        // fuzzy matching (DataResolver word/partial regex), so both paths land on
+        // the same grid row.
+        // Resolve the deal's trim onto a grid trim using the SAME candidate set the
+        // calculator's resolver builds (DataResolver possibleTrims): the carDb-matched
+        // trim name, the original trim, the "Hybrid"-stripped form and the first word —
+        // then, like the pipeline, take the best-for-customer row among the candidates.
+        let gridTrim = data.trim;
+        const modelTrims: Set<string> | undefined = cachedMaps.gridTrimsByModel?.get(`${data.make}|${data.model}`.toLowerCase());
+        if (modelTrims && !modelTrims.has(data.trim)) {
+          const lcByName = new Map(Array.from(modelTrims).map(t => [t.toLowerCase(), t]));
+          const rawCandidates = [
+            data.trim,
+            carDbTrimName,
+            String(data.trim).replace(/ Hybrid$/i, '').trim(),
+            String(data.trim).split(' ')[0]
+          ].filter(Boolean);
+          const candidates = Array.from(new Set(
+            rawCandidates
+              .map(c => lcByName.get(String(c).toLowerCase()))
+              .filter(Boolean) as string[]
+          ));
+
+          if (candidates.length === 1) {
+            gridTrim = candidates[0];
+          } else if (candidates.length > 1) {
+            // Best for customer: lowest rough monthly (rates + trim incentives)
+            let best: { trim: string; proxy: number } | null = null;
+            for (const c of candidates) {
+              const lp = cachedMaps.leaseGridMap?.get(`${data.make}|${data.model}|${c}|${term}|${tierId}`.toLowerCase());
+              if (!lp || !(lp.mf > 0)) continue;
+              const incSum = (cachedMaps.incentiveGridMap?.get(`${data.make}|${data.model}|${c}`.toLowerCase()) || [])
+                .filter((inc: any) => {
+                  const app = inc.dealApplicability;
+                  if (app && app !== 'ALL' && app !== 'LEASE') return false;
+                  const termRule = (inc.eligibilityRules as any)?.terms || (inc.eligibilityRules as any)?.term;
+                  if (termRule && Array.isArray(termRule) && !termRule.includes(term)) return false;
+                  return true;
+                })
+                .reduce((s: number, inc: any) => s + (Number(inc.amountCents) || 0), 0) / 100;
+              const proxy = (msrp * (1 - lp.rv) - incSum) / term + msrp * (1 + lp.rv) * lp.mf;
+              if (!best || proxy < best.proxy) best = { trim: c, proxy };
+            }
+            gridTrim = best?.trim || candidates[0];
+          }
+        }
+
+        const gridKey = `${data.make}|${data.model}|${gridTrim}|${term}|${tierId}`.toLowerCase();
         const lp = cachedMaps.leaseGridMap?.get(gridKey);
         if (lp && lp.mf > 0) {
           mf = lp.mf;
@@ -547,25 +652,77 @@ export class DealEngineFacade {
         // Term/type-aware incentives from OemIncentiveProgram (same source and the
         // same eligibility convention the quote pipeline applies)
         const incRows = [
-          ...(cachedMaps.incentiveGridMap?.get(`${data.make}|${data.model}|${data.trim}`.toLowerCase()) || []),
+          ...(cachedMaps.incentiveGridMap?.get(`${data.make}|${data.model}|${gridTrim}`.toLowerCase()) || []),
           ...(cachedMaps.incentiveGridMap?.get(`${data.make}|${data.model}|`.toLowerCase()) || []),
           ...(cachedMaps.incentiveGridMap?.get(`${data.make}||`.toLowerCase()) || [])
         ];
-        if (incRows.length > 0) {
+        if (incRows.length > 0 || exactLeaseTier || exactFinanceTier) {
+          const now = new Date();
           const sumFor = (dealType: string) => {
-            let taxable = 0, nonTaxable = 0;
+            // Collect AUTO-APPLIED (OEM_CASH) incentives only — these reduce the advertised
+            // payment, mirroring the quote pipeline (IncentiveResolver auto-applies
+            // isDefault === OEM_CASH and surfaces non-default [cond:] rebates as opt-in).
+            // A catalog card sends no explicit selection, so its payment must reflect only
+            // the auto-applied cash, or selectable rebates would undercut card vs calculator.
+            const elig: any[] = [];
             for (const inc of incRows) {
               const app = inc.dealApplicability;
               if (app && app !== 'ALL' && app !== dealType) continue;
+              if (inc.type !== 'OEM_CASH') continue;
+              if (inc.effectiveFrom && new Date(inc.effectiveFrom) > now) continue;
+              if (inc.effectiveTo && new Date(inc.effectiveTo) < now) continue;
               const rules = inc.eligibilityRules as any;
               const termRule = rules?.terms || rules?.term;
               if (termRule && Array.isArray(termRule) && !termRule.includes(term)) continue;
               const tierRule = rules?.tiers;
               if (tierRule && Array.isArray(tierRule) && !tierRule.includes(tierId)) continue;
+              elig.push(inc);
+            }
+            // Exclusive groups: keep only the highest-amount item per group, exactly like
+            // IncentiveResolver — so multiple manufacturer bonus-cash offers on one car
+            // (e.g. Dealer Choice $2,500 + HMA Retail Bonus $2,000) do NOT stack; the best
+            // single one applies. Ungrouped OEM_CASH still sum.
+            const byGroup = new Map<string, any>();
+            const chosen: any[] = [];
+            for (const inc of elig) {
+              const g = inc.exclusiveGroupId;
+              if (!g) { chosen.push(inc); continue; }
+              const cur = byGroup.get(g);
+              if (!cur || (Number(inc.amountCents) || 0) > (Number(cur.amountCents) || 0)) byGroup.set(g, inc);
+            }
+            for (const inc of byGroup.values()) chosen.push(inc);
+            let taxable = 0, nonTaxable = 0;
+            for (const inc of chosen) {
               const amount = Number(inc.amountCents) || 0;
               if (inc.isTaxableCa === false) nonTaxable += amount; else taxable += amount;
             }
             return { taxable, nonTaxable };
+          };
+          // Card incentive list for a deal type — mirrors DataResolver's mapping so
+          // the card and the /api/v2/quote response agree: isDefault === OEM_CASH
+          // ([applied], auto-applied, baked into payment); non-default === [cond:]
+          // selectable rebates surfaced as available but NOT auto-applied.
+          const listFor = (dealType: string): CardIncentive[] => {
+            const out: CardIncentive[] = [];
+            for (const inc of incRows) {
+              const app = inc.dealApplicability;
+              if (app && app !== 'ALL' && app !== dealType) continue;
+              if (inc.effectiveFrom && new Date(inc.effectiveFrom) > now) continue;
+              if (inc.effectiveTo && new Date(inc.effectiveTo) < now) continue;
+              const rules = inc.eligibilityRules as any;
+              const termRule = rules?.terms || rules?.term;
+              if (termRule && Array.isArray(termRule) && !termRule.includes(term)) continue;
+              const tierRule = rules?.tiers;
+              if (tierRule && Array.isArray(tierRule) && !tierRule.includes(tierId)) continue;
+              out.push({
+                id: inc.id,
+                name: inc.name || 'Manufacturer Incentive',
+                amount: (Number(inc.amountCents) || 0) / 100,
+                type: inc.type === 'OEM_CASH' ? 'manufacturer' : 'special',
+                isDefault: inc.type === 'OEM_CASH'
+              });
+            }
+            return out;
           };
           const leaseSplit = sumFor('LEASE');
           const financeSplit = sumFor('FINANCE');
@@ -573,6 +730,11 @@ export class DealEngineFacade {
           leaseNonTaxableCents = leaseSplit.nonTaxable;
           financeTaxableCents = financeSplit.taxable;
           financeNonTaxableCents = financeSplit.nonTaxable;
+          leaseAvailableIncentives = listFor('LEASE');
+          financeAvailableIncentives = listFor('FINANCE');
+          // For grid-priced vehicles incentives come from OemIncentiveProgram ONLY —
+          // a non-null 0 here blocks the legacy leaseCash/rebates fallback below,
+          // which is a stale snapshot the calculator never sees.
           leaseIncentiveCents = leaseTaxableCents + leaseNonTaxableCents;
           financeIncentiveCents = financeTaxableCents + financeNonTaxableCents;
         }
@@ -599,6 +761,17 @@ export class DealEngineFacade {
           savings = discount;
           effectiveDiscount = 0; // discount carries the full admin adjustment
         }
+      }
+
+      // carDb rv values are 36-month residuals; apply the same per-term adjustment
+      // the calculator's carDb fallback applies (DataResolver), so both paths agree
+      // for vehicles the grid does not cover
+      if (usedCarDbRates && !exactLeaseTier) {
+        if (term === 24) rv += 0.06;
+        else if (term === 39) rv -= 0.02;
+        else if (term === 42) rv -= 0.04;
+        else if (term === 48) rv -= 0.07;
+        else if (term === 60) rv -= 0.15;
       }
 
       if (queryMileage) {
@@ -646,35 +819,55 @@ export class DealEngineFacade {
           - (leaseIncentiveCents !== null ? leaseNonTaxableCents : 0);
         const residualValueCents = rv > 1 ? rv * 100 : Math.round(msrp * rv * 100);
 
-        leaseCCR = PureMathEngine.calculateLeaseCCRFromDAS({
-          msrpCents: msrp * 100,
-          sellingPriceCents,
-          residualValueCents,
-          moneyFactor: mf,
-          term,
-          targetDASCents: leaseDASCents,
-          tradeInEquityCents: 0,
-          taxRate: dealTaxRate,
-          taxableIncentivesCents,
-          acqFeeCents,
-          docFeeCents,
-          dmvFeeCents: dealDmvFeeCents,
-          brokerFeeCents
-        });
+        // $0 due at signing -> sign-and-drive (capitalize first payment + fees), matching
+        // the calculator's runPipeline so the card and calculator agree at $0 down too.
+        let lease;
+        if (leaseDASCents === 0) {
+          leaseCCR = 0;
+          lease = PureMathEngine.calculateLeaseSignAndDrive({
+            msrpCents: msrp * 100,
+            sellingPriceCents,
+            residualValuePercent: rv > 1 ? rv / msrp : rv,
+            moneyFactor: mf,
+            term,
+            downPaymentCents: taxableIncentivesCents,
+            acqFeeCents,
+            docFeeCents,
+            dmvFeeCents: dealDmvFeeCents,
+            brokerFeeCents,
+            taxRate: dealTaxRate
+          });
+        } else {
+          leaseCCR = PureMathEngine.calculateLeaseCCRFromDAS({
+            msrpCents: msrp * 100,
+            sellingPriceCents,
+            residualValueCents,
+            moneyFactor: mf,
+            term,
+            targetDASCents: leaseDASCents,
+            tradeInEquityCents: 0,
+            taxRate: dealTaxRate,
+            taxableIncentivesCents,
+            acqFeeCents,
+            docFeeCents,
+            dmvFeeCents: dealDmvFeeCents,
+            brokerFeeCents
+          });
 
-        const lease = PureMathEngine.calculateLease({
-          msrpCents: msrp * 100,
-          sellingPriceCents,
-          residualValuePercent: rv > 1 ? rv / msrp : rv,
-          moneyFactor: mf,
-          term,
-          downPaymentCents: leaseCCR + taxableIncentivesCents,
-          acqFeeCents,
-          docFeeCents,
-          dmvFeeCents: dealDmvFeeCents,
-          brokerFeeCents,
-          taxRate: dealTaxRate
-        });
+          lease = PureMathEngine.calculateLease({
+            msrpCents: msrp * 100,
+            sellingPriceCents,
+            residualValuePercent: rv > 1 ? rv / msrp : rv,
+            moneyFactor: mf,
+            term,
+            downPaymentCents: leaseCCR + taxableIncentivesCents,
+            acqFeeCents,
+            docFeeCents,
+            dmvFeeCents: dealDmvFeeCents,
+            brokerFeeCents,
+            taxRate: dealTaxRate
+          });
+        }
         payment = lease.finalPaymentCents / 100;
         
         if (queryTier && !usedTiersData && !exactFinanceTier) {
@@ -708,10 +901,24 @@ export class DealEngineFacade {
         rebates = leaseIncentiveCents / 100;
       }
 
+      // Finance incentive total for the card badge/savings (auto-applied only — the
+      // sum of [applied] finance cash). null for non-grid cards (no finance grid data),
+      // letting mapDealsForFrontend fall back to lease-derived numbers as before.
+      const financeIncentive = financeIncentiveCents !== null ? financeIncentiveCents / 100 : null;
+
       return {
         deal, data,
         computed: {
-          payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type
+          payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type,
+          // Finance-specific savings inputs (grid-priced cards only; null otherwise).
+          // The dealer discount is identical for lease & finance (one admin adjustment),
+          // so `discount` above is reused; financeIncentive is the finance auto-applied cash.
+          financeIncentive,
+          // Per-incentive lists (id/name/amount/type/isDefault) for each deal type, so the
+          // card can show the right incentives per displayMode. [applied] => isDefault:true
+          // (in payment); [cond:] => isDefault:false (selectable, not in payment).
+          leaseAvailableIncentives,
+          financeAvailableIncentives
         }
       };
     });

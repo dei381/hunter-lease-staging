@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="35 40 440 440" width="440" height="440" role="img" aria-label="Hunter Lease">
+  <!-- H: dark left stem + crossbar; the right stem is shared with the teal L -->
+  <g fill="#272D3A">
+    <rect x="62" y="115" width="88" height="290" rx="24"/>
+    <rect x="62" y="225" width="238" height="67" rx="24"/>
+  </g>
+  <!-- L: shared vertical stem + foot (teal) -->
+  <g fill="#13E0A3">
+    <rect x="278" y="115" width="88" height="290" rx="24"/>
+    <rect x="278" y="338" width="170" height="67" rx="24"/>
+  </g>
+</svg>

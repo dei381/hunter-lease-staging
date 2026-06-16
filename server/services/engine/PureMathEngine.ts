@@ -118,6 +118,64 @@ export class PureMathEngine {
     };
   }
 
+  // Sign-and-drive ($0 due at signing): capitalize the upfront fees AND the first month's
+  // payment into the cap cost so the customer pays nothing at signing and a slightly higher
+  // monthly for all N months. Capitalizing the first month is self-referential (a higher
+  // monthly raises the amount to capitalize), so we solve it in closed form.
+  //   capCost = C + monthly,  monthly = [(capCost - R)/N + (capCost + R)*MF] * (1 + t)
+  //   => capCost = (C + R*(MF - 1/N)*(1+t)) / (1 - (1/N + MF)*(1+t))
+  // where C = sellingPrice + fees - (cash down + taxable incentives).
+  static calculateLeaseSignAndDrive(params: LeaseMathParams) {
+    const {
+      msrpCents, sellingPriceCents, residualValuePercent, moneyFactor,
+      term, downPaymentCents, acqFeeCents, docFeeCents, dmvFeeCents, brokerFeeCents, taxRate
+    } = params;
+
+    const R = Math.round(msrpCents * residualValuePercent);
+    const N = term;
+    const M = moneyFactor;
+    const t = taxRate;
+    const Fu = acqFeeCents + docFeeCents + dmvFeeCents + brokerFeeCents;
+    // Base cap cost with fees capitalized and any cash-down / taxable-incentive reduction.
+    const C = sellingPriceCents + Fu - downPaymentCents;
+
+    const k = 1 / N + M;
+    const denom = 1 - k * (1 + t);
+
+    let capCostCents: number;
+    if (denom > 0.01) {
+      capCostCents = (C + R * (M - 1 / N) * (1 + t)) / denom;
+    } else {
+      // Degenerate (extreme MF/short term): don't capitalize the first month, only fees.
+      capCostCents = C;
+    }
+
+    const depreciationCents = Math.max(0, (capCostCents - R) / N);
+    const rentChargeCents = (capCostCents + R) * M;
+    const basePaymentCents = depreciationCents + rentChargeCents;
+    const monthlyTaxCents = basePaymentCents * t;
+    const finalPaymentCents = Math.round(basePaymentCents + monthlyTaxCents);
+
+    if (isNaN(finalPaymentCents) || !isFinite(finalPaymentCents) || finalPaymentCents < 0) {
+      throw new Error("MATH_ERROR");
+    }
+
+    return {
+      finalPaymentCents,
+      basePaymentCents: Math.round(basePaymentCents),
+      monthlyTaxCents: Math.round(monthlyTaxCents),
+      depreciationCents: Math.round(depreciationCents),
+      rentChargeCents: Math.round(rentChargeCents),
+      capCostCents: Math.round(capCostCents),
+      residualValueCents: R,
+      totalFeesCents: Fu,
+      capitalizedFeesCents: Fu, // fees rolled into the loan
+      upfrontFeesCents: 0,      // nothing due upfront
+      sellingPriceCents,
+      signAndDrive: true,       // tells Formatter to put $0 (not the first month) at signing
+    };
+  }
+
   static calculateFinance(params: FinanceMathParams) {
     const {
       sellingPriceCents, totalIncentivesCents, apr, term, downPaymentCents,

@@ -44,6 +44,7 @@ const BlogPage = lazy(() => import('./pages/BlogPage').then(module => ({ default
 const BlogPost = lazy(() => import('./pages/BlogPost').then(module => ({ default: module.BlogPost })));
 const GlossaryPage = lazy(() => import('./pages/GlossaryPage').then(module => ({ default: module.GlossaryPage })));
 const AboutPage = lazy(() => import('./pages/AboutPage').then(module => ({ default: module.AboutPage })));
+const HunterScorePage = lazy(() => import('./pages/HunterScorePage').then(module => ({ default: module.HunterScorePage })));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(module => ({ default: module.PrivacyPolicy })));
 const TermsConditions = lazy(() => import('./pages/TermsConditions').then(module => ({ default: module.TermsConditions })));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy').then(module => ({ default: module.RefundPolicy })));
@@ -55,6 +56,9 @@ const DealerPortal = lazy(() => import('./pages/DealerPortal').then(module => ({
 const LeaseTransfersPage = lazy(() => import('./pages/LeaseTransfersPage').then(module => ({ default: module.LeaseTransfersPage })));
 const SavedDealsPage = lazy(() => import('./pages/SavedDealsPage').then(module => ({ default: module.SavedDealsPage })));
 const MarketcheckDealPage = lazy(() => import('./pages/MarketcheckDealPage').then(module => ({ default: module.MarketcheckDealPage })));
+const IntentLandingPage = lazy(() => import('./pages/IntentLandingPage').then(module => ({ default: module.IntentLandingPage })));
+const DealAuditorPage = lazy(() => import('./pages/DealAuditorPage').then(module => ({ default: module.DealAuditorPage })));
+const NewcomersPage = lazy(() => import('./pages/NewcomersPage').then(module => ({ default: module.NewcomersPage })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
@@ -318,17 +322,37 @@ function MainApp() {
         title={t.seo?.homeTitle || "Hunter Lease | The Marketplace for Pre-Negotiated Car Leases"}
         description={t.seo?.homeDesc || "Skip the dealership. Browse pre-negotiated new car lease deals, customize your payment online, and secure your vehicle with zero hidden markups."}
         ogImage="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=1200&h=630"
-        schema={{
-          "@context": "https://schema.org",
-          "@type": "WebSite",
-          "name": "Hunter Lease",
-          "url": "https://hunterlease.com",
-          "potentialAction": {
-            "@type": "SearchAction",
-            "target": "https://hunterlease.com/deals?q={search_term_string}",
-            "query-input": "required name=search_term_string"
+        schema={[
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Hunter Lease",
+            "url": "https://hunterlease.com",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://hunterlease.com/deals?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "Hunter Lease",
+            "url": "https://hunterlease.com",
+            "logo": "https://hunterlease.com/logo.png",
+            "areaServed": "Southern California",
+            "sameAs": [
+              "https://www.instagram.com/hunterlease",
+              "https://twitter.com/hunterlease"
+            ],
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "telephone": "+1-310-909-7755",
+              "contactType": "sales",
+              "availableLanguage": ["English", "Russian"]
+            }
           }
-        }}
+        ]}
       />
       <main className="max-w-7xl mx-auto px-6 pt-8 md:pt-12 pb-32">
         {/* Hero Section */}
@@ -342,7 +366,14 @@ function MainApp() {
               <div className="w-1.5 h-1.5 rounded-full bg-[var(--lime)] animate-pulse" />
               {t.hero.badge}
             </motion.div>
-            <motion.h1 
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-[var(--mu2)] text-sm md:text-base font-medium max-w-xl"
+            >
+              {t.hero.kicker}
+            </motion.p>
+            <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="font-display text-5xl md:text-7xl lg:text-[6rem] leading-[0.95] tracking-tight"
@@ -359,9 +390,9 @@ function MainApp() {
             <button 
               onClick={() => navigate('/deals')} 
               className="bg-[var(--lime)] text-black font-bold text-sm uppercase tracking-widest px-10 py-5 rounded-2xl hover:bg-[var(--lime2)] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(204,255,0,0.15)] group w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lime)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]"
-              aria-label={language === 'ru' ? 'Смотреть каталог авто' : 'Browse Catalog'}
+              aria-label={language === 'ru' ? 'Узнать свою цену' : 'See my price'}
             >
-               {language === 'ru' ? 'Каталог Авто' : 'Browse Catalog'}
+               {language === 'ru' ? 'Узнать свою цену' : 'See my price'}
                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
             </button>
 
@@ -742,7 +773,7 @@ const BetaBanner = () => {
   return (
     <div className="bg-[var(--lime)] text-black py-2 px-6 flex items-center justify-between gap-4 relative z-[60]">
       <div className="flex items-center gap-3 overflow-hidden">
-        <span className="bg-black text-[var(--lime)] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter shrink-0">BETA</span>
+        <span className="bg-black text-[var(--lime)] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter shrink-0">{language === 'ru' ? 'Ранний доступ' : 'Early Access'}</span>
         <p className="text-[10px] font-bold uppercase tracking-widest truncate">
           {t.message}
         </p>
@@ -951,6 +982,10 @@ export default function App() {
           <Route path="/blog/:id" element={<Layout><BlogPost /></Layout>} />
           <Route path="/glossary" element={<Layout><GlossaryPage /></Layout>} />
           <Route path="/about" element={<Layout><AboutPage /></Layout>} />
+          <Route path="/hunter-score" element={<Layout><HunterScorePage /></Layout>} />
+          <Route path="/lease/:slug" element={<Layout><IntentLandingPage /></Layout>} />
+          <Route path="/deal-auditor" element={<Layout><DealAuditorPage /></Layout>} />
+          <Route path="/newcomers" element={<Layout><NewcomersPage /></Layout>} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/calibrator" element={<Calibrator />} />
           <Route path="/privacy" element={<Layout><PrivacyPolicy /></Layout>} />

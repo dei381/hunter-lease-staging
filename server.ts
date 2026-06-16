@@ -66,6 +66,7 @@ const __dirname = path.dirname(__filename);
 import { ExtractionEngine } from "./server/services/ExtractionEngine";
 import { DealEngineFacade } from "./server/services/engine/DealEngineFacade";
 import { PureMathEngine } from "./server/services/engine/PureMathEngine";
+import { computeHunterScore } from "./server/services/engine/HunterScore";
 import { EligibilityEngine } from "./server/services/EligibilityEngine";
 import { MarketcheckSyncService } from "./server/services/MarketcheckSyncService";
 
@@ -100,6 +101,7 @@ let cachedCarDbMaps: {
   financeGridMap: Map<string, any>;
   incentiveGridMap: Map<string, any[]>;
   dealerAdjMap: Map<string, any[]>;
+  gridTrimsByModel: Map<string, Set<string>>;
   lastUpdated: number;
 } | null = null;
 
@@ -128,14 +130,26 @@ async function getCachedCarDbMaps() {
   ]);
 
   const leaseGridMap = new Map();
+  // Distinct grid trim names per make|model — lets the catalog fuzzy-match dealer
+  // inventory trims ("SE" + AWD drivetrain) onto grid trims ("SE AWD"), the same
+  // idea the calculator's resolver applies.
+  const gridTrimsByModel = new Map<string, Set<string>>();
   for (const p of leaseRows as any[]) {
     const key = `${p.make}|${p.model}|${p.trim}|${p.term}|${p.internalLenderTier}`.toLowerCase();
     leaseGridMap.set(key, { mf: Number(p.buyRateMf), rv: Number(p.residualPercentage) / 100 });
+    const mk = `${p.make}|${p.model}`.toLowerCase();
+    if (!gridTrimsByModel.has(mk)) gridTrimsByModel.set(mk, new Set());
+    gridTrimsByModel.get(mk)!.add(p.trim);
   }
   const financeGridMap = new Map();
   for (const p of financeRows as any[]) {
     const key = `${p.make}|${p.model}|${p.trim}|${p.term}|${p.internalLenderTier}`.toLowerCase();
     financeGridMap.set(key, { apr: Number(p.buyRateApr) });
+    // Finance trims also feed the catalog fuzzy trim resolver, so finance-only models
+    // (or finance trim names that differ from the lease grid) still match.
+    const mk = `${p.make}|${p.model}`.toLowerCase();
+    if (!gridTrimsByModel.has(mk)) gridTrimsByModel.set(mk, new Set());
+    gridTrimsByModel.get(mk)!.add(p.trim);
   }
   const incentiveGridMap = new Map<string, any[]>();
   for (const inc of incentiveRows as any[]) {
@@ -174,7 +188,7 @@ async function getCachedCarDbMaps() {
     }
   }
 
-  cachedCarDbMaps = { makeMap, modelMap, trimMap, leaseGridMap, financeGridMap, incentiveGridMap, dealerAdjMap, lastUpdated: now };
+  cachedCarDbMaps = { makeMap, modelMap, trimMap, leaseGridMap, financeGridMap, incentiveGridMap, dealerAdjMap, gridTrimsByModel, lastUpdated: now };
   return cachedCarDbMaps;
 }
 
@@ -221,7 +235,7 @@ const loadDataFromFirestore = async () => {
     const existingSettings = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
     if (!existingSettings) {
       const defaultSettings = {
-        brokerFee: 595,
+        brokerFee: 0,
         taxRateDefault: 8.875,
         supportEmail: 'cargwin4555@gmail.com',
         maintenanceMode: false
@@ -465,14 +479,67 @@ async function sendLeadTelegram(lead: any, type: 'new' | 'credit-app') {
 
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-  apiVersion: '2023-10-16' as any,
-});
+// Stripe keys live in SiteSettings 'stripe_keys' (editable from the admin, no redeploy)
+// with the environment as fallback. The client is built lazily and re-built when the
+// key changes, so pasting a new key in the admin takes effect immediately.
+let stripeClientCache: { key: string; client: Stripe } | null = null;
+
+async function getStripeKeys(): Promise<{ publishableKey: string; secretKey: string }> {
+  let data: any = {};
+  try {
+    const rec = await prisma.siteSettings.findUnique({ where: { id: 'stripe_keys' } });
+    if (rec?.data) data = JSON.parse(rec.data);
+  } catch (e) {
+    console.warn('getStripeKeys: falling back to env', e);
+  }
+  return {
+    publishableKey: data.publishableKey || process.env.STRIPE_PUBLISHABLE_KEY || '',
+    secretKey: data.secretKey || process.env.STRIPE_SECRET_KEY || ''
+  };
+}
+
+async function getStripe(): Promise<Stripe | null> {
+  const { secretKey } = await getStripeKeys();
+  if (!secretKey) return null;
+  if (!stripeClientCache || stripeClientCache.key !== secretKey) {
+    stripeClientCache = { key: secretKey, client: new Stripe(secretKey, { apiVersion: '2023-10-16' as any }) };
+  }
+  return stripeClientCache.client;
+}
 
 import cron from 'node-cron';
 import { syncDealersInventory } from './server/jobs/syncExternalCars';
 
+// Refundable deposit amount in cents. SINGLE source of truth so the Stripe charge and
+// every UI display agree. To raise the deposit (e.g. pilot $95 -> $200) change only
+// SiteSettings.depositAmount (dollars) in the admin; no code change, no inconsistency.
+async function getDepositCents(): Promise<number> {
+  try {
+    const s = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
+    const data = s ? JSON.parse(s.data) : {};
+    const amt = Number(data?.depositAmount);
+    if (amt > 0) return Math.round(amt * 100);
+  } catch (e) {
+    console.warn('getDepositCents: falling back to default $95', e);
+  }
+  return 9500; // default $95
+}
+
+// Startup guard: warn loudly if secrets the app needs are missing, so config gaps are
+// visible instead of silently failing (and so no one is tempted to hardcode a fallback).
+function warnMissingEnv() {
+  const required = ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'MARKETCHECK_API_KEY'];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) {
+    console.warn(
+      `[env] Missing required environment variables: ${missing.join(', ')}. ` +
+      `Features that depend on them will not work. Set them in the environment (.env), never in code.`
+    );
+  }
+}
+
 async function startServer() {
+  warnMissingEnv();
   // Ensure data is loaded before starting routes (non-blocking)
   loadDataFromFirestore().catch(err => console.error("Initial data load failed:", err));
   
@@ -771,28 +838,113 @@ async function startServer() {
         where: { id: 'global' }
       });
       res.json(settings ? JSON.parse(settings.data) : {
-        brokerFee: 595,
+        brokerFee: 0,
         taxRateDefault: 8.875,
         supportEmail: 'cargwin4555@gmail.com',
         maintenanceMode: false,
         dmvFee: 400,
         docFee: 85,
         acquisitionFee: 650,
-        dispositionFee: 395
+        dispositionFee: 395,
+        depositAmount: 95
       });
     } catch (error) {
       console.error("Failed to fetch settings:", error);
       // Even if everything fails, return default settings instead of 500
       res.json({
-        brokerFee: 595,
+        brokerFee: 0,
         taxRateDefault: 8.875,
         supportEmail: 'cargwin4555@gmail.com',
         maintenanceMode: false,
         dmvFee: 400,
         docFee: 85,
         acquisitionFee: 650,
-        dispositionFee: 395
+        dispositionFee: 395,
+        depositAmount: 95
       });
+    }
+  });
+
+  // Public: ONLY the publishable key (it is public by design). The secret never leaves the server.
+  app.get("/api/stripe-config", async (_req, res) => {
+    try {
+      const { publishableKey } = await getStripeKeys();
+      res.json({ publishableKey });
+    } catch (e) {
+      res.json({ publishableKey: '' });
+    }
+  });
+
+  // Admin: paste-and-save Stripe keys without a redeploy. GET never echoes the secret back.
+  app.get("/api/admin/stripe-keys", adminAuth, async (_req, res) => {
+    try {
+      const { publishableKey, secretKey } = await getStripeKeys();
+      res.json({
+        publishableKey,
+        secretKeySet: !!secretKey,
+        secretKeyHint: secretKey ? `${secretKey.slice(0, 8)}...${secretKey.slice(-4)}` : ''
+      });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to read Stripe keys' });
+    }
+  });
+
+  app.put("/api/admin/stripe-keys", adminAuth, async (req, res) => {
+    try {
+      const { publishableKey, secretKey } = req.body || {};
+      if (publishableKey && !String(publishableKey).startsWith('pk_')) {
+        return res.status(400).json({ error: 'Publishable key must start with pk_' });
+      }
+      if (secretKey && !String(secretKey).startsWith('sk_')) {
+        return res.status(400).json({ error: 'Secret key must start with sk_' });
+      }
+      const rec = await prisma.siteSettings.findUnique({ where: { id: 'stripe_keys' } });
+      const current = rec?.data ? JSON.parse(rec.data) : {};
+      const next = {
+        ...current,
+        ...(publishableKey !== undefined ? { publishableKey } : {}),
+        // empty string clears the override (falls back to env); undefined keeps current
+        ...(secretKey !== undefined ? { secretKey } : {})
+      };
+      await prisma.siteSettings.upsert({
+        where: { id: 'stripe_keys' },
+        update: { data: JSON.stringify(next) },
+        create: { id: 'stripe_keys', data: JSON.stringify(next) }
+      });
+      res.json({ success: true });
+    } catch (e) {
+      console.error('Failed to save Stripe keys:', e);
+      res.status(500).json({ error: 'Failed to save Stripe keys' });
+    }
+  });
+
+  // Admin: integration keys (Marketcheck etc.) — same paste-and-save pattern as Stripe.
+  app.get("/api/admin/integration-keys", adminAuth, async (_req, res) => {
+    try {
+      const rec = await prisma.siteSettings.findUnique({ where: { id: 'integration_keys' } });
+      const data = rec?.data ? JSON.parse(rec.data) : {};
+      const key = data.marketcheckApiKey || process.env.MARKETCHECK_API_KEY || '';
+      res.json({ marketcheckKeySet: !!key, marketcheckKeyHint: key ? `${key.slice(0, 6)}...${key.slice(-4)}` : '' });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to read integration keys' });
+    }
+  });
+
+  app.put("/api/admin/integration-keys", adminAuth, async (req, res) => {
+    try {
+      const { marketcheckApiKey } = req.body || {};
+      const rec = await prisma.siteSettings.findUnique({ where: { id: 'integration_keys' } });
+      const current = rec?.data ? JSON.parse(rec.data) : {};
+      const next = { ...current, ...(marketcheckApiKey !== undefined ? { marketcheckApiKey } : {}) };
+      await prisma.siteSettings.upsert({
+        where: { id: 'integration_keys' },
+        update: { data: JSON.stringify(next) },
+        create: { id: 'integration_keys', data: JSON.stringify(next) }
+      });
+      res.json({ success: true });
+    } catch (e) {
+      console.error('Failed to save integration keys:', e);
+      res.status(500).json({ error: 'Failed to save integration keys' });
     }
   });
 
@@ -2237,7 +2389,7 @@ You must return the response as a JSON array of objects. Each object must have t
       const ck = "mclisting-" + vin;
       if (apiCache.has(ck)) return res.json(apiCache.get(ck));
       
-      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      const API_KEY = process.env.MARKETCHECK_API_KEY || '';
       const url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&vins=${vin}`;
       
       const response = await fetch(url);
@@ -2261,7 +2413,7 @@ You must return the response as a JSON array of objects. Each object must have t
       const { make, zip = '90210' } = req.query;
       if (!make) return res.status(400).json({ error: "Make is required" });
       
-      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      const API_KEY = process.env.MARKETCHECK_API_KEY || '';
       const url = `https://api.marketcheck.com/v2/search/car/incentive/${(make as string).toLowerCase()}/${zip}?api_key=${API_KEY}`;
       
       const response = await fetch(url);
@@ -2282,7 +2434,7 @@ You must return the response as a JSON array of objects. Each object must have t
         return res.status(400).json({ error: "Missing make, model, or year" });
       }
       
-      const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+      const API_KEY = process.env.MARKETCHECK_API_KEY || '';
       const url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&latitude=34.0522&longitude=-118.2437&radius=100&car_type=new&make=${encodeURIComponent(make as string)}&model=${encodeURIComponent(model as string)}&year=${year}&rows=0&stats=price,miles`;
       
       const response = await fetch(url);
@@ -3750,13 +3902,16 @@ FACEBOOK:
         return res.status(404).json({ error: "Lead not found" });
       }
 
-      if (!process.env.STRIPE_SECRET_KEY) {
-        console.warn("STRIPE_SECRET_KEY not set. Mocking payment intent.");
+      const stripe = await getStripe();
+      if (!stripe) {
+        console.warn("Stripe secret key not configured (admin settings or env). Mocking payment intent.");
         return res.json({ clientSecret: "pi_mock_secret_12345" });
       }
 
+      const depositCents = await getDepositCents();
+
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: 9500, // $95.00
+        amount: depositCents, // refundable deposit, configurable via SiteSettings.depositAmount (default $95)
         currency: 'usd',
         metadata: {
           leadId: lead.id,
@@ -3790,6 +3945,13 @@ FACEBOOK:
         return res.status(404).json({ error: "Lead not found" });
       }
 
+      const stripe = await getStripe();
+      if (!stripe) {
+        return res.status(503).json({ error: "Stripe is not configured" });
+      }
+
+      const depositCents = await getDepositCents();
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -3798,9 +3960,9 @@ FACEBOOK:
               currency: 'usd',
               product_data: {
                 name: `Deposit for ${lead.carYear} ${lead.carMake} ${lead.carModel}`,
-                description: 'Lock in your deal with a $95 deposit.',
+                description: `Lock in your deal with a refundable $${depositCents / 100} deposit.`,
               },
-              unit_amount: 9500, // $95.00
+              unit_amount: depositCents,
             },
             quantity: 1,
           },
@@ -4372,11 +4534,30 @@ const mapDealsForFrontend = (
   const processedDeals = DealEngineFacade.mapCatalogDeals(dealsToProcess, cachedMaps, settings, queryParams);
 
   return processedDeals.map(({ deal, data, computed }) => {
-    const { payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type } = computed;
+    const { payment, financePayment, msrp, mf, rv, leaseCash, term, down, savings, discount, rebates, apr, type,
+      financeIncentive, leaseAvailableIncentives, financeAvailableIncentives } = computed as any;
+    // Hunter Score (MVP): one 0-100 deal-quality number from the numbers already on the card.
+    // Lease cards only; uses a REAL market average (never the synthetic payment*1.15 fallback),
+    // and stays 'pending' (no badge) on broken/implausible data so we never show a fake score.
+    const realMarketAvg = (typeof data.marketAvg === 'number' && data.marketAvg > 0) ? data.marketAvg : null;
+    const hunter = type === 'lease'
+      ? computeHunterScore({ paymentMonthly: payment, msrp, marketAvg: realMarketAvg })
+      : { status: 'pending' as const, score: null, band: null, label: 'Pending audit' };
     // Auto-applied manufacturer incentive (counted once) + admin dealer discount drive
     // the "% off" badge, the savings figure, and the card's incentive list.
     const incentiveTotal = Math.max(Number(leaseCash) || 0, Number(rebates) || 0);
     const effectiveSavings = (Number(discount) || 0) + incentiveTotal;
+
+    // Finance equivalents. The FINANCE catalog card must reflect FINANCE incentives,
+    // not lease ones (previously it showed "0% discount" because the badge reused lease
+    // numbers). The dealer discount is one admin adjustment shared by lease & finance.
+    // financeIncentive is the auto-applied finance cash from the same grid the calculator
+    // uses (mapCatalogDeals.financeIncentiveCents); null => no finance grid data, so fall
+    // back to the lease-derived incentiveTotal to avoid regressing legacy cards.
+    const financeIncentiveTotal = (financeIncentive !== null && financeIncentive !== undefined)
+      ? Number(financeIncentive) || 0
+      : incentiveTotal;
+    const financeEffectiveSavings = (Number(discount) || 0) + financeIncentiveTotal;
 
     // Handle RV percentage vs absolute
     let rvPercent = '0%';
@@ -4395,7 +4576,12 @@ const mapDealsForFrontend = (
     // Find photo from CAR_PHOTOS if available
     let imageUrl = data.image || null;
     let images: string[] = [];
-    if (data.image) {
+    // Real listing photos (Marketcheck dealer inventory) — per-VIN, take them all
+    const listingPhotos: string[] = Array.isArray(data.images) ? data.images.filter((u: any) => typeof u === 'string' && u.startsWith('http')) : [];
+    if (listingPhotos.length > 0) {
+      images = listingPhotos;
+      imageUrl = listingPhotos[0];
+    } else if (data.image) {
       images.push(data.image);
     }
     let bodyStyle = data.bodyStyle || 'Auto';
@@ -4415,7 +4601,8 @@ const mapDealsForFrontend = (
         if (modelObj) {
           const photoKey = `${makeObj.id}-${modelObj.id}`;
           const modelPhotos = carPhotosMap.get(photoKey) || [];
-          if (modelPhotos.length > 0) {
+          // Stock model photos are a fallback only — never overwrite real listing photos
+          if (modelPhotos.length > 0 && listingPhotos.length === 0) {
             // Sort so default is first
             modelPhotos.sort((a: any, b: any) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
             // Only attach images if they are regular URLs, not massive base64 strings to prevent payload bloat
@@ -4520,17 +4707,28 @@ const mapDealsForFrontend = (
       rv: rvPercent,
       msrp: msrp,
       savings: effectiveSavings,
+      // Pure dealer discount (admin adjustment), WITHOUT incentives. The calculator
+      // must send this — not `savings` — as the dealer-discount override, or the
+      // incentive gets subtracted twice (once as discount, once as incentive).
+      dealerDiscount: Number(discount) || 0,
       dealer: data.dealer || 'Verified Dealer',
       lender: deal.lender?.name || data.lender || 'Verified Dealer',
       region: data.region || 'California',
       intel: data.intel || '11-Key Lock Verified Deal. No hidden markups.',
-      marketAvg: data.marketAvg || Math.round(payment * 1.15),
+      marketAvg: realMarketAvg, // real local market average or null; never a fabricated multiple of the payment
+      hunterScore: hunter.score,
+      hunterBand: hunter.band,
+      hunterLabel: hunter.label,
+      hunterStatus: hunter.status,
       incHint: data.incHint || 'Contact us for exact incentives.',
       time: data.time || 1,
       unit: data.unit || 'h',
       dot: data.dot || 'lv',
       isNew: data.isNew !== undefined ? data.isNew : true,
-      color: data.color || data.exteriorColor || 'any-color',
+      color: data.color || data.exteriorColor || '',
+      // Real per-VIN colors from the dealer listing; empty for model-level cards
+      exteriorColor: data.exteriorColor || '',
+      interiorColor: data.interiorColor || '',
       vin: data.vin || deal.id,
       isFirstTimeBuyerEligible: isFirstTimeBuyerEligible,
       allowWithCoSigner: allowWithCoSigner,
@@ -4539,9 +4737,33 @@ const mapDealsForFrontend = (
       image: imageUrl,
       images: images,
       expirationDate: deal.expirationDate,
+      // LEASE incentive list — UNCHANGED (lease behavior must not regress). The frontend
+      // badge sums availableIncentives.filter(isDefault) ON TOP of `savings`, so this list
+      // intentionally carries no isDefault items here, exactly as before.
       availableIncentives: (Array.isArray(data.availableIncentives) && data.availableIncentives.length)
         ? data.availableIncentives
         : (incentiveTotal > 0 ? [{ name: (Array.isArray(data.incentives) && data.incentives[0]?.name) || 'Manufacturer Incentive', amount: incentiveTotal }] : []),
+      // FINANCE counterparts — the frontend switches to these when displayMode === 'finance'.
+      // financeSavings already includes the auto-applied finance cash + dealer discount, so —
+      // mirroring the lease contract — financeAvailableIncentives carries only the SELECTABLE
+      // (non-default) finance rebates, never the auto-applied cash (no double count vs savings).
+      financeAvailableIncentives: (Array.isArray(financeAvailableIncentives) && financeAvailableIncentives.length)
+        ? financeAvailableIncentives.filter((i: any) => !i.isDefault)
+        : [],
+      // Full finance savings (dealer discount + auto-applied finance cash) and its % of MSRP —
+      // finance equivalents of `savings` / `discountPercent`. Fixes the finance card showing 0%.
+      financeSavings: financeEffectiveSavings,
+      financeIncentiveTotal: financeIncentiveTotal,
+      financeDiscountPercent: msrp > 0 ? Math.round(financeEffectiveSavings / msrp * 100) : 0,
+      // Selectable (opt-in) rebates per deal type from the grid (id/name/amount/type, no
+      // isDefault). Surfaced for the incentives picker / Transparency modal; do NOT add to
+      // the savings badge. null when this card was not grid-priced.
+      leaseSelectableIncentives: Array.isArray(leaseAvailableIncentives)
+        ? leaseAvailableIncentives.filter((i: any) => !i.isDefault)
+        : null,
+      financeSelectableIncentives: Array.isArray(financeAvailableIncentives)
+        ? financeAvailableIncentives.filter((i: any) => !i.isDefault)
+        : null,
       leaseCash: leaseCash || 0,
       rebates: data.rebates || 0,
       discount: discount || data.discount || 0,
@@ -4663,7 +4885,7 @@ const mapDealsForFrontend = (
       }
       if (!settings) {
         settings = {
-          brokerFee: 595,
+          brokerFee: 0,
           taxRateDefault: 8.875,
           dmvFee: 400,
           docFee: 85,
@@ -4684,8 +4906,10 @@ const mapDealsForFrontend = (
           data = deal.financialData ? JSON.parse(deal.financialData) : null;
           if (data && deal.payload) {
             const payload = JSON.parse(deal.payload);
-            data.exteriorColor = payload.exterior_color || payload.exteriorColor || data.exteriorColor || 'any-color';
-            data.color = payload.exterior_color || payload.exteriorColor || data.color || 'any-color';
+            // Empty (not the literal "any-color") when the listing has no color, so the
+            // card simply omits the color line instead of showing "any-color" to the user.
+            data.exteriorColor = payload.exterior_color || payload.exteriorColor || data.exteriorColor || '';
+            data.color = payload.exterior_color || payload.exteriorColor || data.color || '';
           }
         } catch (e) {
           console.error(`Failed to parse financialData for deal ${deal.id}:`, e);
@@ -4776,7 +5000,7 @@ const mapDealsForFrontend = (
       }
       if (!settings) {
         settings = {
-          brokerFee: 595,
+          brokerFee: 0,
           taxRateDefault: 8.875,
           dmvFee: 400,
           docFee: 85,
@@ -4831,10 +5055,14 @@ const mapDealsForFrontend = (
 
   app.get('/sitemap.xml', async (req, res) => {
     try {
+      // Match the public catalog filter so every deal a visitor can see is indexable.
       const deals = await prisma.dealRecord.findMany({
         where: {
-          publishStatus: 'PUBLISHED',
-          reviewStatus: 'APPROVED'
+          AND: [
+            { publishStatus: { not: 'ARCHIVED' } },
+            { OR: [{ expirationDate: null }, { expirationDate: { gt: new Date() } }] },
+            { OR: [{ reviewStatus: 'APPROVED' }, { publishStatus: 'PUBLISHED' }] },
+          ],
         },
         select: { id: true, updatedAt: true }
       });
@@ -4843,8 +5071,28 @@ const mapDealsForFrontend = (
       const staticUrls = [
         { loc: '/', priority: '1.0', changefreq: 'weekly' },
         { loc: '/deals', priority: '0.9', changefreq: 'daily' },
-        { loc: '/privacy', priority: '0.5', changefreq: 'monthly' },
-        { loc: '/terms', priority: '0.5', changefreq: 'monthly' },
+        { loc: '/hunter-score', priority: '0.7', changefreq: 'monthly' },
+        { loc: '/deal-auditor', priority: '0.8', changefreq: 'monthly' },
+        { loc: '/newcomers', priority: '0.7', changefreq: 'monthly' },
+        { loc: '/blog', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease-transfers', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/compare', priority: '0.5', changefreq: 'monthly' },
+        { loc: '/about', priority: '0.5', changefreq: 'monthly' },
+        { loc: '/glossary', priority: '0.5', changefreq: 'monthly' },
+        { loc: '/lease/best-deals', priority: '0.7', changefreq: 'weekly' },
+        { loc: '/lease/under-400', priority: '0.7', changefreq: 'weekly' },
+        { loc: '/lease/zero-down', priority: '0.7', changefreq: 'weekly' },
+        { loc: '/lease/ev-california', priority: '0.7', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-elantra', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-sonata', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-tucson', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-santa-fe', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-palisade', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-kona', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-ioniq-5', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/lease/hyundai-ioniq-6', priority: '0.6', changefreq: 'weekly' },
+        { loc: '/privacy', priority: '0.3', changefreq: 'yearly' },
+        { loc: '/terms', priority: '0.3', changefreq: 'yearly' },
       ];
 
       let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';

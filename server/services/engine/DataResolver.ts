@@ -207,6 +207,10 @@ export class DataResolver {
       isTaxableCa: inc.isTaxableCa,
       verifiedByAdmin: inc.verifiedByAdmin,
       dbType: inc.type,
+      // Pass the exclusive group through so IncentiveResolver applies only the HIGHEST in a
+      // group (e.g. competing manufacturer bonus-cash offers) instead of summing them — this
+      // also keeps the calculator in lockstep with the catalog sumFor, which already groups.
+      exclusiveGroupId: inc.exclusiveGroupId,
       dealApplicability: inc.dealApplicability // LEASE | FINANCE | ALL — IncentiveResolver filters by quote type
     }));
 
@@ -640,7 +644,7 @@ export class DataResolver {
   static async resolveSettings() {
     const settingsRecord = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
     let settings: any = {
-      brokerFee: 595,
+      brokerFee: 0, // no broker fee by default; admins can set one in site settings
       taxRateDefault: 8.875,
       dmvFee: 400,
       docFee: 85,
@@ -657,7 +661,7 @@ export class DataResolver {
       acqFeeCents: (Number(settings.acquisitionFee) || 650) * 100,
       docFeeCents: (Number(settings.docFee) || 85) * 100,
       dmvFeeCents: (Number(settings.dmvFee) || 400) * 100,
-      brokerFeeCents: (Number(settings.brokerFee) || 595) * 100,
+      brokerFeeCents: (Number(settings.brokerFee) || 0) * 100,
       dispositionFeeCents: (Number(settings.dispositionFee) || 395) * 100,
       routingStrategy: settings.routingStrategy || 'BEST_FOR_CUSTOMER'
     };

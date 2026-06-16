@@ -23,7 +23,7 @@ export class EligibilityEngine {
     // 1. DATA-CORRECTNESS CHECKS (Blockers)
     // We block ONLY if data is missing, hallucinated, or mathematically invalid.
     if (!data.msrp || data.msrp.provenance_status === 'unresolved' || !data.msrp.value) {
-      blocking_reasons.push("MSRP is missing or unresolved. System cannot use fake MSRP.");
+      blocking_reasons.push("MSRP is unresolved");
     }
     if (!data.salePrice || data.salePrice.provenance_status === 'unresolved') {
       blocking_reasons.push("Selling Price is missing or unresolved.");
@@ -66,13 +66,14 @@ export class EligibilityEngine {
       mandatory_disclaimers.push(`Includes $${data.manufacturerRebate.value} manufacturer rebate`);
     }
 
-    // 3. MARKUPS ARE NOT BLOCKERS ANYMORE (Honest Marketplace)
+    // 3. MARKUP CHECKS (Blockers)
+    // Dealer markups on rate or residual make a deal non-publishable until reviewed.
     if (markups) {
       if (markups.mf_markup && markups.mf_markup > 0) {
-        mandatory_disclaimers.push(`Note: Includes dealer markup on rate (+${markups.mf_markup.toFixed(5)})`);
+        blocking_reasons.push(`Dealer markup detected on Money Factor: +${markups.mf_markup.toFixed(5)}`);
       }
       if (markups.rv_markup && Math.abs(markups.rv_markup) > 0.01) {
-        mandatory_disclaimers.push(`Note: Residual Value differs from standard bank program by ${(markups.rv_markup * 100).toFixed(1)}%`);
+        blocking_reasons.push(`Residual Value mismatch: difference of ${(markups.rv_markup * 100).toFixed(1)}%`);
       }
     }
 

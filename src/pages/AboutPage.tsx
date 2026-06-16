@@ -42,7 +42,7 @@ export const AboutPage = () => {
           </h1>
           <p className="text-[var(--mu2)] text-xl max-w-2xl mx-auto">
             {language === 'ru' 
-              ? 'Hunter Lease — это первый маркетплейс автолизинга в США, созданный специально для иммигрантов, экспатов и иностранных студентов.' 
+              ? 'Hunter Lease это первый маркетплейс автолизинга в США, созданный для иммигрантов, экспатов и студентов.'
               : 'Hunter Lease is the first auto leasing marketplace in the US built specifically for immigrants, expats, and international students.'}
           </p>
         </div>
@@ -63,7 +63,7 @@ export const AboutPage = () => {
             </div>
             <p className="text-[var(--mu2)] leading-relaxed mb-4">
               {language === 'ru' 
-                ? 'Мы верим, что отсутствие кредитной истории (Credit Score) или номера социального страхования (SSN) не должно быть препятствием для мобильности в США. Наша миссия — сделать процесс лизинга и покупки автомобилей прозрачным, честным и доступным для каждого новоприбывшего.' 
+                ? 'Мы верим, что тонкая или короткая кредитная история не должна быть препятствием для мобильности в США. Наша миссия в том, чтобы сделать лизинг и покупку автомобиля прозрачными, честными и доступными для каждого новоприбывшего.'
                 : 'We believe that having a thin credit history should not be a barrier to mobility in the US. Our mission is to make the car leasing and buying process transparent, fair, and accessible for every newcomer.'}
             </p>
             <p className="text-[var(--mu2)] leading-relaxed">
@@ -80,7 +80,7 @@ export const AboutPage = () => {
                 title_en: "Zero Hidden Markups",
                 title_ru: "Никаких скрытых наценок",
                 desc_en: "We guarantee 100% transparent pricing. The price you see is the price you pay.",
-                desc_ru: "Мы гарантируем 100% прозрачное ценообразование. Цена, которую вы видите, — это цена, которую вы платите."
+                desc_ru: "Цены у нас прозрачны на 100%. Что видите, то и платите."
               },
               {
                 icon: Users,

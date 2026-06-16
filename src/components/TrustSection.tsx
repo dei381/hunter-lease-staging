@@ -20,7 +20,7 @@ const REVIEWS = [
     loc: 'West Hollywood, CA',
     car: 'Mercedes GLC 300 2026 4MATIC',
     text: 'My time is expensive. I am not ready to spend 6 hours haggling with managers in the showroom. Hunter.Lease is like a Bloomberg Terminal for buying a car. You see the real price, click a button, pick up the car.',
-    save: 'Approved without SSN',
+    save: 'Approved with thin US credit',
     initials: 'NK'
   },
   {

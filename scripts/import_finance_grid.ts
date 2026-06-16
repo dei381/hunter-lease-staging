@@ -40,6 +40,37 @@ const tierKey = (l: string) => TIER_MAP[(l || '').trim().toLowerCase()] || null;
 const num = (v: any) => { if (v == null || v === '') return 0; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 const lenderIsCaptive = (n: string) => /motor finance|financial services|financial|motor credit/i.test(n || '');
 
+// ---- rich 'incentives' string parser (shared with import_lease_grid.ts) ----
+// ';'-separated "Name $Amount [marker]" items. [applied] = baked into the advertised
+// payment (these SUM to incentive_total) -> auto-applied. [cond: ...] = available rebate,
+// NOT in the advertised payment -> customer-selectable. Robust to commas in amounts.
+function parseIncentives(s: string): { name: string; amount: number; applied: boolean }[] {
+  if (!s) return [];
+  return s.split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const m = part.match(/^(.*?)\s*\$([\d,]+(?:\.\d+)?)\s*\[(applied|cond[^\]]*)\]\s*$/i);
+    if (!m) return null;
+    const name = m[1].trim();
+    const amount = parseFloat(m[2].replace(/,/g, '')) || 0;
+    const applied = /^applied$/i.test(m[3].trim());
+    return { name, amount, applied };
+  }).filter(Boolean) as { name: string; amount: number; applied: boolean }[];
+}
+
+// Clean display name for the auto-applied OEM_CASH: the '[applied]' item names only.
+function appliedName(raw: string, fallback: string): string {
+  const applied = parseIncentives(raw).filter(i => i.applied).map(i => i.name);
+  return applied.length ? applied.join(' + ') : fallback;
+}
+
+// Map a rebate name to a DB incentive type. Non-'OEM_CASH' types are selectable (isDefault=false).
+function incentiveTypeByName(name: string): string {
+  const n = (name || '').toLowerCase();
+  if (n.includes('college grad')) return 'college';
+  if (n.includes('first responder')) return 'first_responder';
+  if (n.includes('military')) return 'military';
+  return 'other';
+}
+
 async function main() {
   const text = fs.readFileSync(csvPath, 'utf8');
   const rows = parseCsv(text);
@@ -62,7 +93,7 @@ async function main() {
   // Pass 1 (in-memory): for each (trim,term,tier) keep the LOWEST-APR program — some
   // EVs list two offers (e.g. 0% APR + small cash vs higher APR + big cash); the best
   // advertised rate is the low-APR one. Also keep the incentive from that best-rate row.
-  type Prog = { model: string; trim: string; term: number; tk: string; year: number; apr: number; incAmount: number; incName: string };
+  type Prog = { model: string; trim: string; term: number; tk: string; year: number; apr: number; incAmount: number; incName: string; incRaw: string };
   const best = new Map<string, Prog>();
   for (const r of rows) {
     if ((r.make || '').toLowerCase() !== makeName.toLowerCase()) continue;
@@ -74,8 +105,9 @@ async function main() {
     if (!model || !trim || !term || !tk) continue;
     if (num(r.monthly_payment) <= 0 && num(r.amount_financed) <= 0) continue;
     const k = `${model}|${trim}|${term}|${tk}`;
-    const incName = (r.incentives || '').replace(/\s*\$[\d,]+\s*$/, '').trim() || 'Customer Cash';
-    const cand: Prog = { model, trim, term, tk, year, apr, incAmount: num(r.incentive_total), incName };
+    const incName = appliedName(r.incentives, 'Customer Cash');
+    // Carry the raw incentives string so Pass 2 can parse out the selectable '[cond:]' rebates.
+    const cand: Prog = { model, trim, term, tk, year, apr, incAmount: num(r.incentive_total), incName, incRaw: r.incentives || '' };
     const cur = best.get(k);
     if (!cur || cand.apr < cur.apr) best.set(k, cand);
   }
@@ -90,25 +122,55 @@ async function main() {
     });
     nFin++;
 
-    // Finance incentive once per (trim,term), from the chosen (lowest-APR) program.
+    // Finance incentives once per (trim,term), from the chosen (lowest-APR) program.
     // Scoped dealApplicability FINANCE with its own seedKey so it never collides with
     // the lease incentive — the engine applies the right one per quote type.
     const incKey = `${p.model}|${p.trim}|${p.term}`;
-    if (p.tk === 't1' && !seenInc.has(incKey) && p.incAmount > 0) {
+    if (p.tk === 't1' && !seenInc.has(incKey)) {
       seenInc.add(incKey);
-      const seedKey = `gridinc-fin:${makeName}:${p.model}:${p.trim}:${p.term}`.toLowerCase();
-      {
-        await prisma.oemIncentiveProgram.upsert({
-          where: { seedKey },
-          update: { name: p.incName, amountCents: Math.round(p.incAmount * 100), type: 'OEM_CASH', eligibilityRules: { terms: [p.term] }, isActive: true, status: 'PUBLISHED' },
-          create: {
-            seedKey, name: p.incName, amountCents: Math.round(p.incAmount * 100),
-            type: 'OEM_CASH', dealApplicability: 'FINANCE', isTaxableCa: false,
-            exclusiveGroupId: `${makeName}_${p.model}_${p.trim}_FININC`.toLowerCase(),
-            make: makeName, model: p.model, trim: p.trim, eligibilityRules: { terms: [p.term] },
-            stackable: true, isActive: true, status: 'PUBLISHED',
-          },
-        });
+
+      // Per the client: manufacturer customer/bonus cash (HMA Retail Bonus Cash, Dealer
+      // Choice Bonus Cash, etc.) auto-applies for everyone on finance — like HMF Special
+      // Lease does on lease. Eligibility programs (College Grad / First Responders /
+      // Military) stay opt-in. "Low APR Special" is a rate, already in the FinanceProgram
+      // APR, so it is NOT also counted as cash.
+      // All auto-applied cash for one (trim,term) shares ONE exclusive group, so multiple
+      // bonus-cash offers do NOT stack — the single highest applies (matches IncentiveResolver
+      // and the catalog sumFor).
+      const finCashGroup = `${makeName}_${p.model}_${p.trim}_${p.term}_fincash`.toLowerCase();
+      for (const item of parseIncentives(p.incRaw)) {
+        if (item.amount <= 0) continue;
+        const nameL = item.name.toLowerCase();
+        if (/low apr/.test(nameL)) continue; // rate special, already reflected in buyRateApr
+        const eligibility = /college|grad|first responder|military|responder/.test(nameL);
+        if (eligibility) {
+          // opt-in selectable rebate (NOT OEM_CASH -> DataResolver isDefault=false)
+          const optSeed = `gridinc-fin-opt:${makeName}:${p.model}:${p.trim}:${p.term}:${item.name}`.toLowerCase().replace(/\s+/g, '-');
+          await prisma.oemIncentiveProgram.upsert({
+            where: { seedKey: optSeed },
+            update: { name: item.name, amountCents: Math.round(item.amount * 100), trim: p.trim, type: incentiveTypeByName(item.name), eligibilityRules: { terms: [p.term] }, isActive: true, status: 'PUBLISHED' },
+            create: {
+              seedKey: optSeed, name: item.name, amountCents: Math.round(item.amount * 100),
+              type: incentiveTypeByName(item.name), dealApplicability: 'FINANCE', isTaxableCa: false,
+              make: makeName, model: p.model, trim: p.trim,
+              eligibilityRules: { terms: [p.term] }, stackable: true, isActive: true, status: 'PUBLISHED',
+            },
+          });
+        } else {
+          // broad manufacturer cash -> auto-applied OEM_CASH in the shared exclusive group
+          const cashSeed = `gridinc-fin:${makeName}:${p.model}:${p.trim}:${p.term}:${item.name}`.toLowerCase().replace(/\s+/g, '-');
+          await prisma.oemIncentiveProgram.upsert({
+            where: { seedKey: cashSeed },
+            update: { name: item.name, amountCents: Math.round(item.amount * 100), trim: p.trim, type: 'OEM_CASH', exclusiveGroupId: finCashGroup, eligibilityRules: { terms: [p.term] }, isActive: true, status: 'PUBLISHED' },
+            create: {
+              seedKey: cashSeed, name: item.name, amountCents: Math.round(item.amount * 100),
+              type: 'OEM_CASH', dealApplicability: 'FINANCE', isTaxableCa: false,
+              exclusiveGroupId: finCashGroup,
+              make: makeName, model: p.model, trim: p.trim,
+              eligibilityRules: { terms: [p.term] }, stackable: true, isActive: true, status: 'PUBLISHED',
+            },
+          });
+        }
         nInc++;
       }
     }

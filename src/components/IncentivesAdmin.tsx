@@ -311,8 +311,12 @@ export const IncentivesAdmin = () => {
         <td className="px-4 py-3">
           {isEditingRow ? (
             <div className="flex gap-2">
-              <select value={editData.type || 'REBATE'} onChange={e => setEditData({...editData, type: e.target.value})} className="w-24 px-2 py-1 border rounded text-sm">
-                <option value="REBATE">Rebate</option>
+              <select value={editData.type || 'REBATE'} onChange={e => setEditData({...editData, type: e.target.value})} className="w-32 px-2 py-1 border rounded text-sm">
+                {/* OEM_CASH = applied automatically to every matching deal (like HMF Special
+                    Lease / HMA Retail Bonus Cash). The others are opt-in (the customer picks
+                    them in the incentives manager). */}
+                <option value="OEM_CASH">Auto-applied</option>
+                <option value="REBATE">Rebate (opt-in)</option>
                 <option value="SPECIAL_APR">Special APR</option>
                 <option value="DEALER_CASH">Dealer Cash</option>
               </select>

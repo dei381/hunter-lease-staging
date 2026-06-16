@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 
 async function main() {
-  const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+  const API_KEY = process.env.MARKETCHECK_API_KEY || '';
   const url = `https://api.marketcheck.com/v2/search/car/active?api_key=${API_KEY}&rows=1`;
   const response = await fetch(url);
   const data = await response.json();

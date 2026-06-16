@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 
-const apiKey = 'gxoEDCZUX1tkbsmLHxROWAb8WurvVw2A';
+const apiKey = process.env.MARKETCHECK_API_KEY || '';
 
 async function searchCarsForDealer(zip) {
   const url = `https://mc-api.marketcheck.com/v2/search/car/active?api_key=${apiKey}&zip=${zip}&radius=5&make=Hyundai&car_type=new`;

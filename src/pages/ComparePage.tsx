@@ -81,7 +81,7 @@ export const ComparePage = () => {
                 </span>
               </div>
               <h2 className="text-2xl md:text-3xl font-display mb-2">
-                {winner.make} {winner.model} — {language === 'ru' ? 'лучший выбор' : 'is the best choice'}
+                {winner.make} {winner.model}: {language === 'ru' ? 'лучший выбор' : 'the best choice'}
               </h2>
               <p className="text-[var(--mu2)]">
                 {language === 'ru' 

@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import fetch from 'node-fetch';
 
 const prisma = new PrismaClient();
-const API_KEY = 'gxoEDCZUX1tkbsmLHxROWAb8WurvVw2A';
+const API_KEY = process.env.MARKETCHECK_API_KEY || '';
 const DEALER_IDS = ['1050283', '11051583']; // Keyes and Hyundai of Glendale
 
 async function fetchDealerInventory(dealerId, zip) {

@@ -1,0 +1,15 @@
+# gitleaks config. Extends the default ruleset and allowlists known-safe matches.
+title = "hunter-lease gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe: Firebase WEB config (public by design, secured via Firebase Rules) and non-secret placeholders/build artifacts."
+paths = [
+  '''firebase-applet-config\.json''',
+  '''dist/''',
+]
+regexes = [
+  '''sk_test_placeholder''',
+]

@@ -522,6 +522,80 @@ export function AdminDashboard() {
     downloadAnchorNode.remove();
   };
 
+  const [stripeKeys, setStripeKeys] = useState<any>({ publishableKey: '', secretKey: '', secretKeySet: false, secretKeyHint: '' });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/stripe-keys', {
+          headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStripeKeys({ publishableKey: data.publishableKey || '', secretKey: '', secretKeySet: !!data.secretKeySet, secretKeyHint: data.secretKeyHint || '' });
+        }
+      } catch (e) {
+        console.error('Failed to load Stripe keys', e);
+      }
+    })();
+  }, []);
+
+  const saveStripeKeys = async () => {
+    try {
+      const body: any = { publishableKey: stripeKeys.publishableKey };
+      if (stripeKeys.secretKey) body.secretKey = stripeKeys.secretKey; // empty input = keep current
+      const res = await fetch('/api/admin/stripe-keys', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getAuthToken()}` },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        toast.success('Stripe keys saved');
+        setStripeKeys({ ...stripeKeys, secretKey: '', secretKeySet: stripeKeys.secretKeySet || !!stripeKeys.secretKey });
+      } else {
+        toast.error((await res.json()).error || 'Failed to save Stripe keys');
+      }
+    } catch (e) {
+      toast.error('Failed to save Stripe keys');
+    }
+  };
+
+  const [mcKey, setMcKey] = useState<any>({ value: '', set: false, hint: '' });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/integration-keys', {
+          headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMcKey({ value: '', set: !!data.marketcheckKeySet, hint: data.marketcheckKeyHint || '' });
+        }
+      } catch (e) {
+        console.error('Failed to load integration keys', e);
+      }
+    })();
+  }, []);
+
+  const saveMcKey = async () => {
+    try {
+      const res = await fetch('/api/admin/integration-keys', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getAuthToken()}` },
+        body: JSON.stringify({ marketcheckApiKey: mcKey.value })
+      });
+      if (res.ok) {
+        toast.success('MarketCheck key saved');
+        setMcKey({ value: '', set: true, hint: mcKey.value ? `${mcKey.value.slice(0, 6)}...${mcKey.value.slice(-4)}` : mcKey.hint });
+      } else {
+        toast.error('Failed to save MarketCheck key');
+      }
+    } catch (e) {
+      toast.error('Failed to save MarketCheck key');
+    }
+  };
+
   const saveSettings = async () => {
     try {
       const response = await fetch('/api/admin/settings', {
@@ -2352,6 +2426,67 @@ export function AdminDashboard() {
                       className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.maintenanceMode ? 'bg-indigo-600' : 'bg-slate-200'}`}
                     >
                       <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.maintenanceMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 pt-4 border-t border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-900 mb-1">Stripe</h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Paste the keys from your Stripe dashboard. They apply immediately, no redeploy.
+                    {stripeKeys.secretKeyHint ? ` Current secret: ${stripeKeys.secretKeyHint}` : ''}
+                  </p>
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">Publishable Key (pk_...)</label>
+                      <input
+                        type="text"
+                        value={stripeKeys.publishableKey}
+                        onChange={(e) => setStripeKeys({ ...stripeKeys, publishableKey: e.target.value })}
+                        placeholder="pk_test_..."
+                        className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">Secret Key (sk_...)</label>
+                      <input
+                        type="password"
+                        value={stripeKeys.secretKey}
+                        onChange={(e) => setStripeKeys({ ...stripeKeys, secretKey: e.target.value })}
+                        placeholder={stripeKeys.secretKeySet ? 'saved (paste to replace)' : 'sk_test_...'}
+                        className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={saveStripeKeys}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors"
+                    >
+                      Save Stripe Keys
+                    </button>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 pt-4 border-t border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-900 mb-1">MarketCheck</h3>
+                  <p className="text-xs text-slate-500 mb-3">
+                    API key for the nightly dealer inventory sync. Applies immediately, no redeploy.
+                    {mcKey.hint ? ` Current: ${mcKey.hint}` : ''}
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={mcKey.value}
+                      onChange={(e) => setMcKey({ ...mcKey, value: e.target.value })}
+                      placeholder={mcKey.set ? 'saved (paste to replace)' : 'API key'}
+                      className="flex-1 rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                    />
+                    <button
+                      onClick={saveMcKey}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors"
+                    >
+                      Save
                     </button>
                   </div>
                 </div>

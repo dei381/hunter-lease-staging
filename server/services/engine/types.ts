@@ -45,8 +45,12 @@ export type QuoteContext = z.infer<typeof QuoteContextSchema>;
 
 export interface PaymentBreakdown {
   calcStatus: 'SUCCESS' | 'NO_PROGRAMS' | 'MISSING_MSRP' | 'MATH_ERROR';
+  // Which math produced this quote. The frontend (e.g. TransparencyModal) reads this
+  // to reliably tell lease vs finance instead of guessing from the (lease-hardcoded)
+  // catalog deal type. Always set by the Formatter / error response.
+  quoteType: 'LEASE' | 'FINANCE';
   warnings: string[];
-  
+
   monthlyPaymentCents: number;
   dueAtSigningCents: number;
   

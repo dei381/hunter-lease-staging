@@ -1,6 +1,6 @@
 import admin from 'firebase-admin';
 
-const API_KEY = process.env.MARKETCHECK_API_KEY || 'QsIlNulfKENHhmsgWT8KfqGxCfVYPaSE';
+const API_KEY = process.env.MARKETCHECK_API_KEY || '';
 
 export class MarketcheckInventoryService {
   static async syncInventory() {

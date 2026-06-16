@@ -66,7 +66,9 @@ const verifyRole = async (req: Request, res: Response, next: NextFunction, allow
       return res.status(403).json({ error: 'Forbidden: User not found in system' });
     }
     
-    if (!allowedRoles.includes(user.role)) {
+    // Legacy rows store lowercase roles ('admin'); treat them as SUPER_ADMIN
+    const normalizedRole = user.role === 'admin' ? 'SUPER_ADMIN' : user.role;
+    if (!allowedRoles.includes(normalizedRole)) {
       return res.status(403).json({ error: `Forbidden: Requires one of roles: ${allowedRoles.join(', ')}` });
     }
     

@@ -71,7 +71,11 @@ export const DealsPage = () => {
   const [tier, setTier] = useState('t1');
   const [downPayment, setDownPayment] = useState(searchParams.has('down') ? parseInt(searchParams.get('down')!) : 3000);
   const debouncedDownPayment = useDebounce(downPayment, 500);
-  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent'>('payment');
+  const [sortBy, setSortBy] = useState<'payment' | 'savings' | 'value' | 'price_asc' | 'price_desc' | 'popular' | 'recent' | 'hunterScore'>(
+    (['payment', 'savings', 'value', 'price_asc', 'price_desc', 'popular', 'recent', 'hunterScore'].includes(searchParams.get('sort') || '')
+      ? searchParams.get('sort')
+      : 'payment') as any
+  );
   const [quoteSnapshots, setQuoteSnapshots] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -155,7 +159,7 @@ export const DealsPage = () => {
           return {
             ...deal,
             payment: Number(deal.payment) || 0,
-            marketAvg: Number(deal.marketAvg) || Math.round((Number(deal.payment) || 0) * 1.267),
+            marketAvg: Number(deal.marketAvg) || null, // real local market average or null; never fabricated
             down: Number(deal.down) || 3000,
             mileage: ['Kia', 'Hyundai'].includes(deal.make) ? '10k' : '7.5k'
           };
@@ -255,14 +259,25 @@ export const DealsPage = () => {
     return allDeals.map(deal => {
       const msrp = getVal(deal.msrp);
       let currentPayment = displayMode === 'lease' ? deal.payment : deal.financePayment || deal.payment;
-      let currentMarketAvg = displayMode === 'lease' ? Math.round(currentPayment * 1.267) : Math.round(currentPayment * 1.15);
+      let currentMarketAvg = Number(deal.marketAvg) || 0; // real local market average or 0; never fabricated from the payment
 
       const totalCost = (currentPayment * selectedTerm) + downPayment;
       const valueScore = totalCost > 0 ? (msrp / totalCost).toFixed(2) : '0';
 
-      const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
-      const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
+      // Finance cards must use the finance savings/discount the server now computes
+      // (deal.financeSavings / financeDiscountPercent), not the lease numbers — otherwise
+      // every finance card showed "0% OFF MSRP". Lease path is unchanged.
+      const isFin = displayMode === 'finance';
+      const baseSavings = (isFin && deal.financeSavings !== undefined)
+        ? (Number(deal.financeSavings) || 0)
+        : (Number(deal.savings) || 0);
+      const incList = (isFin ? deal.financeAvailableIncentives : deal.availableIncentives) || [];
+      const totalIncentives = incList.filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
+      const badgeTotalSavings = baseSavings + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
       const savingsPctObj = msrp > 0 ? badgeTotalSavings / msrp : 0;
+      const displayDiscountPercent = isFin
+        ? (deal.financeDiscountPercent != null ? deal.financeDiscountPercent : Math.round(savingsPctObj * 100))
+        : (deal.discountPercent != null ? deal.discountPercent : Math.round(savingsPctObj * 100));
       const leaseValueRatio = msrp > 0 ? currentPayment / msrp : 0;
 
       return {
@@ -275,6 +290,7 @@ export const DealsPage = () => {
         valueScore: parseFloat(valueScore),
         badgeTotalSavings,
         savingsPctObj,
+        discountPercent: displayDiscountPercent,
         leaseValueRatio
       };
     });
@@ -328,6 +344,13 @@ export const DealsPage = () => {
 
     // Sorting
     return result.sort((a, b) => {
+      if (sortBy === 'hunterScore') {
+        // Best deal-quality first; cards without a real score fall to the bottom, then by payment.
+        const sa = (a.hunterStatus === 'scored' && typeof a.hunterScore === 'number') ? a.hunterScore : -1;
+        const sb = (b.hunterStatus === 'scored' && typeof b.hunterScore === 'number') ? b.hunterScore : -1;
+        if (sb !== sa) return sb - sa;
+        return (a.displayPayment || 0) - (b.displayPayment || 0);
+      }
       if (sortBy === 'payment') return a.displayPayment - b.displayPayment;
       if (sortBy === 'savings') return b.savingsPctObj - a.savingsPctObj;
       if (sortBy === 'value') {
@@ -426,8 +449,17 @@ export const DealsPage = () => {
                       {['lease', 'finance'].map(type => (
                         <button
                           key={type}
-                          onClick={() => setDisplayMode(type as 'lease' | 'finance')}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${displayMode === type ? 'bg-[var(--w)] text-black shadow-sm' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
+                          onClick={() => {
+                            const m = type as 'lease' | 'finance';
+                            setDisplayMode(m);
+                            // Finance defaults to 72mo / $5000 (lease stays 36mo / $3000) — matches
+                            // the calculator. This also keeps selectedTerm inside the mode's option
+                            // list (lease 24/36/48 vs finance 48/60/72); leaving 36 selected in
+                            // finance made the dropdown show 48 while the cards priced 36.
+                            setSelectedTerm(m === 'finance' ? 72 : 36);
+                            setDownPayment(m === 'finance' ? 5000 : 3000);
+                          }}
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${displayMode === type ? 'bg-[var(--w)] text-white shadow-sm' : 'text-[var(--mu2)] hover:text-[var(--w)]'}`}
                         >
                           {type === 'lease' ? t.lease : t.finance}
                         </button>
@@ -577,7 +609,7 @@ export const DealsPage = () => {
                       <button
                         key={chip.id}
                         onClick={() => setSelectedQuickFilter(selectedQuickFilter === chip.id ? null : chip.id)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${selectedQuickFilter === chip.id ? 'bg-[var(--w)] text-black' : 'bg-[var(--s2)] text-[var(--mu2)] hover:text-[var(--w)] border border-[var(--b2)]'}`}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${selectedQuickFilter === chip.id ? 'bg-[var(--w)] text-white' : 'bg-[var(--s2)] text-[var(--mu2)] hover:text-[var(--w)] border border-[var(--b2)]'}`}
                       >
                         {chip.label}
                       </button>
@@ -776,6 +808,7 @@ export const DealsPage = () => {
                       onChange={(e) => setSortBy(e.target.value as any)}
                       className="bg-transparent text-xs font-bold uppercase tracking-widest outline-none cursor-pointer text-[var(--w)]"
                     >
+                      <option value="hunterScore">{language === 'ru' ? 'Лучший Hunter Score' : 'Best Hunter Score'}</option>
                       <option value="value">{t.bestDeal}</option>
                       <option value="payment">{t.lowestPayment}</option>
                       <option value="savings">{t.highestSavings}</option>
@@ -901,6 +934,11 @@ export const DealsPage = () => {
                         <div className="mb-3 flex justify-between items-start">
                           <h3 className="font-display text-xl tracking-tight leading-tight text-[var(--w)] line-clamp-2 min-h-[3.3rem]">
                             {deal.year} {deal.make} {deal.model} <span className="text-[var(--mu2)] font-sans text-sm tracking-normal">{deal.trim}</span>
+                            {deal.exteriorColor ? (
+                              <span className="block font-sans text-xs tracking-normal text-[var(--mu2)] mt-0.5">
+                                {deal.exteriorColor}{deal.interiorColor ? ` · ${language === 'ru' ? 'салон' : 'interior'} ${deal.interiorColor}` : ''}
+                              </span>
+                            ) : null}
                           </h3>
                         </div>
 

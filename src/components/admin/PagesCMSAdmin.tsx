@@ -4,8 +4,8 @@ import { Type, Save } from 'lucide-react';
 export function PagesCMSAdmin() {
   const [selectedPage, setSelectedPage] = useState('privacy');
   const [pageContents, setPageContents] = useState<Record<string, string>>({
-    'privacy': '<h1>Privacy Policy</h1>\n<p>Last updated: October 2026</p>\n\n<p>This privacy policy explains how AutoBandit collects...</p>',
-    'terms': '<h1>Terms of Service</h1>\n<p>Welcome to AutoBandit.</p>',
+    'privacy': '<h1>Privacy Policy</h1>\n<p>Last updated: October 2026</p>\n\n<p>This privacy policy explains how Hunter Lease collects...</p>',
+    'terms': '<h1>Terms of Service</h1>\n<p>Welcome to Hunter Lease.</p>',
     'faq': '<h1>FAQ</h1>\n<p>Frequently asked questions.</p>',
     'how-it-works': '<h1>How It Works</h1>\n<p>Explaining the process.</p>'
   });

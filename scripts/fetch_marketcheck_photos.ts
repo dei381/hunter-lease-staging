@@ -14,7 +14,7 @@ const argv = process.argv.slice(2);
 const csvPath = argv.find(a => !a.startsWith('--')) || 'C:/Users/noobi/Downloads/Hyundai_lease_grid_2026-06.csv';
 const argMake = (() => { const i = argv.indexOf('--make'); return i >= 0 ? argv[i + 1] : undefined; })();
 const argKey = (() => { const i = argv.indexOf('--key'); return i >= 0 ? argv[i + 1] : undefined; })();
-const KEY = argKey || process.env.MARKETCHECK_API_KEY || 'gxoEDCZUX1tkbsmLHxROWAb8WurvVw2A';
+const KEY = argKey || process.env.MARKETCHECK_API_KEY || '';
 
 function distinctModels(text: string, make: string): string[] {
   const lines = text.split('\n').filter(Boolean);

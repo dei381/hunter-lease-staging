@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle, ChevronRight, ShieldCheck, Car, FileText, CreditCard, Info, AlertCircle, Zap, Lock, Crown } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { translations } from '../translations';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -13,6 +14,14 @@ import { QRCodeSVG } from 'qrcode.react';
 
 import { DocumentUploader } from './DocumentUploader';
 import { StripePaymentForm } from './StripePaymentForm';
+import { CreditConsentModal } from './CreditConsentModal';
+
+// Funnel inversion (flag-gated, OFF by default): when on, run a FREE soft-pull
+// "see if I qualify" step before charging the $95 deposit.
+const SOFTPULL_FIRST = (() => {
+  const v = (import.meta as any).env?.VITE_SOFTPULL_FIRST;
+  return v === 'true' || v === '1';
+})();
 
 export const DepositModal = ({ 
   isOpen, 
@@ -35,12 +44,17 @@ export const DepositModal = ({
 }: any) => {
   const { language } = useLanguageStore();
   const { user, setIsAuthModalOpen, setAuthEmail } = useAuthStore();
+  const { settings } = useSettingsStore();
+  // Single source of truth for the deposit (matches the server charge via SiteSettings.depositAmount).
+  const depositUsd = Number((settings as any)?.depositAmount) || 95;
   const t = translations[language].deposit;
 
   const [step, setStep] = useState(1);
   const [subStep, setSubStep] = useState(1);
   const [waitingStatus, setWaitingStatus] = useState(0);
   const [showQrCode, setShowQrCode] = useState(false);
+  const [isQualifyOpen, setIsQualifyOpen] = useState(false);
+  const [qualifyResult, setQualifyResult] = useState<{ score?: number; tier?: string } | null>(null);
   const [creditAppData, setCreditAppData] = useState({
     firstName: '',
     lastName: '',
@@ -127,7 +141,13 @@ export const DepositModal = ({
     const success = await onConfirm();
     if (success) {
       if (payMethod === 'card') {
-        setStep(1.5);
+        // Inverted funnel: free soft-pull BEFORE the $95 charge. The lead now exists
+        // (onConfirm created it) and contact info is collected, so the soft-pull can run.
+        if (SOFTPULL_FIRST && !qualifyResult) {
+          setIsQualifyOpen(true);
+        } else {
+          setStep(1.5);
+        }
       } else {
         setStep(3); // Show success popup directly
       }
@@ -482,7 +502,7 @@ export const DepositModal = ({
                     onClick={handleSubmit}
                     className="flex-[2] bg-[var(--w)] text-white font-bold text-[10px] uppercase tracking-widest py-5 rounded-xl hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-black/5"
                   >
-                    {isSubmitting ? t.processing : (language === 'ru' ? 'Оплатить депозит ($95)' : 'Pay Deposit ($95)')}
+                    {isSubmitting ? t.processing : (language === 'ru' ? `Оплатить депозит ($${depositUsd})` : `Pay Deposit ($${depositUsd})`)}
                   </button>
                 </div>
                 <div className="mt-3 text-center max-w-md">
@@ -507,18 +527,32 @@ export const DepositModal = ({
                   </div>
                   <h2 className="font-display text-3xl mb-2">Secure Payment</h2>
                   <p className="text-[var(--mu2)] text-sm">
-                    Complete your $95 refundable deposit to lock in this deal.
+                    {language === 'ru'
+                      ? `Возвратный депозит $${depositUsd} фиксирует вашу цену и засчитывается в сделку - это не плата за обещание. Полный возврат, если дилер не сможет выполнить условия.`
+                      : `Your $${depositUsd} refundable deposit locks your price and is credited to your deal - it is not a payment for a promise. Refunded in full if the dealer cannot honor the terms.`}
                   </p>
+                  {qualifyResult?.tier && (
+                    <div className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[var(--lime)] bg-[var(--lime)]/10 border border-[var(--lime)]/30 rounded-lg px-3 py-1.5">
+                      <ShieldCheck size={14} /> {language === 'ru' ? 'Вы прошли проверку' : 'You prequalified'}: {qualifyResult.tier}
+                    </div>
+                  )}
                 </div>
 
-                <StripePaymentForm 
-                  leadId={leadId || localStorage.getItem('leadId') || ''} 
-                  amount={95}
+                <StripePaymentForm
+                  leadId={leadId || localStorage.getItem('leadId') || ''}
+                  amount={depositUsd}
                   onSuccess={() => setStep(3)}
                   onError={(err) => toast.error(`Payment failed: ${err}`)}
                 />
               </motion.div>
             )}
+
+            <CreditConsentModal
+              isOpen={isQualifyOpen}
+              onClose={() => setIsQualifyOpen(false)}
+              leadId={leadId || localStorage.getItem('leadId') || ''}
+              onSuccess={(result) => { setQualifyResult(result || null); setIsQualifyOpen(false); setStep(1.5); }}
+            />
 
             {step === 2 && (
               <motion.div 

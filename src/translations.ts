@@ -72,9 +72,9 @@ export const translations = {
       signInRequired: "Please sign in to view your dashboard",
     },
     beta: {
-      title: "Active Beta Testing",
+      title: "Early Access",
       message:
-        "The service is in active testing phase. Please leave feedback on errors, the most valuable reviews will be rewarded with prizes!",
+        "We are in early access. Tell us what is unclear or off, your feedback shapes what we build next.",
       feedbackBtn: "Leave Feedback",
     },
     nav: {
@@ -91,19 +91,20 @@ export const translations = {
       signOut: "Sign Out",
     },
     hero: {
-      title1: "Find Your Next Car.",
-      title2: "See the Real Terms.",
+      kicker: "Dealers dump cars to hit their sales quotas. We catch those deals.",
+      title1: "A finished deal at wholesale.",
+      title2: "Book it, pick it up.",
       subtitle:
-        "Browse pre-negotiated lease and finance offers from our participating dealer network. No hidden markups, no dealership games.",
+        "Price, rate and every fee are locked in advance. No haggling, no surprises at the counter. Know your payment up front, with no hit to your credit.",
       lockLink: "Transparent Pricing",
-      badge: "The Marketplace for Transparent New-Car Deals",
+      badge: "Licensed platform • CA #21318",
       step1: "Choose Your Deal",
       step1Desc: "Browse our live inventory of pre-negotiated offers.",
       step2: "Customize Terms",
       step2Desc: "Adjust your mileage, down payment, and term length instantly.",
       step3: "Submit Request",
       step3Desc: "We route your exact terms directly to the fulfilling dealership.",
-      btnCalc: "LOCK MY RATE",
+      btnCalc: "LOCK MY PRICE",
       btnCalcSub: "Soft Pull • No Spam • 30-Day Lock",
       btnDeals: "How it works",
       btnDealsSub: "Learn more",
@@ -798,7 +799,7 @@ export const translations = {
       subtitle:
         'Transparent, verified car deals. Powered by our <span class="text-[var(--lime)] font-bold">11-Key Lock</span> technology to ensure zero hidden markups.',
       scarcity: "Rates valid until end of month",
-      rateLock: "Lock My Rate",
+      rateLock: "Lock My Price",
       inventoryScarcity: "Limited allocation",
       searchPlaceholder: "Search make or model...",
       make: "Make",
@@ -1944,9 +1945,9 @@ export const translations = {
         "Пожалуйста, войдите, чтобы просмотреть свою панель управления",
     },
     beta: {
-      title: "Активное бета-тестирование",
+      title: "Ранний доступ",
       message:
-        "Сервис находится в фазе активного тестирования. Пожалуйста, оставляйте отзывы об ошибках, самые ценные отзывы будут награждены призами!",
+        "Мы в раннем доступе. Расскажите, что непонятно или не так, ваш отзыв формирует то, что мы делаем дальше.",
       feedbackBtn: "Оставить отзыв",
     },
     nav: {
@@ -1963,9 +1964,10 @@ export const translations = {
       signOut: "Выйти",
     },
     hero: {
-      title1: "Покупка авто",
-      title2: "без посредников.",
-      subtitle: "Сервис для тех, кто ценит своё время и умеет считать деньги.",
+      kicker: "Дилеры сливают машины, чтобы закрыть план продаж. Мы ловим эти сделки.",
+      title1: "Готовая сделка по оптовой цене.",
+      title2: "Бронируешь - забираешь.",
+      subtitle: "Цена, ставка и все сборы зафиксированы заранее. Никакого торга и никаких сюрпризов на выдаче. Узнаёшь свой платёж заранее, без вреда кредитной истории.",
       lockLink: "Проверено 11-Key Lock",
       badge: "Лицензированная платформа • CA #21318",
       step1: "Расчет",
@@ -1974,7 +1976,7 @@ export const translations = {
       step2Desc: "Отправьте заявку",
       step3: "Поехали",
       step3Desc: "VIP выдача за 15 минут",
-      btnCalc: "ЗАФИКСИРОВАТЬ СТАВКУ",
+      btnCalc: "ЗАФИКСИРОВАТЬ ЦЕНУ",
       btnCalcSub: "Soft Pull • Без спама • Бронь на 30 дней",
       btnDeals: "Каталог сделок",
       btnDealsSub: "Проверенные предложения",
@@ -2675,7 +2677,7 @@ export const translations = {
       subtitle:
         'Прозрачные, проверенные предложения. Технология <span class="text-[var(--lime)] font-bold">11-Key Lock</span> гарантирует отсутствие скрытых наценок.',
       scarcity: "Ставки действуют до конца месяца",
-      rateLock: "Зафиксировать ставку",
+      rateLock: "Зафиксировать цену",
       inventoryScarcity: "Ограниченная квота",
       searchPlaceholder: "Поиск марки или модели...",
       make: "Марка",

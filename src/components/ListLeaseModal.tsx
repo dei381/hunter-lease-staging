@@ -330,7 +330,7 @@ export const ListLeaseModal: React.FC<ListLeaseModalProps> = ({ isOpen, onClose 
                   </div>
                   <h3 className="font-display text-3xl uppercase mb-4">{t.successTitle}</h3>
                   <p className="text-[var(--mu)] mb-8">{t.successDesc}</p>
-                  <button onClick={onClose} className="px-8 py-4 bg-[var(--w)] text-black rounded-xl font-bold uppercase tracking-widest hover:bg-[var(--lime)] transition-colors">
+                  <button onClick={onClose} className="px-8 py-4 bg-[var(--lime)] text-black rounded-xl font-bold uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors">
                     {t.close}
                   </button>
                 </motion.div>
@@ -354,7 +354,7 @@ export const ListLeaseModal: React.FC<ListLeaseModalProps> = ({ isOpen, onClose 
               
               <button 
                 onClick={() => setStep(s => Math.min(5, s + 1))}
-                className="px-8 py-3 bg-[var(--w)] text-black rounded-xl font-bold uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[var(--lime)] transition-colors"
+                className="px-8 py-3 bg-[var(--lime)] text-black rounded-xl font-bold uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-[var(--lime2)] transition-colors"
               >
                 {step === 4 ? t.submit : t.next}
                 {step < 4 && <ChevronRight size={16} />}

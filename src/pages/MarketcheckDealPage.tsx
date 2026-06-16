@@ -870,7 +870,7 @@ export const MarketcheckDealPage: React.FC = () => {
                         <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-[var(--mu2)] leading-relaxed">
                           {language === 'ru'
-                            ? 'Total Cost of Ownership (TCO) — это реальная стоимость владения, включающая все платежи и взносы, распределенные на весь срок аренды.'
+                            ? 'Total Cost of Ownership (TCO) это полная стоимость владения: все платежи и взносы за весь срок лизинга.'
                             : 'Total Cost of Ownership (TCO) represents the true cost, including all payments and fees spread across the entire lease term.'}
                         </p>
                       </div>
@@ -943,7 +943,7 @@ export const MarketcheckDealPage: React.FC = () => {
           <div className="flex items-center gap-4 mb-24">
             <h2 className="font-display text-5xl uppercase tracking-tighter">{t.protocolTitle} <span className="text-[var(--lime)] italic">{t.protocolSubtitle}</span></h2>
             <div className="flex-1 h-px bg-[var(--b2)]" />
-            <div className="font-mono text-xs text-[var(--mu2)]/50">01 — 03</div>
+            <div className="font-mono text-xs text-[var(--mu2)]/50">01 / 03</div>
           </div>
           <ProcessTimeline />
         </section>

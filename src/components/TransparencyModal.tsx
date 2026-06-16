@@ -46,9 +46,11 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, quoteResult 
 
   if (!deal) return null;
 
-  // Case-robust finance detection (calculator uses lowercase 'finance'); otherwise the
-  // modal mixed lease rows (residual/MF/mileage) into finance breakdowns.
-  const isFinance = String(quoteResult?.quoteType || deal.displayType || deal.type || 'lease').toLowerCase() === 'finance';
+  // Trust the quote response first (the engine now returns quoteType:'LEASE'|'FINANCE'),
+  // then the deal.type the Calculator sets from the toggle, and only then the (lease-hardcoded)
+  // catalog displayType. Otherwise the modal mixed lease rows (residual/MF/mileage) into a
+  // finance breakdown.
+  const isFinance = String(quoteResult?.quoteType || deal.type || deal.displayType || 'lease').toLowerCase() === 'finance';
   
   const msrp = quoteResult ? quoteResult.msrpCents / 100 : Number(deal.msrp) || 0;
   const totalPayment = quoteResult ? quoteResult.monthlyPaymentCents / 100 : Number(deal.displayPayment || deal.payment) || 0;
@@ -72,9 +74,19 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, quoteResult 
   
   const rvPct = quoteResult ? (quoteResult.residualValueCents / 100 / msrp) : Number(deal.rv) || 0;
   const rvAmt = quoteResult ? quoteResult.residualValueCents / 100 : msrp * rvPct;
-  const mf = quoteResult ? quoteResult.moneyFactor : Number(deal.mf) || 0;
-  const apr = isFinance ? (quoteResult ? quoteResult.apr : (Number(deal.apr) || 0)) : 0;
-  const lender = deal.lender || 'Ally Financial';
+  const mf = quoteResult ? quoteResult.appliedMf : Number(deal.mf) || 0;
+  const apr = isFinance ? (quoteResult ? quoteResult.appliedApr : (Number(deal.apr) || 0)) : 0;
+  const lender = quoteResult?.sourceMetadata?.lenderName || deal.lender || (isFinance ? 'Hyundai Motor Finance' : 'Ally Financial');
+
+  // Finance "TAXES AND FEES (FINANCED)" rows: registration (DMV), doc, and taxes are
+  // rolled into the financed amount. Money factor / residual / mileage never apply here.
+  const financeRegFeeCents = quoteResult?.fees?.dmvFeeCents ?? (Number((settings as any).dmvFee) || 480) * 100;
+  const financeDocFeeCents = quoteResult?.fees?.docFeeCents ?? (Number((settings as any).docFee) || 85) * 100;
+  const financeTaxesCents = quoteResult?.taxes?.upfrontTaxCents ?? 0;
+  const financeTotalFeesCents = financeRegFeeCents + financeDocFeeCents + financeTaxesCents;
+  const downPaymentCents = quoteResult?.dasBreakdown?.downPaymentCents ?? (Number(deal.down) || 0) * 100;
+  const financeRebates = (quoteResult?.availableIncentives || deal?.availableIncentives || [])
+    .filter((inc: any) => deal?.selectedIncentives?.includes(inc.id) || !deal.selectedIncentives);
 
   return createPortal(
     <AnimatePresence>
@@ -112,132 +124,218 @@ export const TransparencyModal = ({ isOpen, onClose, deal, mileage, quoteResult 
           </div>
 
           <div className="p-6 md:p-8 pt-0 overflow-y-auto custom-scrollbar">
-            
-            <Divider>YOUR {isFinance ? 'FINANCE' : 'LEASE'} (INCLUDING TAXES AND FEES)</Divider>
 
-            {/* Monthly Payment Row */}
-            <div className="flex justify-between items-baseline mb-6">
-              <span className="text-[#1f2937] text-base">Monthly payment</span>
-              <div className="flex items-baseline gap-2">
-                 <span className="text-3xl font-semibold text-[#1e3a5f]">{fmt(totalPayment)}</span>
-                 <span className="text-gray-500 text-[15px]">per month</span>
-              </div>
-            </div>
+            {isFinance ? (
+              /* ===================== FINANCE LAYOUT ===================== */
+              <>
+                <Divider>YOUR FINANCE (INCLUDING TAXES AND FEES)</Divider>
 
-            {/* DAS Row */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center text-base text-[#1f2937]">
-                <div className="flex items-center gap-1.5 cursor-help group relative">
-                  Due at signing
-                  <HelpCircle className="w-4 h-4 text-gray-400 rounded-full bg-gray-100" />
-                  <div className="absolute px-3 py-2 bg-gray-900 text-white text-[11px] rounded shadow-lg bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 text-center opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
-                    Amount to be paid at lease signing
+                {/* Monthly Payment Row */}
+                <div className="flex justify-between items-baseline mb-6">
+                  <span className="text-[#1f2937] text-base">Monthly payment</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-semibold text-[#1e3a5f]">{fmt(totalPayment)}</span>
+                    <span className="text-gray-500 text-[15px]">per month</span>
                   </div>
                 </div>
-                <span className="font-semibold">{fmt(totalDas)}</span>
-              </div>
 
-              {/* DAS Breakdown */}
-              <div className="pl-6 space-y-3 text-[15px] text-gray-600">
-                {!isFinance && (
-                  <div className="flex justify-between items-center">
-                    <span>First Monthly Payment</span>
-                    <span className="font-medium text-[#1f2937]">{fmt(firstPayment)}</span>
+                {/* Finance terms */}
+                <div className="space-y-4 text-[15px]">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Down Payment</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{fmt(downPaymentCents / 100)}</span>
                   </div>
-                )}
-                {quoteResult?.dasBreakdown?.downPaymentCents > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span>Down Payment</span>
-                    <span className="font-medium text-[#1f2937]">{fmt(quoteResult.dasBreakdown.downPaymentCents / 100)}</span>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Term Length</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{term} months</span>
                   </div>
-                )}
-                
-                {quoteResult?.dasBreakdown?.upfrontTaxesCents > 0 ? (
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">APR</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{apr.toFixed(2)}%</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Days To First Payment</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">30</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Lender Name</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{lender}</span>
+                  </div>
+                </div>
+
+                <Divider>TAXES AND FEES (FINANCED)</Divider>
+
+                <div className="space-y-3 text-[15px] text-gray-600">
                   <div className="flex justify-between items-center">
-                    <span>Down Pmt. Tax {(taxRate * 100).toFixed(2)}%</span>
-                    <span className="font-medium text-[#1f2937]">{fmt(quoteResult.dasBreakdown.upfrontTaxesCents / 100)}</span>
+                    <span>Registration Fee</span>
+                    <span className="font-medium text-[#1f2937]">{fmt(financeRegFeeCents / 100)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Doc Fee</span>
+                    <span className="font-medium text-[#1f2937]">{fmt(financeDocFeeCents / 100)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Taxes {(taxRate * 100).toFixed(2)}%</span>
+                    <span className="font-medium text-[#1f2937]">{fmt(financeTaxesCents / 100)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                    <span className="text-[#1f2937]">Total Taxes &amp; Fees</span>
+                    <span className="font-semibold text-[#1f2937]">{fmt(financeTotalFeesCents / 100)}</span>
+                  </div>
+                </div>
+
+                <Divider>POTENTIAL REBATES AND INCENTIVES</Divider>
+
+                {financeRebates.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-baseline text-base text-[#1f2937]">
+                      <span>Total rebates</span>
+                      <span className="font-semibold">{fmt(quoteResult?.totalIncentivesCents !== undefined ? quoteResult.totalIncentivesCents / 100 : (deal.rebates || 0))}</span>
+                    </div>
+                    {financeRebates.map((inc: any, i: number) => (
+                      <div key={i} className="pl-6 space-y-2">
+                        <div className="flex justify-between items-center text-[15px] text-gray-600">
+                          <span>{inc.name}</span>
+                          <span className="font-medium text-[#1f2937]">{fmt(inc.amount)}</span>
+                        </div>
+                        {inc.expires && (
+                          <div className="inline-block bg-[#d32f2f] text-white text-[11px] px-2.5 py-1 rounded">
+                            Expires on {inc.expires}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  <div className="flex justify-between items-center">
-                    <span>Down Pmt. Tax {(taxRate * 100).toFixed(2)}%</span>
-                    <span className="font-medium text-[#1f2937]">{fmt(0)}</span>
-                  </div>
+                  <p className="text-[15px] text-gray-500">
+                    {language === 'ru' ? 'У вас нет скидок' : "You don't have rebates"}
+                  </p>
                 )}
+              </>
+            ) : (
+              /* ===================== LEASE LAYOUT (unchanged) ===================== */
+              <>
+                <Divider>YOUR LEASE (INCLUDING TAXES AND FEES)</Divider>
 
-                {feesList.map((fee: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center">
-                    <span>{fee.name}</span>
-                    <span className="font-medium text-[#1f2937]">{fmt(fee.amountCents / 100)}</span>
+                {/* Monthly Payment Row */}
+                <div className="flex justify-between items-baseline mb-6">
+                  <span className="text-[#1f2937] text-base">Monthly payment</span>
+                  <div className="flex items-baseline gap-2">
+                     <span className="text-3xl font-semibold text-[#1e3a5f]">{fmt(totalPayment)}</span>
+                     <span className="text-gray-500 text-[15px]">per month</span>
                   </div>
-                ))}
-                
-                <div className="flex justify-between items-center">
-                  <span>Tax On Fees</span>
-                  <span className="font-medium text-[#1f2937]">{fmt(quoteResult?.taxes?.upfrontTaxCents ? (quoteResult.taxes.upfrontTaxCents/100) : 7)}</span>
                 </div>
-              </div>
-            </div>
 
-            <Divider>POTENTIAL REBATES AND INCENTIVES</Divider>
+                {/* DAS Row */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-base text-[#1f2937]">
+                    <div className="flex items-center gap-1.5 cursor-help group relative">
+                      Due at signing
+                      <HelpCircle className="w-4 h-4 text-gray-400 rounded-full bg-gray-100" />
+                      <div className="absolute px-3 py-2 bg-gray-900 text-white text-[11px] rounded shadow-lg bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 text-center opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
+                        Amount to be paid at lease signing
+                      </div>
+                    </div>
+                    <span className="font-semibold">{fmt(totalDas)}</span>
+                  </div>
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-baseline text-base text-[#1f2937]">
-                <span>Total rebates</span>
-                <span className="font-semibold">{fmt(quoteResult?.totalIncentivesCents !== undefined ? quoteResult.totalIncentivesCents / 100 : (deal.rebates || 0))}</span>
-              </div>
+                  {/* DAS Breakdown */}
+                  <div className="pl-6 space-y-3 text-[15px] text-gray-600">
+                    <div className="flex justify-between items-center">
+                      <span>First Monthly Payment</span>
+                      <span className="font-medium text-[#1f2937]">{fmt(firstPayment)}</span>
+                    </div>
+                    {quoteResult?.dasBreakdown?.downPaymentCents > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span>Down Payment</span>
+                        <span className="font-medium text-[#1f2937]">{fmt(quoteResult.dasBreakdown.downPaymentCents / 100)}</span>
+                      </div>
+                    )}
 
-              {(quoteResult?.availableIncentives || deal?.availableIncentives)?.filter((inc:any) => deal?.selectedIncentives?.includes(inc.id) || !deal.selectedIncentives).map((inc:any, i:number) => (
-                 <div key={i} className="pl-6 space-y-2">
-                   <div className="flex justify-between items-center text-[15px] text-gray-600">
-                     <span>{inc.name}</span>
-                     <span className="font-medium text-[#1f2937]">{fmt(inc.amount)}</span>
-                   </div>
-                   {inc.expires && (
-                     <div className="inline-block bg-[#d32f2f] text-white text-[11px] px-2.5 py-1 rounded">
-                       Expires on {inc.expires}
+                    {quoteResult?.dasBreakdown?.upfrontTaxesCents > 0 ? (
+                      <div className="flex justify-between items-center">
+                        <span>Down Pmt. Tax {(taxRate * 100).toFixed(2)}%</span>
+                        <span className="font-medium text-[#1f2937]">{fmt(quoteResult.dasBreakdown.upfrontTaxesCents / 100)}</span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-center">
+                        <span>Down Pmt. Tax {(taxRate * 100).toFixed(2)}%</span>
+                        <span className="font-medium text-[#1f2937]">{fmt(0)}</span>
+                      </div>
+                    )}
+
+                    {feesList.map((fee: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center">
+                        <span>{fee.name}</span>
+                        <span className="font-medium text-[#1f2937]">{fmt(fee.amountCents / 100)}</span>
+                      </div>
+                    ))}
+
+                    <div className="flex justify-between items-center">
+                      <span>Tax On Fees</span>
+                      <span className="font-medium text-[#1f2937]">{fmt(quoteResult?.taxes?.upfrontTaxCents ? (quoteResult.taxes.upfrontTaxCents/100) : 7)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <Divider>POTENTIAL REBATES AND INCENTIVES</Divider>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-baseline text-base text-[#1f2937]">
+                    <span>Total rebates</span>
+                    <span className="font-semibold">{fmt(quoteResult?.totalIncentivesCents !== undefined ? quoteResult.totalIncentivesCents / 100 : (deal.rebates || 0))}</span>
+                  </div>
+
+                  {(quoteResult?.availableIncentives || deal?.availableIncentives)?.filter((inc:any) => deal?.selectedIncentives?.includes(inc.id) || !deal.selectedIncentives).map((inc:any, i:number) => (
+                     <div key={i} className="pl-6 space-y-2">
+                       <div className="flex justify-between items-center text-[15px] text-gray-600">
+                         <span>{inc.name}</span>
+                         <span className="font-medium text-[#1f2937]">{fmt(inc.amount)}</span>
+                       </div>
+                       {inc.expires && (
+                         <div className="inline-block bg-[#d32f2f] text-white text-[11px] px-2.5 py-1 rounded">
+                           Expires on {inc.expires}
+                         </div>
+                       )}
                      </div>
-                   )}
-                 </div>
-              ))}
-              
-              {(!deal.availableIncentives || deal.availableIncentives.length === 0) && deal.rebates > 0 && (
-                 <div className="pl-6 space-y-2">
-                   <div className="flex justify-between items-center text-[15px] text-gray-600">
-                     <span>Manufacturer Rebate</span>
-                     <span className="font-medium text-[#1f2937]">{fmt(deal.rebates)}</span>
-                   </div>
-                 </div>
-              )}
-            </div>
+                  ))}
 
-            <Divider>{isFinance ? 'FINANCE CONDITIONS' : 'LEASE CONDITIONS'}</Divider>
+                  {(!deal.availableIncentives || deal.availableIncentives.length === 0) && deal.rebates > 0 && (
+                     <div className="pl-6 space-y-2">
+                       <div className="flex justify-between items-center text-[15px] text-gray-600">
+                         <span>Manufacturer Rebate</span>
+                         <span className="font-medium text-[#1f2937]">{fmt(deal.rebates)}</span>
+                       </div>
+                     </div>
+                  )}
+                </div>
 
-            <div className="space-y-4 text-[15px]">
-              <div className="flex justify-between items-start">
-                <span className="text-[#1e3a5f] w-1/2">Term length</span>
-                <span className="text-[#1f2937] w-1/2 text-right">{term} months</span>
-              </div>
-              {!isFinance && (
-                <div className="flex justify-between items-start">
-                  <span className="text-[#1e3a5f] w-1/2">Annual mileage</span>
-                  <span className="text-[#1f2937] w-1/2 text-right">{mileage.replace('k', ',000')} miles</span>
+                <Divider>LEASE CONDITIONS</Divider>
+
+                <div className="space-y-4 text-[15px]">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Term length</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{term} months</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Annual mileage</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{mileage.replace('k', ',000')} miles</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Due At Signing Type</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">First monthly payment + All fees (excluding Sales Tax)</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Residual value</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{fmt(rvAmt)}</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[#1e3a5f] w-1/2">Lender Name</span>
+                    <span className="text-[#1f2937] w-1/2 text-right">{lender}</span>
+                  </div>
                 </div>
-              )}
-              <div className="flex justify-between items-start">
-                <span className="text-[#1e3a5f] w-1/2">Due At Signing Type</span>
-                <span className="text-[#1f2937] w-1/2 text-right">First monthly payment + All fees (excluding Sales Tax)</span>
-              </div>
-              {!isFinance && (
-                <div className="flex justify-between items-start">
-                  <span className="text-[#1e3a5f] w-1/2">Residual value</span>
-                  <span className="text-[#1f2937] w-1/2 text-right">{fmt(rvAmt)}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-start">
-                <span className="text-[#1e3a5f] w-1/2">Lender Name</span>
-                <span className="text-[#1f2937] w-1/2 text-right">{lender}</span>
-              </div>
-            </div>
+              </>
+            )}
 
           </div>
         </motion.div>

@@ -138,7 +138,7 @@ export const LeaseTransfersPage = () => {
           <div className="max-w-2xl">
             <div className="inline-block bg-[var(--lime)]/10 border border-[var(--lime)]/20 px-3 py-1 rounded-full mb-4">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--lime)]">
-                Beta
+                Early Access
               </span>
             </div>
             <h1 className="font-display text-4xl md:text-5xl uppercase mb-4">
@@ -151,7 +151,7 @@ export const LeaseTransfersPage = () => {
           
           <button 
             onClick={() => setIsListModalOpen(true)}
-            className="bg-[var(--w)] text-black px-8 py-4 rounded-xl font-display text-xl uppercase tracking-widest hover:bg-[var(--lime)] transition-colors flex items-center justify-center gap-2 shrink-0"
+            className="bg-[var(--lime)] text-black px-8 py-4 rounded-xl font-display text-xl uppercase tracking-widest hover:bg-[var(--lime2)] transition-colors flex items-center justify-center gap-2 shrink-0"
           >
             <Plus size={24} />
             {t.listBtn}

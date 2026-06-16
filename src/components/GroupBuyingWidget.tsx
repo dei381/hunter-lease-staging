@@ -114,7 +114,7 @@ export const GroupBuyingWidget = ({ make, model }: GroupBuyingWidgetProps) => {
               "flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2",
               joined 
                 ? "bg-[var(--b1)] text-[var(--lime)] border border-[var(--lime)]/30 cursor-default" 
-                : "bg-[var(--w)] text-black hover:bg-[var(--lime)]"
+                : "bg-[var(--lime)] text-black hover:bg-[var(--lime2)]"
             )}
           >
             {joined ? <CheckCircle size={14} /> : <Zap size={14} />}

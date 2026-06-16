@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ShieldCheck, FileText, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { getAuthToken } from '../utils/auth';
 
 interface CreditConsentModalProps {
   isOpen: boolean;
   onClose: () => void;
   leadId: string;
-  onSuccess: () => void;
+  onSuccess: (result?: { score?: number; tier?: string }) => void;
 }
 
 export const CreditConsentModal: React.FC<CreditConsentModalProps> = ({ isOpen, onClose, leadId, onSuccess }) => {
@@ -31,10 +32,14 @@ export const CreditConsentModal: React.FC<CreditConsentModalProps> = ({ isOpen, 
     
     setLoading(true);
     try {
+      // The soft-pull endpoint is behind userAuth (verifies a Firebase token), so we must
+      // send the bearer token. Anonymous "shadow" auth provides one for guests.
+      const token = await getAuthToken();
       const res = await fetch('/api/700credit/soft-pull', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
           'x-user-uid': user?.uid || ''
         },
         body: JSON.stringify({
@@ -44,7 +49,8 @@ export const CreditConsentModal: React.FC<CreditConsentModalProps> = ({ isOpen, 
       });
 
       if (res.ok) {
-        onSuccess();
+        const data = await res.json().catch(() => ({}));
+        onSuccess({ score: data?.score, tier: data?.tier });
         onClose();
       } else {
         console.error('Soft pull failed');

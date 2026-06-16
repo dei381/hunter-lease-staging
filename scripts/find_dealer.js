@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 
-const apiKey = 'gxoEDCZUX1tkbsmLHxROWAb8WurvVw2A';
+const apiKey = process.env.MARKETCHECK_API_KEY || '';
 
 async function findDealer(name, zip) {
   const url = `https://mc-api.marketcheck.com/v2/search/dealers/active?api_key=${apiKey}&zip=${zip}&radius=10`;

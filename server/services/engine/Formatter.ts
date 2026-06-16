@@ -22,8 +22,10 @@ export class Formatter {
     const ccrForTax = Math.max(0, downPaymentCents + resolvedData.taxableIncentivesCents);
     const upfrontTaxesCents = Math.round(ccrForTax * taxRate);
     
-    const firstMonthCents = finalPaymentCents;
-    
+    // Sign-and-drive quotes capitalize the first month into the loan, so nothing (not even
+    // the first payment) is collected at signing.
+    const firstMonthCents = mathResult.signAndDrive ? 0 : finalPaymentCents;
+
     const dueAtSigningCents = context.downPaymentCents + firstMonthCents + upfrontTaxesCents + upfrontFeesCents + msdAmountCents;
 
     // Calculate TCO
@@ -37,6 +39,7 @@ export class Formatter {
 
     return {
       calcStatus: 'SUCCESS',
+      quoteType: 'LEASE',
       warnings: [],
       monthlyPaymentCents: finalPaymentCents,
       dueAtSigningCents,
@@ -106,6 +109,7 @@ export class Formatter {
 
     return {
       calcStatus: 'SUCCESS',
+      quoteType: 'FINANCE',
       warnings: [],
       monthlyPaymentCents: finalPaymentCents,
       dueAtSigningCents,

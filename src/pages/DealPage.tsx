@@ -15,7 +15,7 @@ import { CaseStudies } from '../components/CaseStudies';
 import { TrustSection } from '../components/TrustSection';
 import { DealerReviews } from '../components/DealerReviews';
 import { ImageGallery } from '../components/ImageGallery';
-import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon, CheckCircle } from 'lucide-react';
+import { ShieldCheck, Zap, Star, ArrowRight, Heart, Info, Check, X, ShieldAlert, TrendingDown, Clock, Eye, Users, Flame, Fuel, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Calculator as CalculatorIcon, CheckCircle, Gauge } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 import { CompareBar } from '../components/CompareBar';
@@ -55,7 +55,7 @@ export const DealPage = () => {
   const handleMileageChange = React.useCallback((m: string) => {
     setMileage(m);
   }, []);
-  const [viewCount, setViewCount] = useState(Math.floor(Math.random() * 5) + 2);
+  const [viewCount, setViewCount] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'specs' | 'options'>('specs');
   const [mileage, setMileage] = useState('10k');
   const [photos, setPhotos] = useState<CarPhoto[]>([]);
@@ -73,8 +73,12 @@ export const DealPage = () => {
   const enrichedDeal = useMemo(() => {
     if (!deal) return null;
     const msrp = getVal(deal.msrp);
+    // The API's `savings` already = dealer discount + auto-applied incentive, and the
+    // card's availableIncentives carries only selectable (non-default) rebates, so
+    // `savings` is the complete, non-doubled total. (Adding filter(isDefault) is a no-op
+    // since those are stripped server-side; kept at 0 for clarity.)
     const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0) || 0;
-    const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0);
+    const badgeTotalSavings = (Number(deal.savings) || 0) + totalIncentives;
     const savingsPctObj = msrp > 0 ? badgeTotalSavings / msrp : 0;
     return {
       ...deal,
@@ -128,7 +132,7 @@ export const DealPage = () => {
         const found = data.length > 0 ? data[0] : null;
         setDeal(found);
         if (found) {
-          setViewCount(found.viewCount || 1);
+          setViewCount(typeof found.viewCount === 'number' && found.viewCount > 0 ? found.viewCount : null);
           // Increment view count on server
           fetch(`/api/deals/${found.id}/view`, { method: 'POST' }).catch(console.error);
           
@@ -150,39 +154,25 @@ export const DealPage = () => {
 
   useEffect(() => {
     if (!deal) return;
-    
-    let expirationDate: Date;
-    if (deal.expirationDate) {
-      expirationDate = new Date(deal.expirationDate); const maxExp = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000); if (expirationDate > maxExp) expirationDate = maxExp;
-    } else {
-      // Fallback if not in DB
-      const now = new Date();
-      if (deal.id === 2 || deal.id === '2') {
-        expirationDate = new Date(now.getTime() - 100000); // Expired
-      } else {
-        const numId = typeof deal.id === 'string' ? deal.id.charCodeAt(0) : deal.id;
-        const daysToAdd = 2; // Max 2 days fallback
-        expirationDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysToAdd, 23, 59, 59);
-      }
-    }
 
-    const timer = setInterval(() => {
-      const currentTime = new Date().getTime();
-      const distance = expirationDate.getTime() - currentTime;
+    // Honest urgency: show a live countdown ONLY when the deal carries a real, future
+    // expiration date from the lender program. Never fabricate or artificially shorten a deadline.
+    if (!deal.expirationDate) { setTimeLeft(null); return; }
+    const expirationDate = new Date(deal.expirationDate);
+    if (isNaN(expirationDate.getTime()) || expirationDate <= new Date()) { setTimeLeft(null); return; }
 
-      if (distance < 0) {
-        clearInterval(timer);
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-      } else {
-        setTimeLeft({
-          days: Math.floor(distance / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-          minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
-          seconds: Math.floor((distance % (1000 * 60)) / 1000)
-        });
-      }
-    }, 1000);
-
+    const tick = () => {
+      const distance = expirationDate.getTime() - Date.now();
+      if (distance <= 0) { setTimeLeft(null); return; }
+      setTimeLeft({
+        days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((distance % (1000 * 60)) / 1000),
+      });
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [deal]);
 
@@ -328,6 +318,16 @@ export const DealPage = () => {
              <div className="flex items-center justify-between w-full">
                <div className="flex items-center gap-2 text-[14px]">
                  {deal.msrp > 0 && (() => { const totalIncentives = (deal.availableIncentives || []).filter((inc: any) => inc.isDefault).reduce((sum: any, inc: any) => sum + (Number(inc.amount) || 0), 0); const totalSavings = (Number(deal.savings) || 0) + totalIncentives + (deal.dealerDiscountCents ? deal.dealerDiscountCents / 100 : 0); return (<div className="flex items-center gap-2 font-mono font-bold text-[var(--w)]"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={totalSavings > 0 ? "text-[var(--lime)]" : "text-[var(--mu2)]"}><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span className={totalSavings <= 0 ? "text-[var(--mu2)]" : ""}>{totalSavings > 0 ? ((totalSavings / deal.msrp) * 100).toFixed(1) : 0}% {language === 'ru' ? 'СКИДКА' : 'off MSRP'}</span></div>); })()}
+                 {deal.hunterStatus === 'scored' && typeof deal.hunterScore === 'number' && (
+                   <div title={deal.hunterLabel} className={cn(
+                     "flex items-center gap-1.5 font-mono font-bold px-2.5 py-1 rounded-lg",
+                     (deal.hunterBand === 'steal' || deal.hunterBand === 'strong') ? 'bg-[var(--lime)]/15 text-[var(--lime)]'
+                       : deal.hunterBand === 'fair' ? 'bg-yellow-400/15 text-yellow-400'
+                       : 'bg-[var(--s2)] text-[var(--mu2)]'
+                   )}>
+                     <Gauge size={16} /> Hunter {deal.hunterScore}
+                   </div>
+                 )}
                </div>
                {/* Utilities */}
                <div className="flex items-center gap-3">
@@ -367,7 +367,7 @@ export const DealPage = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <ImageGallery mainImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} images={deal.images} viewCount={viewCount.toString()} dealId={deal.id.toString()} />
+              <ImageGallery mainImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} images={deal.images} viewCount={viewCount ? String(viewCount) : undefined} dealId={deal.id.toString()} />
             </motion.div>
           </div>
 
@@ -382,7 +382,7 @@ export const DealPage = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
               >
-                <ImageGallery mainImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} images={deal.images} viewCount={viewCount.toString()} dealId={deal.id.toString()} />
+                <ImageGallery mainImage={deal.image || getCarImage(photos, deal.make, deal.model, deal.year)} images={deal.images} viewCount={viewCount ? String(viewCount) : undefined} dealId={deal.id.toString()} />
               </motion.div>
 
               {/* Technical Trust Grid */}
@@ -675,7 +675,7 @@ export const DealPage = () => {
                   <Calculator 
                     deal={enrichedDeal} 
                     timeLeft={timeLeft} 
-                    viewCount={viewCount}
+                    viewCount={viewCount ?? undefined}
                     onProceed={handleProceed}
                     onChange={handleCalculatorChange}
                     onMileageChange={handleMileageChange}
@@ -817,7 +817,7 @@ export const DealPage = () => {
           <div className="flex items-center gap-4 mb-24">
             <h2 className="font-display text-5xl uppercase tracking-tighter">{td.protocolTitle} <span className="text-[var(--lime)] italic">{td.protocolSubtitle}</span></h2>
             <div className="flex-1 h-px bg-[var(--b2)]" />
-            <div className="font-mono text-xs text-[var(--mu2)]/50">01 — 03</div>
+            <div className="font-mono text-xs text-[var(--mu2)]/50">01 / 03</div>
           </div>
           <ProcessTimeline />
         </section>

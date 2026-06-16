@@ -84,6 +84,10 @@ export const Footer = () => {
           <ul className="space-y-4 text-sm text-[var(--mu2)]">
             <li><Link to="/deals" className="hover:text-[var(--lime)] transition-colors">{t.footer.newCarLeasing}</Link></li>
             <li><Link to="/deals" className="hover:text-[var(--lime)] transition-colors">{t.footer.financing}</Link></li>
+            <li><Link to="/deal-auditor" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Проверить оффер' : 'Deal Auditor'}</Link></li>
+            <li><Link to="/lease/zero-down" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Лизинг с $0 взноса' : '$0 Down Leases'}</Link></li>
+            <li><Link to="/lease/under-400" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Лизинг до $400/мес' : 'Leases under $400'}</Link></li>
+            <li><Link to="/lease/ev-california" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Лизинг электромобилей' : 'EV Leases'}</Link></li>
             <li><Link to="/#calc" className="hover:text-[var(--lime)] transition-colors">{t.footer.tradeInAppraisal}</Link></li>
             <li><Link to="/#how-it-works" className="hover:text-[var(--lime)] transition-colors">{t.footer.vipSigning}</Link></li>
           </ul>
@@ -98,8 +102,11 @@ export const Footer = () => {
             <li><Link to="/blog" className="hover:text-[var(--lime)] transition-colors">{t.footer.blog}</Link></li>
             <li><Link to="/about" className="hover:text-[var(--lime)] transition-colors">{t.footer.aboutUs}</Link></li>
             <li><Link to="/glossary" className="hover:text-[var(--lime)] transition-colors">{t.footer.glossary}</Link></li>
+            <li><Link to="/hunter-score" className="hover:text-[var(--lime)] transition-colors">Hunter Score</Link></li>
+            <li><Link to="/lease/best-deals" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Лучшие по Hunter Score' : 'Best-Scored Deals'}</Link></li>
+            <li><Link to="/newcomers" className="hover:text-[var(--lime)] transition-colors">{language === 'ru' ? 'Новоприбывшим' : 'For Newcomers'}</Link></li>
             <li>
-              <button 
+              <button
                 onClick={open}
                 className="hover:text-[var(--lime)] transition-colors text-left"
               >
